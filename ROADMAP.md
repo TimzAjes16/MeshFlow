@@ -10,42 +10,74 @@
 - ✅ Workspace creation
 - ✅ Basic sharing (database structure ready)
 
-## 💎 V1 (1–2 months) - 🚧 TODO
+## 💎 V1 (1–2 months) - ✅ MOSTLY COMPLETED
 
-- [ ] Multi-layout modes (radial, semantic clusters)
-- [ ] Auto-clean / Auto-organize button
-- [ ] Node editor with full rich text
-- [ ] Tags + filters
-- [ ] Project snapshots (versions)
-- [ ] Export map as PNG / PDF
-- [ ] Keyboard shortcuts
-- [ ] Undo/redo stack
+- ✅ Multi-layout modes (radial, hierarchical, semantic clusters, list view)
+- ✅ Auto-organize button (top-right of canvas, with animation)
+- ✅ Node editor with full rich text (TipTap with formatting toolbar & slash commands)
+- ✅ Tags system (add/remove tags, tag-based organization)
+- ✅ Search & filters (fuzzy search with node highlighting)
+- ✅ Keyboard shortcuts (Ctrl/Cmd+N, Ctrl/Cmd+F, Delete, Escape, Arrow keys, Enter)
+- ✅ Double-click node creation (FloatingToolbar with 6 node types)
+- ✅ Empty state onboarding (guided introduction for new users)
+- ✅ FloatingToolbar (Miro-style node type selector)
+- ✅ Rich text formatting (Bold, Italic, H1, H2, Lists, Blockquotes, Code blocks)
+- ✅ Slash commands (/ for Notion-style quick actions)
+- ✅ Floating formatting toolbar (appears on text selection)
+- ⏳ Project snapshots (versions) - PENDING
+- ⏳ Export map as PNG / PDF - PENDING (JSON/Markdown export ✅)
+- ⏳ Undo/redo stack - PENDING
 
-## 🥇 Pro Tier Features (paid) - 📋 PLANNED
+## 🥇 Pro Tier Features (paid) - 🚧 PARTIALLY COMPLETED
 
-- [ ] Unlimited workspaces
-- [ ] Unlimited nodes
-- [ ] Team collaboration
-- [ ] Real-time editing
-- [ ] Advanced AI tools:
+- ✅ Unlimited workspaces (no limits implemented)
+- ✅ Unlimited nodes (no limits implemented)
+- ✅ Team collaboration (workspace sharing, member management, roles)
+- ✅ Real-time editing (via Supabase Realtime subscriptions)
+- ✅ Comments system (add comments to nodes, real-time updates)
+- ✅ Activity feed (track workspace changes)
+- ✅ Invite system (create and manage invite links)
+- ✅ Data export (JSON and Markdown formats)
+- ✅ Import functionality (JSON/Markdown import with node reconstruction)
+- ✅ Permission management (owner, editor, viewer roles)
+- ⏳ Advanced AI tools (stubs implemented, pending OpenAI integration):
   - [ ] summarize node
   - [ ] auto-tag
   - [ ] expand idea
   - [ ] branch a cluster
-- [ ] "Magic Clean" advanced auto-organization
-- [ ] Large workspace sizes
-- [ ] Data export
-- [ ] Cloud sync priority
+- ⏳ "Magic Clean" advanced auto-organization - PENDING
+- ⏳ Export map as PNG / PDF - PENDING
+- ⏳ Cloud sync priority - PENDING
 
 ## 🏢 Enterprise Tier - 📋 PLANNED
 
-- [ ] SSO / SCIM
-- [ ] Admin panel
-- [ ] Workspace permissions granularity
-- [ ] Audit logs
-- [ ] Offline mode
-- [ ] Self-hosted version
-- [ ] API access
-- [ ] Custom layout algorithms
-- [ ] Knowledge ingestion pipelines (Slack, Drive, Confluence → nodes auto-created)
+- ✅ Workspace permissions granularity (owner, editor, viewer roles implemented)
+- ⏳ SSO / SCIM - PENDING
+- ⏳ Admin panel - PENDING
+- ⏳ Audit logs - PENDING (Activity feed partially implemented)
+- ⏳ Offline mode - PENDING
+- ⏳ Self-hosted version - PENDING (currently requires PostgreSQL + pgvector)
+- ⏳ API access - PENDING (internal API routes exist, external API pending)
+- ⏳ Custom layout algorithms - PENDING (multiple algorithms exist, customization UI pending)
+- ⏳ Knowledge ingestion pipelines (Slack, Drive, Confluence → nodes auto-created) - PENDING
+
+## 📊 Implementation Status Summary
+
+**MVP Completion:** 100% ✅  
+**V1 Completion:** ~85% ✅ (Export PNG/PDF, Snapshots, Undo/Redo pending)  
+**Pro Tier Completion:** ~70% ✅ (AI tools stubs exist, pending full implementation)  
+**Enterprise Tier Completion:** ~20% ⏳ (Permissions done, others pending)
+
+## 🎯 Recently Completed (January 2025)
+
+- ✅ Double-click node creation with FloatingToolbar
+- ✅ Rich text editor with TipTap integration
+- ✅ Floating formatting toolbar (Miro-style)
+- ✅ Slash commands menu (Notion-style)
+- ✅ Comprehensive keyboard shortcuts
+- ✅ Empty state onboarding
+- ✅ Auto-organize button with animation
+- ✅ Multiple layout modes (Force, Radial, Hierarchical, Semantic Clusters, List)
+- ✅ Collaboration features (sharing, comments, activity feed)
+- ✅ Export/Import functionality (JSON, Markdown)
 
