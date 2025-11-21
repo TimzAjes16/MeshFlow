@@ -299,12 +299,37 @@ export default function Canvas({ workspaceId }: CanvasProps) {
       });
 
       if (response.ok) {
-        loadWorkspace();
+        // Reload the workspace graph
+        const graphResponse = await fetch(`/api/workspaces/${workspaceId}/graph`);
+        const graphData = await graphResponse.json();
+
+        const flowNodes: Node[] = graphData.nodes.map((n: any) => ({
+          id: n.id,
+          type: 'custom',
+          position: { x: n.x, y: n.y },
+          data: {
+            label: n.title,
+            content: n.content,
+            highlighted: highlightedNodeIds.has(n.id),
+          },
+        }));
+
+        const flowEdges: Edge[] = graphData.edges.map((e: any) => ({
+          id: e.id,
+          source: e.sourceId,
+          target: e.targetId,
+          type: 'smoothstep',
+          animated: false,
+          style: { strokeWidth: 2 },
+        }));
+
+        setNodes(flowNodes);
+        setEdges(flowEdges);
       }
     } catch (error) {
       console.error('Error running layout:', error);
     }
-  }, [workspaceId]);
+  }, [workspaceId, highlightedNodeIds, setNodes, setEdges]);
 
   return (
     <div className="h-screen w-screen flex flex-col">

@@ -1,102 +1,121 @@
 import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db';
-import { generateEmbedding } from '@/lib/ai';
-
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const nodeId = params.id;
-    const body = await request.json();
-    const { title, content, x, y } = body;
-
-    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId) as any;
-
-    if (!node) {
-      return NextResponse.json({ error: 'Node not found' }, { status: 404 });
-    }
-
-    const updates: string[] = [];
-    const values: any[] = [];
-
-    if (title !== undefined) {
-      updates.push('title = ?');
-      values.push(title);
-    }
-
-    if (content !== undefined) {
-      updates.push('content = ?');
-      values.push(content);
-    }
-
-    if (x !== undefined) {
-      updates.push('x = ?');
-      values.push(x);
-    }
-
-    if (y !== undefined) {
-      updates.push('y = ?');
-      values.push(y);
-    }
-
-    // Regenerate embedding if title or content changed
-    if (title !== undefined || content !== undefined) {
-      const newTitle = title !== undefined ? title : node.title;
-      const newContent = content !== undefined ? content : node.content;
-      const text = `${newTitle} ${newContent || ''}`.trim();
-      const embedding = await generateEmbedding(text);
-      updates.push('embedding = ?');
-      values.push(JSON.stringify(embedding));
-    }
-
-    if (updates.length > 0) {
-      updates.push('updated_at = ?');
-      values.push(Date.now());
-      values.push(nodeId);
-
-      db.prepare(
-        `UPDATE nodes SET ${updates.join(', ')} WHERE id = ?`
-      ).run(...values);
-    }
-
-    const updatedNode = db
-      .prepare('SELECT * FROM nodes WHERE id = ?')
-      .get(nodeId);
-
-    return NextResponse.json({
-      node: {
-        ...updatedNode,
-        embedding: (updatedNode as any).embedding
-          ? JSON.parse((updatedNode as any).embedding)
-          : null,
-      },
-    });
-  } catch (error) {
-    console.error('Error updating node:', error);
-    return NextResponse.json(
-      { error: 'Failed to update node' },
-      { status: 500 }
-    );
-  }
-}
+import { createClient } from '@/lib/supabase/server';
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    const supabase = await createClient();
+    
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const nodeId = params.id;
 
-    db.prepare('DELETE FROM nodes WHERE id = ?').run(nodeId);
+    // Get node to check permissions
+    const { data: node, error: nodeError } = await supabase
+      .from('nodes')
+      .select('workspace_id')
+      .eq('id', nodeId)
+      .single();
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting node:', error);
+    if (nodeError || !node) {
+      return NextResponse.json({ error: 'Node not found' }, { status: 404 });
+    }
+
+    // Check workspace permissions
+    const { data: workspace } = await supabase
+      .from('workspaces')
+      .select('owner_id')
+      .eq('id', node.workspace_id)
+      .single();
+
+    const { data: member } = await supabase
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', node.workspace_id)
+      .eq('user_id', user.id)
+      .single();
+
+    const canDelete =
+      workspace?.owner_id === user.id ||
+      member?.role === 'owner' ||
+      member?.role === 'editor';
+
+    if (!canDelete) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Delete node (cascade will delete edges and related data)
+    const { error: deleteError } = await supabase
+      .from('nodes')
+      .delete()
+      .eq('id', nodeId);
+
+    if (deleteError) {
+      console.error('Error deleting node:', deleteError);
+      return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    }
+
+    // Log activity
+    await supabase.rpc('log_activity', {
+      p_workspace_id: node.workspace_id,
+      p_user_id: user.id,
+      p_action: 'delete',
+      p_entity_type: 'node',
+      p_entity_id: nodeId,
+      p_details: { node_id: nodeId },
+    });
+
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch (error: any) {
+    console.error('Error in delete node API:', error);
     return NextResponse.json(
-      { error: 'Failed to delete node' },
+      { error: error.message || 'Internal server error' },
       { status: 500 }
     );
   }
 }
 
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = await createClient();
+    
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const nodeId = params.id;
+
+    const { data: node, error } = await supabase
+      .from('nodes')
+      .select('*')
+      .eq('id', nodeId)
+      .single();
+
+    if (error || !node) {
+      return NextResponse.json({ error: 'Node not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ node }, { status: 200 });
+  } catch (error: any) {
+    console.error('Error in get node API:', error);
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

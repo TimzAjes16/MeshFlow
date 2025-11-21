@@ -89,11 +89,11 @@
 - [ ] **Content Generation**: Auto-generate related notes based on current node
 
 #### 2. Collaboration & Sharing
-- [ ] **Workspace Sharing UI**: Interface for adding/removing workspace members
-- [ ] **Invite Links**: Generate shareable invite links for workspaces
-- [ ] **Permission Management**: Role-based access control UI
-- [ ] **Activity Feed**: Show recent changes by collaborators
-- [ ] **Comments**: Add comments to nodes for team collaboration
+- [x] **Workspace Sharing UI**: Interface for adding/removing workspace members
+- [x] **Invite Links**: Generate shareable invite links for workspaces
+- [x] **Permission Management**: Role-based access control UI
+- [x] **Activity Feed**: Show recent changes by collaborators
+- [x] **Comments**: Add comments to nodes for team collaboration
 
 #### 3. Advanced Node Features
 - [ ] **Node Templates**: Pre-built templates for common note types
@@ -103,17 +103,18 @@
 - [ ] **Node Grouping**: Visual grouping of related nodes
 
 #### 4. Export & Import
-- [ ] **Export Workspace**: Export as JSON, Markdown, or image
-- [ ] **Import Data**: Import from Markdown, Obsidian, Notion
+- [x] **Export Workspace**: Export as JSON, Markdown, or image (JSON & Markdown implemented)
+- [x] **Import Data**: Import from JSON/Markdown format
+- [ ] **Import from Obsidian/Notion**: Import from external formats
 - [ ] **Export Graph**: Save canvas as PNG/SVG with high quality
 - [ ] **Backup System**: Automatic workspace backups
 
 #### 5. Performance & Scaling
-- [ ] **Pagination**: Load nodes in chunks for large workspaces
+- [x] **Pagination**: Helper functions created (needs UI integration)
 - [ ] **Virtualization**: Virtual scrolling for node lists
-- [ ] **Caching**: Client-side caching of embeddings
+- [x] **Caching**: Client-side caching utilities created (embedding cache, TTL cache)
 - [ ] **Optimistic Updates**: Instant UI updates before server confirmation
-- [ ] **Debouncing**: Debounce node position updates to reduce API calls
+- [x] **Debouncing**: Debounce utilities created (position updates, search)
 
 ### Medium Priority
 
@@ -136,8 +137,8 @@
 - [ ] **Saved Searches**: Save common search queries
 
 #### 9. UI/UX Improvements
-- [ ] **Keyboard Shortcuts**: Power user shortcuts for all actions
-- [ ] **Command Palette**: Cmd+K style command search
+- [x] **Keyboard Shortcuts**: Shortcut manager and default shortcuts implemented
+- [x] **Command Palette**: Cmd+K style command search component created
 - [ ] **Themes**: Multiple theme options (light, dark, custom)
 - [ ] **Customizable UI**: Resizable panels, custom layouts
 - [ ] **Tutorial System**: Interactive onboarding for new users
@@ -166,13 +167,13 @@
 
 ## 🔧 Technical Debt
 
-1. **Error Handling**: Need comprehensive error boundaries and user-friendly error messages
-2. **Loading States**: Better loading indicators throughout the app
+1. [x] **Error Handling**: Error boundary component created
+2. **Loading States**: Better loading indicators throughout the app (partial - some components have loading states)
 3. **Testing**: Add unit tests and E2E tests (Jest, Playwright)
-4. **Documentation**: API documentation, component docs
-5. **Type Safety**: Some `any` types need proper typing
+4. **Documentation**: API documentation, component docs (in progress)
+5. **Type Safety**: Some `any` types need proper typing (improved, but still some remaining)
 6. **Bundle Size**: Optimize bundle size (code splitting, lazy loading)
-7. **Accessibility**: ARIA labels, keyboard navigation improvements
+7. **Accessibility**: ARIA labels, keyboard navigation improvements (keyboard shortcuts added)
 8. **SEO**: Meta tags, structured data for landing page
 
 ---
@@ -203,16 +204,20 @@
 - ✅ `edges` - Connections between nodes
 
 ### Missing Indexes
-- [ ] Index on `nodes.workspace_id` for faster queries
-- [ ] Index on `nodes.embedding` for similarity search (pgvector)
-- [ ] Index on `edges.source` and `edges.target`
+- [x] Index on `nodes.workspace_id` for faster queries (in schema.sql)
+- [x] Index on `nodes.embedding` for similarity search (pgvector) (in schema.sql)
+- [x] Index on `edges.source` and `edges.target` (in schema.sql)
 
 ### Future Tables
-- [ ] `node_history` - Version history
-- [ ] `comments` - Comments on nodes
-- [ ] `attachments` - File attachments
-- [ ] `workspace_invites` - Invite links
-- [ ] `user_preferences` - User settings
+- [x] `node_history` - Version history (in migrations.sql)
+- [x] `comments` - Comments on nodes (in migrations.sql)
+- [x] `attachments` - File attachments (in migrations.sql)
+- [x] `workspace_invites` - Invite links (in migrations.sql)
+- [x] `user_preferences` - User settings (in migrations.sql)
+- [x] `activity_log` - Activity logging (in migrations.sql)
+- [x] `layout_presets` - Layout presets (in migrations.sql)
+- [x] `saved_searches` - Saved searches (in migrations.sql)
+- [x] `spatial_bookmarks` - Spatial bookmarks (in migrations.sql)
 
 ---
 
@@ -239,14 +244,25 @@
 - ✅ `PUT /api/nodes/update` - Update node with re-linking
 
 ### Missing
-- [ ] `DELETE /api/nodes/[id]` - Delete node
-- [ ] `GET /api/nodes/search` - Search nodes
+- [x] `DELETE /api/nodes/[id]` - Delete node
+- [x] `GET /api/nodes/search` - Search nodes
 - [ ] `GET /api/workspaces/[id]` - Get workspace details
 - [ ] `POST /api/workspaces` - Create workspace
-- [ ] `PUT /api/workspaces/[id]/members` - Manage members
-- [ ] `POST /api/ai/summarize` - AI summarization
-- [ ] `POST /api/ai/expand` - AI expansion
-- [ ] `GET /api/suggestions/[nodeId]` - Get connection suggestions
+- [x] `GET /api/workspaces/[id]/members` - Get members
+- [x] `POST /api/workspaces/[id]/members` - Add member
+- [x] `PUT /api/workspaces/[id]/members` - Update member role
+- [x] `DELETE /api/workspaces/[id]/members` - Remove member
+- [x] `POST /api/workspaces/[id]/invites` - Create invite
+- [x] `GET /api/workspaces/[id]/invites` - Get invites
+- [x] `GET /api/workspaces/[id]/activity` - Get activity log
+- [x] `GET /api/workspaces/[id]/export` - Export workspace
+- [x] `POST /api/workspaces/[id]/import` - Import workspace
+- [x] `GET /api/comments` - Get comments
+- [x] `POST /api/comments` - Create comment
+- [x] `DELETE /api/comments/[id]` - Delete comment
+- [ ] `POST /api/ai/summarize` - AI summarization (skipped per requirements)
+- [ ] `POST /api/ai/expand` - AI expansion (skipped per requirements)
+- [ ] `GET /api/suggestions/[nodeId]` - Get connection suggestions (AI-related, skipped)
 
 ---
 
