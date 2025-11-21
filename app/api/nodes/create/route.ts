@@ -52,20 +52,13 @@ export async function POST(request: NextRequest) {
     );
 
     if (similarNodes.length > 0) {
-      // Get full node data for similar nodes
-      const targetNodes = await prisma.node.findMany({
-        where: {
-          id: { in: similarNodes.map((n) => n.id) },
-        },
-      });
-
-      // Create auto-edges
+      // Create auto-edges using the similarity results
       await prisma.edge.createMany({
-        data: similarNodes.map((targetNode, index) => ({
+        data: similarNodes.map((similarityResult) => ({
           workspaceId,
           source: newNode.id,
-          target: targetNode.id,
-          similarity: targetNode.similarity || similarNodes[index].similarity || 1,
+          target: similarityResult.id,
+          similarity: similarityResult.similarity,
         })),
         skipDuplicates: true,
       });

@@ -26,7 +26,6 @@ import EdgeComponent from './EdgeComponent';
 import { useAutoOrganize } from '@/lib/useAutoOrganize';
 import { getNodeColor } from '@/lib/nodeColors';
 import EmptyState from './EmptyState';
-import MinimalEmptyHint from './MinimalEmptyHint';
 
 const nodeTypes: NodeTypes = {
   custom: NodeComponent,
@@ -51,6 +50,7 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     selectedNodeId,
     selectNode,
     setViewport,
+    viewport,
   } = useCanvasStore();
 
   const {
@@ -106,20 +106,8 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     setHasDismissedEmptyState(false);
   }, [workspaceId, workspaceNodes.length]);
 
-  // Auto-organize when nodes are first loaded
-  useEffect(() => {
-    // Only auto-organize once when nodes are first loaded
-    if (nodes.length > 0 && edges.length >= 0 && !hasOrganized && !autoOrganize && !isAnimating) {
-      // Small delay to allow initial render
-      const timer = setTimeout(() => {
-        setAutoOrganize(true);
-        setHasOrganized(true);
-        // Auto-disable after animation completes
-        setTimeout(() => setAutoOrganize(false), 2500);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [nodes.length, edges.length, hasOrganized, autoOrganize, isAnimating, workspaceId]);
+  // Disable auto-organize by default - only run when explicitly triggered
+  // Removed automatic auto-organize on load to prevent continuous spinning
 
   // Manual trigger for auto-organize (can be called from a button)
   const triggerAutoOrganize = useCallback(() => {
@@ -129,17 +117,37 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
 
   // Sync workspace nodes/edges to canvas state
   useEffect(() => {
-    if (workspaceNodes.length === 0) return;
+    // Don't return early - allow empty arrays to clear the canvas
+    console.log('[CanvasContainer] Syncing workspace nodes to canvas:', {
+      workspaceNodesCount: workspaceNodes.length,
+      workspaceEdgesCount: workspaceEdges.length,
+      existingNodesCount: nodes.length,
+      existingEdgesCount: edges.length,
+    });
 
-    const reactFlowNodes: Node[] = workspaceNodes.map((node) => ({
-      id: node.id,
-      type: 'custom',
-      position: { x: node.x, y: node.y },
-      data: {
-        label: node.title,
-        node,
-      },
-    }));
+    const reactFlowNodes: Node[] = workspaceNodes.map((node) => {
+      const isChart = node.tags?.some(tag => ['bar-chart', 'line-chart', 'pie-chart', 'area-chart'].includes(tag));
+      // Check if this node already exists in React Flow state
+      const existingNode = nodes.find(n => n.id === node.id);
+      
+      return {
+        id: node.id,
+        type: 'custom',
+        // Preserve existing position if node is being dragged, otherwise use stored position
+        position: existingNode?.position?.x !== undefined && existingNode?.position?.y !== undefined
+          ? existingNode.position
+          : { x: node.x, y: node.y },
+        data: {
+          label: node.title,
+          node,
+        },
+        // Set dimensions for chart nodes
+        ...(isChart && {
+          width: 400,
+          height: 300,
+        }),
+      };
+    });
 
     const reactFlowEdges: Edge[] = workspaceEdges.map((edge) => {
       const sourceNode = workspaceNodes.find(n => n.id === edge.source);
@@ -161,6 +169,17 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
       };
     });
 
+    console.log('[CanvasContainer] Setting React Flow nodes:', {
+      nodeCount: reactFlowNodes.length,
+      edgeCount: reactFlowEdges.length,
+      firstNodeId: reactFlowNodes[0]?.id,
+    });
+
+    // Update both canvas store and React Flow state
+    setCanvasNodes(reactFlowNodes);
+    setCanvasEdges(reactFlowEdges);
+    // Update both canvas store and React Flow state
+    // Note: We use direct assignment, not functional update, to avoid stale closure issues
     setCanvasNodes(reactFlowNodes);
     setCanvasEdges(reactFlowEdges);
     setNodes(reactFlowNodes);
@@ -224,6 +243,22 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     },
     [onCreateNode, reactFlowInstance]
   );
+
+  // Handle scroll to node event (from NodesListView)
+  useEffect(() => {
+    const handleScrollToNode = (event: CustomEvent) => {
+      const { nodeId } = event.detail;
+      if (!nodeId || !reactFlowInstance) return;
+      
+      const node = nodes.find((n) => n.id === nodeId);
+      if (node && node.position) {
+        reactFlowInstance.setCenter(node.position.x, node.position.y, { zoom: 1.2, duration: 400 });
+      }
+    };
+
+    window.addEventListener('scrollToNode', handleScrollToNode as EventListener);
+    return () => window.removeEventListener('scrollToNode', handleScrollToNode as EventListener);
+  }, [nodes, reactFlowInstance]);
 
   // Zoom to selected node
   useEffect(() => {
@@ -297,6 +332,14 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     []
   );
 
+  const onMove = useCallback(
+    (_event: any, viewport: { x: number; y: number; zoom: number }) => {
+      // Update viewport state in real-time for minimap sync
+      setViewport(viewport);
+    },
+    [setViewport]
+  );
+
   const onMoveEnd = useCallback(
     (_event: any, viewport: { x: number; y: number; zoom: number }) => {
       setViewport(viewport);
@@ -304,14 +347,9 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     [setViewport]
   );
 
-  // Sync local state to canvas store when nodes/edges change
-  useEffect(() => {
-    setCanvasNodes(nodes);
-  }, [nodes, setCanvasNodes]);
-
-  useEffect(() => {
-    setCanvasEdges(edges);
-  }, [edges, setCanvasEdges]);
+  // Note: Removed sync from React Flow nodes back to canvas store
+  // This was causing a circular update loop. The sync effect above (line 118) 
+  // handles syncing from workspaceStore to React Flow, which is the correct direction.
 
   // Expose trigger function to parent or make it available globally
   useEffect(() => {
@@ -383,6 +421,7 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
         onInit={onInit}
+        onMove={onMove}
         onMoveEnd={onMoveEnd}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
@@ -420,10 +459,22 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
               }}
             />
         
-            {/* Minimap - premium styling */}
+            {/* Minimap - premium styling with accurate positioning */}
             <MiniMap
-              nodeColor="rgba(59, 130, 246, 0.5)"
-              maskColor="rgba(255, 255, 255, 0.6)"
+              key={`minimap-${Math.round((viewport?.zoom || 1) * 100)}-${Math.round((viewport?.x || 0) / 100)}-${Math.round((viewport?.y || 0) / 100)}`}
+              nodeColor={(node) => {
+                const nodeData = node.data as any;
+                if (nodeData?.node) {
+                  const color = getNodeColor(nodeData.node);
+                  return color.primary;
+                }
+                return 'rgba(59, 130, 246, 0.5)';
+              }}
+              nodeStrokeWidth={2}
+              nodeBorderRadius={10}
+              maskColor="rgba(0, 0, 0, 0.1)"
+              maskStrokeColor="rgba(0, 0, 0, 0.2)"
+              maskStrokeWidth={1}
               className="bg-white/95 backdrop-blur-sm rounded-lg border border-gray-200 shadow-lg"
               style={{
                 width: '140px',
@@ -432,6 +483,9 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
               }}
               pannable={true}
               zoomable={true}
+              ariaLabel="Minimap"
+              position="bottom-right"
+              offsetScale={5}
             />
           </ReactFlow>
 
@@ -460,12 +514,7 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
             </div>
           )}
 
-          {/* Minimal inline hint - shows after dismissal or when no nodes and already dismissed */}
-          {hasDismissedEmptyState && nodes.length === 0 && (
-            <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 10 }}>
-              <MinimalEmptyHint />
-            </div>
-          )}
+          {/* Minimal inline hint removed - no longer showing hint on empty canvas */}
 
           {/* Auto-organize button - minimalistic, top-right, very subtle */}
           {nodes.length > 0 && (

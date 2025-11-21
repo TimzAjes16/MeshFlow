@@ -41,7 +41,7 @@ export default function WorkspaceShell({
       {/* Main content: sidebar + canvas + editor - must have min-h-0 to prevent overflow */}
       <div className="flex flex-1 min-h-0 overflow-hidden relative z-0">
         {/* Left Sidebar */}
-        <aside className="w-64 shrink-0 border-r border-gray-200 bg-white relative z-10">
+        <aside className="shrink-0 border-r border-gray-200 bg-white relative z-10">
           <WorkspaceSidebar workspaceId={workspaceId} userRole={userRole} view={view} setView={setView} />
         </aside>
         

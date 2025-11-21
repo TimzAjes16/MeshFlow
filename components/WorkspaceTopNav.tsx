@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { Search, Settings, User, ArrowLeft } from 'lucide-react';
+import { Search, Settings, User, ArrowLeft, Edit2, Check, X } from 'lucide-react';
 import { useCanvasStore } from '@/state/canvasStore';
 
 interface WorkspaceTopNavProps {
@@ -12,7 +12,25 @@ interface WorkspaceTopNavProps {
 }
 
 export default function WorkspaceTopNav({ workspaceId, workspaceName }: WorkspaceTopNavProps) {
+  const router = useRouter();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState(workspaceName);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Update edited name when workspaceName prop changes
+  useEffect(() => {
+    setEditedName(workspaceName);
+  }, [workspaceName]);
+
+  // Focus input when editing starts
+  useEffect(() => {
+    if (isEditingName && nameInputRef.current) {
+      nameInputRef.current.focus();
+      nameInputRef.current.select();
+    }
+  }, [isEditingName]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -24,6 +42,16 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable
       ) {
+        // Allow Escape to cancel editing
+        if (e.key === 'Escape' && isEditingName) {
+          setIsEditingName(false);
+          setEditedName(workspaceName);
+        }
+        // Allow Enter to save when editing name
+        if (e.key === 'Enter' && isEditingName && !e.shiftKey) {
+          e.preventDefault();
+          handleSaveName();
+        }
         return;
       }
 
@@ -37,8 +65,7 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-  const router = useRouter();
+  }, [isEditingName, workspaceName]);
   const { selectNode } = useCanvasStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -106,6 +133,49 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
     window.dispatchEvent(event);
   }, [selectNode]);
 
+  const handleSaveName = async () => {
+    if (!editedName.trim() || editedName.trim() === workspaceName) {
+      setIsEditingName(false);
+      setEditedName(workspaceName);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/workspaces/${workspaceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editedName.trim() }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update workspace name');
+      }
+
+      // Refresh the page to update workspace data
+      router.refresh();
+      
+      // Trigger a custom event to notify dashboard to refresh
+      window.dispatchEvent(new CustomEvent('workspace-updated', { 
+        detail: { workspaceId, name: editedName.trim() } 
+      }));
+
+      setIsEditingName(false);
+    } catch (error: any) {
+      console.error('Error updating workspace name:', error);
+      alert(error.message || 'Failed to update workspace name');
+      setEditedName(workspaceName);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingName(false);
+    setEditedName(workspaceName);
+  };
+
   return (
     <div className="w-full h-full flex items-center justify-between px-4">
       {/* Left: Workspace name and search */}
@@ -116,9 +186,65 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
         >
           <ArrowLeft className="w-4 h-4 text-gray-600" />
         </button>
-        <h1 className="text-lg font-semibold text-gray-900">
-          {workspaceName}
-        </h1>
+        
+        {/* Editable workspace name */}
+        {isEditingName ? (
+          <div className="flex items-center gap-2">
+            <input
+              ref={nameInputRef}
+              type="text"
+              value={editedName}
+              onChange={(e) => setEditedName(e.target.value)}
+              onBlur={(e) => {
+                // Don't blur if clicking on save/cancel buttons
+                const relatedTarget = e.relatedTarget as HTMLElement;
+                if (relatedTarget?.closest('.name-edit-buttons')) {
+                  return;
+                }
+                handleSaveName();
+              }}
+              disabled={isSaving}
+              className="text-lg font-semibold text-gray-900 px-2 py-1 border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[200px]"
+            />
+            <div className="name-edit-buttons flex items-center gap-1">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleSaveName();
+                }}
+                onMouseDown={(e) => e.preventDefault()} // Prevent blur
+                disabled={isSaving}
+                className="p-1 hover:bg-gray-100 rounded transition-colors text-green-600 disabled:opacity-50"
+                title="Save (Enter)"
+              >
+                <Check className="w-4 h-4" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleCancelEdit();
+                }}
+                onMouseDown={(e) => e.preventDefault()} // Prevent blur
+                disabled={isSaving}
+                className="p-1 hover:bg-gray-100 rounded transition-colors text-red-600 disabled:opacity-50"
+                title="Cancel (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setIsEditingName(true)}
+            className="group flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+            title="Click to rename workspace"
+          >
+            <h1 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+              {workspaceName}
+            </h1>
+            <Edit2 className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </button>
+        )}
         
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />

@@ -1,125 +1,115 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Folder, Search } from 'lucide-react';
-import CreateWorkspaceModal from './CreateWorkspaceModal';
+import { Clock, Folder, Users, FileText, Link as LinkIcon } from 'lucide-react';
 
 interface Workspace {
   id: string;
   name: string;
-  description?: string;
-  createdAt: number;
+  ownerId: string;
+  owner: {
+    id: string;
+    email: string;
+    name: string | null;
+    avatarUrl: string | null;
+  } | null;
+  nodeCount: number;
+  edgeCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
-export default function WorkspaceList() {
+interface WorkspaceListProps {
+  workspaces: Workspace[];
+  searchQuery?: string;
+}
+
+export default function WorkspaceList({ workspaces, searchQuery = '' }: WorkspaceListProps) {
   const router = useRouter();
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  useEffect(() => {
-    loadWorkspaces();
-  }, []);
-
-  const loadWorkspaces = async () => {
-    try {
-      const response = await fetch('/api/workspaces');
-      const data = await response.json();
-      setWorkspaces(data.workspaces || []);
-    } catch (error) {
-      console.error('Error loading workspaces:', error);
-    }
-  };
-
-  const handleCreateWorkspace = async (name: string, description?: string) => {
-    try {
-      const response = await fetch('/api/workspaces', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description }),
-      });
-
-      const data = await response.json();
-      if (data.workspace) {
-        router.push(`/workspace/${data.workspace.id}`);
-      }
-    } catch (error) {
-      console.error('Error creating workspace:', error);
-    }
-  };
-
-  const filteredWorkspaces = workspaces.filter(w =>
-    w.name.toLowerCase().includes(searchQuery.toLowerCase())
+  // Filter workspaces based on search
+  const filteredWorkspaces = workspaces.filter((ws) =>
+    ws.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-              MeshFlow
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Visual knowledge mapping with AI-powered auto-linking
-            </p>
-          </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={20} />
-            New Workspace
-          </button>
-        </div>
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
 
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-          <input
-            type="text"
-            placeholder="Search workspaces..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleDateString();
+  };
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredWorkspaces.map((workspace) => (
-            <div
-              key={workspace.id}
-              onClick={() => router.push(`/workspace/${workspace.id}`)}
-              className="p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:shadow-lg cursor-pointer transition-shadow"
-            >
-              <Folder className="text-blue-600 dark:text-blue-400 mb-3" size={32} />
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                {workspace.name}
-              </h3>
-              {workspace.description && (
-                <p className="text-gray-600 dark:text-gray-400 text-sm">
-                  {workspace.description}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {filteredWorkspaces.length === 0 && (
-          <div className="text-center py-12">
-            <Folder className="mx-auto text-gray-400 mb-4" size={48} />
-            <p className="text-gray-600 dark:text-gray-400">
-              {searchQuery ? 'No workspaces found' : 'No workspaces yet. Create one to get started!'}
-            </p>
-          </div>
+  if (filteredWorkspaces.length === 0) {
+    return (
+      <div className="p-12 text-center text-slate-500">
+        <Folder className="w-12 h-12 mx-auto mb-4 text-slate-400" />
+        <p className="text-sm font-medium">
+          {searchQuery ? 'No workspaces found' : 'No workspaces yet'}
+        </p>
+        {!searchQuery && (
+          <p className="text-xs mt-1 text-slate-400">
+            Click "New Workspace" to get started
+          </p>
         )}
       </div>
+    );
+  }
 
-      <CreateWorkspaceModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onCreate={handleCreateWorkspace}
-      />
+  return (
+    <div className="space-y-2">
+      {filteredWorkspaces.map((workspace) => (
+        <button
+          key={workspace.id}
+          onClick={() => router.push(`/workspace/${workspace.id}/canvas`)}
+          className="w-full text-left p-4 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 transition-all group"
+        >
+          <div className="flex items-start justify-between">
+            <div className="flex items-start gap-3 flex-1 min-w-0">
+              {/* Workspace Icon */}
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                <Folder className="w-5 h-5 text-white" />
+              </div>
+
+              {/* Workspace Info */}
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors truncate">
+                  {workspace.name}
+                </h3>
+                <div className="flex items-center gap-4 mt-1.5 text-xs text-slate-500">
+                  <div className="flex items-center gap-1">
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>{workspace.nodeCount} nodes</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <LinkIcon className="w-3.5 h-3.5" />
+                    <span>{workspace.edgeCount} connections</span>
+                  </div>
+                  {workspace.owner && (
+                    <div className="flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5" />
+                      <span>{workspace.owner.name || workspace.owner.email}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Updated time */}
+            <div className="flex items-center gap-2 text-xs text-slate-400 ml-4 flex-shrink-0">
+              <Clock className="w-3.5 h-3.5" />
+              <span>{formatDate(workspace.updatedAt)}</span>
+            </div>
+          </div>
+        </button>
+      ))}
     </div>
   );
 }

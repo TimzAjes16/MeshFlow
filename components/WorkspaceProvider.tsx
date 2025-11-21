@@ -69,10 +69,21 @@ export default function WorkspaceProvider({ workspaceId, children }: WorkspacePr
       }, 5000);
     }, 1000); // Wait 1 second after initial load before starting polling
 
+    // Listen for refresh events (e.g., after node creation)
+    const handleRefresh = () => {
+      console.log('[WorkspaceProvider] Refresh event received, will reload workspace data');
+      // Add a delay to ensure immediate store updates happen first and API has the new node
+      setTimeout(() => {
+        loadWorkspace(false);
+      }, 200);
+    };
+    window.addEventListener('refreshWorkspace', handleRefresh);
+
     return () => {
       isMounted = false;
       if (pollInterval) clearInterval(pollInterval);
       clearTimeout(timeoutId);
+      window.removeEventListener('refreshWorkspace', handleRefresh);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]); // Only depend on workspaceId - no reload loop

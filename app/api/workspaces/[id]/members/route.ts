@@ -1,40 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireAuth, requireWorkspaceAccess } from '@/lib/api-helpers';
+import { prisma } from '@/lib/db';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
-    
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const workspaceId = params.id;
+    await requireWorkspaceAccess(workspaceId, false);
 
-    // Get workspace members with profile info
-    const { data: members, error } = await supabase
-      .from('workspace_members')
-      .select(`
-        *,
-        profile:profiles!workspace_members_user_id_fkey(id, email, name, avatar_url)
-      `)
-      .eq('workspace_id', workspaceId);
+    // Get workspace members with user info
+    const members = await prisma.workspaceMember.findMany({
+      where: { workspaceId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            avatarUrl: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
 
-    if (error) {
-      console.error('Error fetching members:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ members: members || [] }, { status: 200 });
+    return NextResponse.json({ 
+      members: members.map(m => ({
+        userId: m.userId,
+        role: m.role,
+        user: m.user,
+        createdAt: m.createdAt.toISOString(),
+      }))
+    }, { status: 200 });
   } catch (error: any) {
-    console.error('Error in get members API:', error);
+    console.error('Error fetching members:', error);
+    
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    
+    if (error.message.includes('Forbidden')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -47,79 +57,93 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
-    
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const workspaceId = params.id;
+    const { role } = await requireWorkspaceAccess(workspaceId, true); // Need edit permission
+    
     const body = await request.json();
-    const { userId, email, role = 'editor' } = body;
+    const { email, memberRole = 'editor' } = body;
 
-    // Check if user is workspace owner
-    const { data: workspace } = await supabase
-      .from('workspaces')
-      .select('owner_id')
-      .eq('id', workspaceId)
-      .single();
-
-    if (!workspace || workspace.owner_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (!email) {
+      return NextResponse.json({ error: 'Missing email' }, { status: 400 });
     }
 
-    // If email provided, find user by email
-    let targetUserId = userId;
-    if (email && !userId) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email)
-        .single();
-
-      if (!profile) {
-        return NextResponse.json({ error: 'User not found' }, { status: 404 });
-      }
-      targetUserId = profile.id;
-    }
-
-    if (!targetUserId) {
-      return NextResponse.json({ error: 'Missing userId or email' }, { status: 400 });
-    }
-
-    // Add member
-    const { data: member, error: insertError } = await supabase
-      .from('workspace_members')
-      .insert({
-        workspace_id: workspaceId,
-        user_id: targetUserId,
-        role,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error('Error adding member:', insertError);
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
-    }
-
-    // Log activity
-    await supabase.rpc('log_activity', {
-      p_workspace_id: workspaceId,
-      p_user_id: user.id,
-      p_action: 'add_member',
-      p_entity_type: 'workspace_member',
-      p_entity_id: targetUserId,
-      p_details: { role, email },
+    // Get user by email
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
     });
 
-    return NextResponse.json({ member }, { status: 201 });
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Check if already a member
+    const existingMember = await prisma.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId,
+          userId: user.id,
+        },
+      },
+    });
+
+    if (existingMember) {
+      return NextResponse.json({ error: 'User already a member' }, { status: 400 });
+    }
+
+    // Create member
+    const member = await prisma.workspaceMember.create({
+      data: {
+        workspaceId,
+        userId: user.id,
+        role: memberRole as 'owner' | 'editor' | 'viewer',
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    // Get current user for activity log
+    const currentUser = await requireAuth();
+    
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        workspaceId,
+        userId: currentUser.id,
+        action: 'add_member',
+        entityType: 'workspace_member',
+        entityId: member.userId,
+        details: { email, role: memberRole },
+      },
+    });
+
+    return NextResponse.json({ 
+      member: {
+        userId: member.userId,
+        role: member.role,
+        user: member.user,
+        createdAt: member.createdAt.toISOString(),
+      }
+    }, { status: 201 });
   } catch (error: any) {
-    console.error('Error in add member API:', error);
+    console.error('Error adding member:', error);
+    
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    
+    if (error.message.includes('Forbidden')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -132,62 +156,78 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
-    
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const workspaceId = params.id;
+    const { role } = await requireWorkspaceAccess(workspaceId, true);
+    
     const body = await request.json();
-    const { userId, role } = body;
+    const { userId: targetUserId, role: newRole } = body;
 
-    // Check if user is workspace owner
-    const { data: workspace } = await supabase
-      .from('workspaces')
-      .select('owner_id')
-      .eq('id', workspaceId)
-      .single();
-
-    if (!workspace || workspace.owner_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    if (!userId || !role) {
+    if (!targetUserId || !newRole) {
       return NextResponse.json({ error: 'Missing userId or role' }, { status: 400 });
     }
 
-    // Update member role
-    const { data: member, error: updateError } = await supabase
-      .from('workspace_members')
-      .update({ role })
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', userId)
-      .select()
-      .single();
-
-    if (updateError) {
-      console.error('Error updating member:', updateError);
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    // Only owner can change roles
+    if (role !== 'owner') {
+      return NextResponse.json({ error: 'Forbidden: Only owner can change roles' }, { status: 403 });
     }
 
-    // Log activity
-    await supabase.rpc('log_activity', {
-      p_workspace_id: workspaceId,
-      p_user_id: user.id,
-      p_action: 'update_member_role',
-      p_entity_type: 'workspace_member',
-      p_entity_id: userId,
-      p_details: { role },
+    // Update member role
+    const member = await prisma.workspaceMember.update({
+      where: {
+        workspaceId_userId: {
+          workspaceId,
+          userId: targetUserId,
+        },
+      },
+      data: {
+        role: newRole as 'owner' | 'editor' | 'viewer',
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            avatarUrl: true,
+          },
+        },
+      },
     });
 
-    return NextResponse.json({ member }, { status: 200 });
+    // Get current user for activity log
+    const currentUser = await requireAuth();
+    
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        workspaceId,
+        userId: currentUser.id,
+        action: 'update_member_role',
+        entityType: 'workspace_member',
+        entityId: targetUserId,
+        details: { newRole },
+      },
+    });
+
+    return NextResponse.json({ 
+      member: {
+        userId: member.userId,
+        role: member.role,
+        user: member.user,
+        createdAt: member.createdAt.toISOString(),
+      }
+    }, { status: 200 });
   } catch (error: any) {
-    console.error('Error in update member API:', error);
+    console.error('Error updating member:', error);
+    
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    
+    if (error.message.includes('Forbidden')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -200,17 +240,9 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
-    
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const workspaceId = params.id;
+    const { role } = await requireWorkspaceAccess(workspaceId, true);
+    
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
 
@@ -218,42 +250,66 @@ export async function DELETE(
       return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
     }
 
-    // Check if user is workspace owner
-    const { data: workspace } = await supabase
-      .from('workspaces')
-      .select('owner_id')
-      .eq('id', workspaceId)
-      .single();
-
-    if (!workspace || workspace.owner_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    // Only owner can remove members
+    if (role !== 'owner') {
+      return NextResponse.json({ error: 'Forbidden: Only owner can remove members' }, { status: 403 });
     }
 
-    // Remove member
-    const { error: deleteError } = await supabase
-      .from('workspace_members')
-      .delete()
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', userId);
+    // Cannot remove owner
+    const member = await prisma.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId,
+          userId,
+        },
+      },
+    });
 
-    if (deleteError) {
-      console.error('Error removing member:', deleteError);
-      return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    if (!member) {
+      return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
+    if (member.role === 'owner') {
+      return NextResponse.json({ error: 'Cannot remove owner' }, { status: 400 });
+    }
+
+    // Delete member
+    await prisma.workspaceMember.delete({
+      where: {
+        workspaceId_userId: {
+          workspaceId,
+          userId,
+        },
+      },
+    });
+
+    // Get current user for activity log
+    const currentUser = await requireAuth();
+    
     // Log activity
-    await supabase.rpc('log_activity', {
-      p_workspace_id: workspaceId,
-      p_user_id: user.id,
-      p_action: 'remove_member',
-      p_entity_type: 'workspace_member',
-      p_entity_id: userId,
-      p_details: {},
+    await prisma.activityLog.create({
+      data: {
+        workspaceId,
+        userId: currentUser.id,
+        action: 'remove_member',
+        entityType: 'workspace_member',
+        entityId: userId,
+        details: {},
+      },
     });
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error: any) {
-    console.error('Error in remove member API:', error);
+    console.error('Error deleting member:', error);
+    
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    
+    if (error.message.includes('Forbidden')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

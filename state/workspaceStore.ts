@@ -33,9 +33,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
 
   setEdges: (edges) => set({ edges }),
 
-  addNode: (node) => set((state) => ({
-    nodes: [...state.nodes, node],
-  })),
+  addNode: (node) => {
+    console.log('[WorkspaceStore] Adding node:', node);
+    return set((state) => {
+      // Check if node already exists to avoid duplicates
+      if (state.nodes.some(n => n.id === node.id)) {
+        console.log('[WorkspaceStore] Node already exists, updating instead:', node.id);
+        return {
+          nodes: state.nodes.map(n => n.id === node.id ? node : n),
+        };
+      }
+      console.log('[WorkspaceStore] Adding new node, total nodes:', state.nodes.length + 1);
+      return {
+        nodes: [...state.nodes, node],
+      };
+    });
+  },
 
   updateNode: (id, updates) => set((state) => ({
     nodes: state.nodes.map((node) =>

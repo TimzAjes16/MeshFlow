@@ -175,7 +175,7 @@ export default function WorkspaceGraph({ workspaces, searchQuery = '' }: Props) 
       )
       .on('click', (event, d) => {
         event.stopPropagation();
-        router.push(`/workspace/${d.id}`);
+        router.push(`/workspace/${d.id}/canvas`);
       })
       .on('mouseenter', (event, d) => {
         setHighlightedNodeId(d.id);
@@ -249,6 +249,16 @@ export default function WorkspaceGraph({ workspaces, searchQuery = '' }: Props) 
 
       node.attr('transform', (d) => `translate(${d.x},${d.y})`);
     });
+
+    // Stop simulation after it stabilizes
+    simulation.on('end', () => {
+      simulation.stop();
+    });
+
+    // Let simulation run for a limited time, then stop
+    setTimeout(() => {
+      simulation.stop();
+    }, 3000);
 
     // Handle window resize
     const handleResize = () => {

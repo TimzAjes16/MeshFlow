@@ -1,18 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireAuth, requireWorkspaceAccess } from '@/lib/api-helpers';
+import { prisma } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+    const user = await requireAuth();
     const { searchParams } = new URL(request.url);
     const nodeId = searchParams.get('nodeId');
 
@@ -20,24 +12,43 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing nodeId' }, { status: 400 });
     }
 
-    // Get comments with profile info
-    const { data: comments, error } = await supabase
-      .from('comments')
-      .select(`
-        *,
-        profile:profiles!comments_user_id_fkey(id, email, name, avatar_url)
-      `)
-      .eq('node_id', nodeId)
-      .order('created_at', { ascending: true });
+    // Get node to check workspace access
+    const node = await prisma.node.findUnique({
+      where: { id: nodeId },
+      select: { workspaceId: true },
+    });
 
-    if (error) {
-      console.error('Error fetching comments:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!node) {
+      return NextResponse.json({ error: 'Node not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ comments: comments || [] }, { status: 200 });
+    // Check workspace access
+    await requireWorkspaceAccess(node.workspaceId, false);
+
+    // Get comments with user info
+    const comments = await prisma.comment.findMany({
+      where: { nodeId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            avatarUrl: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return NextResponse.json({ comments }, { status: 200 });
   } catch (error: any) {
     console.error('Error in get comments API:', error);
+    
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -47,16 +58,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+    const user = await requireAuth();
     const body = await request.json();
     const { nodeId, content } = body;
 
@@ -67,43 +69,58 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get node to check workspace access and log activity
+    const node = await prisma.node.findUnique({
+      where: { id: nodeId },
+      select: { workspaceId: true },
+    });
+
+    if (!node) {
+      return NextResponse.json({ error: 'Node not found' }, { status: 404 });
+    }
+
+    // Check workspace access (need edit permission to comment)
+    await requireWorkspaceAccess(node.workspaceId, true);
+
     // Create comment
-    const { data: comment, error } = await supabase
-      .from('comments')
-      .insert({
-        node_id: nodeId,
-        user_id: user.id,
+    const comment = await prisma.comment.create({
+      data: {
+        nodeId,
+        userId: user.id,
         content: content.trim(),
-      })
-      .select()
-      .single();
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
 
-    if (error) {
-      console.error('Error creating comment:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    // Get node to log activity
-    const { data: node } = await supabase
-      .from('nodes')
-      .select('workspace_id')
-      .eq('id', nodeId)
-      .single();
-
-    if (node) {
-      await supabase.rpc('log_activity', {
-        p_workspace_id: node.workspace_id,
-        p_user_id: user.id,
-        p_action: 'comment',
-        p_entity_type: 'comment',
-        p_entity_id: comment.id,
-        p_details: { node_id: nodeId },
-      });
-    }
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        workspaceId: node.workspaceId,
+        userId: user.id,
+        action: 'comment',
+        entityType: 'comment',
+        entityId: comment.id,
+        details: { nodeId },
+      },
+    });
 
     return NextResponse.json({ comment }, { status: 201 });
   } catch (error: any) {
     console.error('Error in create comment API:', error);
+    
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

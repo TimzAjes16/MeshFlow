@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireWorkspaceAccess } from '@/lib/api-helpers';
+import { prisma } from '@/lib/db';
 import { getNodeEmbedding } from '@/lib/embeddings';
 import { getAutoLinkNodes, createAutoEdges } from '@/lib/autoLink';
 
@@ -8,17 +9,9 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
-    
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const workspaceId = params.id;
+    const { role } = await requireWorkspaceAccess(workspaceId, true);
+    
     const body = await request.json();
     const { nodes, edges, format = 'json' } = body;
 
@@ -26,148 +19,140 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid nodes data' }, { status: 400 });
     }
 
-    // Check permissions
-    const { data: workspace } = await supabase
-      .from('workspaces')
-      .select('owner_id')
-      .eq('id', workspaceId)
-      .single();
+    // Get current user for activity log
+    const { user } = await requireWorkspaceAccess(workspaceId, true);
 
-    const { data: member } = await supabase
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', user.id)
-      .single();
-
-    const canImport =
-      workspace?.owner_id === user.id ||
-      member?.role === 'owner' ||
-      member?.role === 'editor';
-
-    if (!canImport) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const importedNodes = [];
+    const importedEdges = [];
 
     // Import nodes
-    const importedNodes: any[] = [];
-    const nodeIdMap = new Map<string, string>();
-
-    for (const node of nodes) {
-      // Generate embedding
-      const embedding = await getNodeEmbedding({
-        title: node.title,
-        content: node.content || {},
-      });
-
-      // Create node
-      const { data: newNode, error: nodeError } = await supabase
-        .from('nodes')
-        .insert({
-          workspace_id: workspaceId,
-          title: node.title,
-          content: node.content || {},
-          tags: node.tags || [],
-          embedding,
-          x: node.x || Math.random() * 1000,
-          y: node.y || Math.random() * 1000,
-        })
-        .select()
-        .single();
-
-      if (nodeError) {
-        console.error('Error importing node:', nodeError);
-        continue;
+    for (const nodeData of nodes) {
+      // Generate embedding if content exists
+      let embedding = null;
+      if (nodeData.content && typeof nodeData.content === 'string') {
+        try {
+          embedding = await getNodeEmbedding(nodeData.content);
+        } catch (error) {
+          console.error('Error generating embedding:', error);
+          // Continue without embedding
+        }
       }
 
+      // Create node (embedding stored separately via raw SQL if needed)
+      const newNode = await prisma.node.create({
+        data: {
+          workspaceId,
+          title: nodeData.title || 'Untitled',
+          content: nodeData.content || {},
+          tags: nodeData.tags || [],
+          x: nodeData.x || 0,
+          y: nodeData.y || 0,
+        },
+      });
+
       importedNodes.push(newNode);
-      nodeIdMap.set(node.id, newNode.id);
+
+      // Store embedding if we have it (using raw SQL for vector type)
+      if (embedding) {
+        try {
+          await prisma.$executeRawUnsafe(
+            `UPDATE nodes SET embedding = $1::vector WHERE id = $2`,
+            embedding,
+            newNode.id
+          );
+        } catch (error) {
+          console.error('Error storing embedding:', error);
+          // Continue without embedding
+        }
+      }
     }
 
-    // Import edges
+    // Import edges if provided
     if (edges && Array.isArray(edges)) {
-      const importedEdges: any[] = [];
+      for (const edgeData of edges) {
+        // Find imported nodes by matching title or position
+        const sourceNode = importedNodes.find(
+          (n) => n.id === edgeData.source || n.title === edgeData.source
+        );
+        const targetNode = importedNodes.find(
+          (n) => n.id === edgeData.target || n.title === edgeData.target
+        );
 
-      for (const edge of edges) {
-        const newSourceId = nodeIdMap.get(edge.source);
-        const newTargetId = nodeIdMap.get(edge.target);
-
-        if (!newSourceId || !newTargetId) {
-          continue; // Skip edges with missing nodes
-        }
-
-        const { data: newEdge, error: edgeError } = await supabase
-          .from('edges')
-          .insert({
-            workspace_id: workspaceId,
-            source: newSourceId,
-            target: newTargetId,
-            label: edge.label,
-            similarity: edge.similarity,
-          })
-          .select()
-          .single();
-
-        if (!edgeError && newEdge) {
+        if (sourceNode && targetNode) {
+          const newEdge = await prisma.edge.create({
+            data: {
+              workspaceId,
+              source: sourceNode.id,
+              target: targetNode.id,
+              label: edgeData.label || null,
+              similarity: edgeData.similarity || null,
+            },
+          });
           importedEdges.push(newEdge);
         }
       }
-
-      // Log activity
-      await supabase.rpc('log_activity', {
-        p_workspace_id: workspaceId,
-        p_user_id: user.id,
-        p_action: 'import',
-        p_entity_type: 'workspace',
-        p_entity_id: workspaceId,
-        p_details: {
-          nodes_count: importedNodes.length,
-          edges_count: importedEdges.length,
-          format,
-        },
-      });
-
-      return NextResponse.json(
-        {
-          success: true,
-          imported: {
-            nodes: importedNodes.length,
-            edges: importedEdges.length,
-          },
-          nodes: importedNodes,
-          edges: importedEdges,
-        },
-        { status: 201 }
-      );
+    } else {
+      // Auto-link imported nodes if no edges provided
+      for (const node of importedNodes) {
+        const content = typeof node.content === 'string' 
+          ? node.content 
+          : JSON.stringify(node.content);
+        
+        if (content) {
+          const similarNodes = await getAutoLinkNodes(node.id, workspaceId);
+          const newEdges = await createAutoEdges(node.id, similarNodes, workspaceId);
+          importedEdges.push(...newEdges);
+        }
+      }
     }
 
     // Log activity
-    await supabase.rpc('log_activity', {
-      p_workspace_id: workspaceId,
-      p_user_id: user.id,
-      p_action: 'import',
-      p_entity_type: 'workspace',
-      p_entity_id: workspaceId,
-      p_details: {
-        nodes_count: importedNodes.length,
-        edges_count: 0,
-        format,
+    await prisma.activityLog.create({
+      data: {
+        workspaceId,
+        userId: user.id,
+        action: 'import',
+        entityType: 'workspace',
+        entityId: workspaceId,
+        details: {
+          nodeCount: importedNodes.length,
+          edgeCount: importedEdges.length,
+          format,
+        },
       },
     });
 
-    return NextResponse.json(
-      {
-        success: true,
-        imported: {
+    // Log activity for import completion
+    await prisma.activityLog.create({
+      data: {
+        workspaceId,
+        userId: user.id,
+        action: 'import_complete',
+        entityType: 'workspace',
+        entityId: workspaceId,
+        details: {
           nodes: importedNodes.length,
-          edges: 0,
+          edges: importedEdges.length,
         },
-        nodes: importedNodes,
       },
-      { status: 201 }
-    );
+    });
+
+    return NextResponse.json({
+      success: true,
+      nodes: importedNodes.length,
+      edges: importedEdges.length,
+    }, { status: 201 });
   } catch (error: any) {
-    console.error('Error in import workspace API:', error);
+    console.error('Error importing workspace:', error);
+    
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    
+    if (error.message.includes('Forbidden')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

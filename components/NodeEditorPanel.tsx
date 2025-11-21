@@ -9,7 +9,14 @@ import { useWorkspaceStore } from '@/state/workspaceStore';
 import { X, Tag, Sparkles, ArrowRight } from 'lucide-react';
 import FloatingFormatToolbar from './FloatingFormatToolbar';
 import SlashCommandMenu from './SlashCommandMenu';
+import ChartEditorPanel from './ChartEditorPanel';
 import type { Node } from '@/types/Node';
+
+function isChartNode(node: Node): boolean {
+  if (!node.tags || node.tags.length === 0) return false;
+  const chartTypes = ['bar-chart', 'line-chart', 'pie-chart', 'area-chart'];
+  return chartTypes.some(type => node.tags?.includes(type));
+}
 
 export default function NodeEditorPanel() {
   const { selectedNodeId } = useCanvasStore();
@@ -145,16 +152,27 @@ export default function NodeEditorPanel() {
               />
             </div>
 
-            {/* Rich Text Editor */}
-            <div className="relative border border-gray-200 rounded-lg min-h-[200px] focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-colors" style={{ overflow: 'visible', zIndex: 1 }}>
-              <EditorContent editor={editor} className="prose prose-sm max-w-none p-3 focus:outline-none" />
-              
-              {/* Floating Format Toolbar - appears when text is selected - rendered outside editor container */}
-              {editor && <FloatingFormatToolbar editor={editor} />}
-              
-              {/* Slash Command Menu - appears when typing / - rendered outside editor container */}
-              {editor && <SlashCommandMenu editor={editor} />}
-            </div>
+            {/* Chart Editor or Rich Text Editor */}
+            {isChartNode(selectedNode) ? (
+              <ChartEditorPanel
+                node={selectedNode}
+                onUpdate={(config) => {
+                  updateNode(selectedNode.id, {
+                    content: { chart: config },
+                  });
+                }}
+              />
+            ) : (
+              <div className="relative border border-gray-200 rounded-lg min-h-[200px] focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-colors" style={{ overflow: 'visible', zIndex: 1 }}>
+                <EditorContent editor={editor} className="prose prose-sm max-w-none p-3 focus:outline-none" />
+                
+                {/* Floating Format Toolbar - appears when text is selected - rendered outside editor container */}
+                {editor && <FloatingFormatToolbar editor={editor} />}
+                
+                {/* Slash Command Menu - appears when typing / - rendered outside editor container */}
+                {editor && <SlashCommandMenu editor={editor} />}
+              </div>
+            )}
 
         {/* Tags */}
         <div>

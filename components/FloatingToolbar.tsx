@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Type, FileText, Image, Link2, Square, Circle } from 'lucide-react';
+import { Plus, Type, FileText, Image, Link2, Square, Circle, BarChart3, LineChart, PieChart, TrendingUp } from 'lucide-react';
 
 interface FloatingToolbarProps {
   position: { x: number; y: number } | null;
@@ -16,6 +16,10 @@ const nodeTypes = [
   { id: 'image', label: 'Image', icon: Image },
   { id: 'box', label: 'Box', icon: Square },
   { id: 'circle', label: 'Circle', icon: Circle },
+  { id: 'bar-chart', label: 'Bar Chart', icon: BarChart3 },
+  { id: 'line-chart', label: 'Line Chart', icon: LineChart },
+  { id: 'pie-chart', label: 'Pie Chart', icon: PieChart },
+  { id: 'area-chart', label: 'Area Chart', icon: TrendingUp },
 ];
 
 export default function FloatingToolbar({ position, onClose, onCreateNode }: FloatingToolbarProps) {
@@ -71,11 +75,25 @@ export default function FloatingToolbar({ position, onClose, onCreateNode }: Flo
       {nodeTypes.map((type, index) => {
         const Icon = type.icon;
         return (
-          <button
+            <button
             key={type.id}
-            onClick={() => {
-              onCreateNode(type.id, position);
-              onClose();
+            type="button"
+            onClick={async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('[FloatingToolbar] Button clicked for type:', type.id, 'position:', position);
+              try {
+                if (position && onCreateNode) {
+                  // Call onCreateNode which will create the node and show settings
+                  await onCreateNode(type.id, position);
+                  // Close toolbar after node is created
+                  onClose();
+                } else {
+                  console.error('[FloatingToolbar] Missing position or onCreateNode handler');
+                }
+              } catch (error) {
+                console.error('[FloatingToolbar] Error creating node:', error);
+              }
             }}
             onMouseEnter={() => setSelectedIndex(index)}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors text-sm ${

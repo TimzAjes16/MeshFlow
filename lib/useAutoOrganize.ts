@@ -74,7 +74,13 @@ export function useAutoOrganize({
       .force('center', d3.forceCenter(width / 2, height / 2))
       .force('collision', d3.forceCollide().radius(60))
       .alphaDecay(0.02)
-      .velocityDecay(0.4);
+      .velocityDecay(0.4)
+      .on('end', () => {
+        // Stop simulation when it ends
+        if (simulationRef.current) {
+          simulationRef.current.stop();
+        }
+      });
 
     // Store target positions as simulation runs
     simulation.on('tick', () => {
@@ -171,16 +177,19 @@ export function useAutoOrganize({
     startTimeRef.current = null;
     animationFrameRef.current = requestAnimationFrame(animatePositions);
 
-    // Cleanup
+    // Cleanup - ensure everything stops
     return () => {
       if (simulationRef.current) {
         simulationRef.current.stop();
+        simulationRef.current.on('tick', null); // Remove all tick listeners
+        simulationRef.current.on('end', null);
         simulationRef.current = null;
       }
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
+      startTimeRef.current = null;
     };
   }, [enabled, nodes.length, edges.length, initializeSimulation, animatePositions, width, height]);
 
