@@ -84,10 +84,10 @@ export default function FloatingToolbar({ position, onClose, onCreateNode }: Flo
               console.log('[FloatingToolbar] Button clicked for type:', type.id, 'screen position:', position);
               try {
                 if (position && onCreateNode) {
-                  // Immediately call onCreateNode to create the node
-                  // This will close the toolbar and create the node at the flow position
+                  // Close toolbar first to prevent multiple clicks
+                  onClose();
+                  // Then create the node - this will close toolbar and create node at flow position
                   await onCreateNode(type.id, position);
-                  // onClose will be called by handleHideToolbar in CanvasPageClient
                 } else {
                   console.error('[FloatingToolbar] Missing position or onCreateNode handler');
                   onClose();

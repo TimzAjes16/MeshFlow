@@ -31,6 +31,8 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       
       setIsCreating(true);
       setToolbarPosition(null); // Hide toolbar
+      // Don't set selectedNodeType here - wait until node is successfully created
+      // This prevents the settings panel from showing if the API call fails
 
       try {
         const titles: Record<string, string> = {
@@ -111,15 +113,30 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         });
 
         if (!response.ok) {
-          console.error('Error creating node:', data.error);
-          alert(`Failed to create node: ${data.error || 'Unknown error'}`);
+          console.error('[CanvasPageClient] Error creating node:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: data.error,
+            errorType: data.errorType,
+            errorCode: data.errorCode,
+            details: data.details,
+          });
+          
+          // Show detailed error message
+          const errorMessage = data.error || `Server error (${response.status})`;
+          const errorDetails = data.details ? `\n\nDetails: ${data.details}` : '';
+          alert(`Failed to create node: ${errorMessage}${errorDetails}`);
+          
+          // Reset UI state on error
           setSelectedNodeType(null);
           setIsCreating(false);
+          setToolbarPosition(null);
           return;
         }
 
         if (data.node) {
           console.log('[CanvasPageClient] Node created successfully:', data.node);
+          console.log('[CanvasPageClient] Node position:', { x: data.node.x, y: data.node.y });
           
           // Add node to store immediately for instant UI update
           // This will trigger CanvasContainer's sync effect to update React Flow
@@ -129,18 +146,24 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           (window as any).lastFlowPosition = null;
           (window as any).lastScreenPosition = null;
           
+          // NOW show settings panel after successful node creation
+          // This ensures it doesn't show if API call fails
+          setSelectedNodeType(type);
+          
           // Trigger workspace refresh to sync with backend (updates ListView and ClustersView)
           // Use a small delay to ensure immediate store update happens first
           setTimeout(() => {
             window.dispatchEvent(new CustomEvent('refreshWorkspace'));
           }, 100);
           
-          // Select the new node immediately so it appears selected on canvas
+          // Select the new node so it appears selected on canvas and in minimap
+          // The settings panel will automatically switch from ToolbarSettingsPanel to NodeEditorPanel
+          // when selectedNodeId is set, so we don't need to clear selectedNodeType here
           setTimeout(() => {
             selectNode(data.node.id);
             
-            // Clear toolbar selection after node is selected
-            setSelectedNodeType(null);
+            // Keep settings panel visible - it will switch to NodeEditorPanel automatically
+            // when selectedNodeId is set (see the conditional rendering in the return statement)
             
             // Trigger empty state dismissal if needed
             const dismissEvent = new CustomEvent('dismiss-empty-state');
@@ -156,8 +179,19 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
             }, 100);
           }, 150); // Small delay to ensure node is in React Flow state
         }
-      } catch (error) {
-        console.error('Error creating node:', error);
+      } catch (error: any) {
+        console.error('[CanvasPageClient] Error creating node (catch block):', {
+          error,
+          message: error?.message,
+          stack: error?.stack,
+        });
+        
+        // Reset UI state on error
+        setSelectedNodeType(null);
+        setToolbarPosition(null);
+        
+        // Show error to user
+        alert(`Failed to create node: ${error?.message || 'Network error. Please check your connection and try again.'}`);
       } finally {
         setIsCreating(false);
       }
@@ -293,11 +327,13 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                   // Close toolbar immediately so user sees action happening
                   handleHideToolbar();
                   
-                  // Show settings panel for this node type BEFORE creating
-                  setSelectedNodeType(type);
+                  // DON'T show settings panel yet - wait until node is successfully created
+                  // This prevents settings panel from showing if API call fails
                   
                   // Create the node - this will use the flow position stored during double-click
                   await handleCreateNode(type, pos);
+                  
+                  // Settings panel will be shown in handleCreateNode after successful API response
                 } catch (error) {
                   console.error('[CanvasPageClient] Error in onCreateNode:', error);
                   setSelectedNodeType(null);
@@ -322,10 +358,12 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         </aside>
       </div>
       
-      {/* Nodes List View - below canvas */}
-      <div className="h-64 shrink-0 border-t border-gray-200 overflow-hidden">
-        <NodesListView workspaceId={workspaceId} />
-      </div>
+      {/* Nodes List View - below canvas - only show if nodes exist */}
+      {nodes.length > 0 && (
+        <div className="h-64 shrink-0 border-t border-gray-200 overflow-hidden">
+          <NodesListView workspaceId={workspaceId} />
+        </div>
+      )}
       
       {/* Keyboard Shortcuts */}
       <KeyboardShortcuts />

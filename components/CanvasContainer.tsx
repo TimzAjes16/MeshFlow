@@ -115,30 +115,45 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     setTimeout(() => setAutoOrganize(false), 2500);
   }, []);
 
+  // Use ref to track current React Flow nodes for position preservation
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  
+  // Keep refs in sync with current state
+  useEffect(() => {
+    nodesRef.current = nodes;
+    edgesRef.current = edges;
+  }, [nodes, edges]);
+
   // Sync workspace nodes/edges to canvas state
   useEffect(() => {
     // Don't return early - allow empty arrays to clear the canvas
     console.log('[CanvasContainer] Syncing workspace nodes to canvas:', {
       workspaceNodesCount: workspaceNodes.length,
       workspaceEdgesCount: workspaceEdges.length,
-      existingNodesCount: nodes.length,
-      existingEdgesCount: edges.length,
+      existingNodesCount: nodesRef.current.length,
+      existingEdgesCount: edgesRef.current.length,
     });
 
     const reactFlowNodes: Node[] = workspaceNodes.map((node) => {
       const isChart = node.tags?.some(tag => ['bar-chart', 'line-chart', 'pie-chart', 'area-chart'].includes(tag));
-      // Check if this node already exists in React Flow state
-      const existingNode = nodes.find(n => n.id === node.id);
+      // Check if this node already exists in React Flow state (using ref to avoid dependency)
+      const existingNode = nodesRef.current.find(n => n.id === node.id);
+      
+      // For new nodes or nodes being dragged, preserve React Flow position
+      // Otherwise use stored position from database
+      let position = { x: node.x || 0, y: node.y || 0 };
+      if (existingNode?.position && existingNode.position.x !== undefined && existingNode.position.y !== undefined) {
+        // Preserve position if node exists in React Flow (may be dragged)
+        position = existingNode.position;
+      }
       
       return {
         id: node.id,
         type: 'custom',
-        // Preserve existing position if node is being dragged, otherwise use stored position
-        position: existingNode?.position?.x !== undefined && existingNode?.position?.y !== undefined
-          ? existingNode.position
-          : { x: node.x, y: node.y },
+        position,
         data: {
-          label: node.title,
+          label: node.title || 'Untitled',
           node,
         },
         // Set dimensions for chart nodes
@@ -173,6 +188,7 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
       nodeCount: reactFlowNodes.length,
       edgeCount: reactFlowEdges.length,
       firstNodeId: reactFlowNodes[0]?.id,
+      firstNodePosition: reactFlowNodes[0]?.position,
     });
 
     // Update both canvas store and React Flow state
@@ -323,6 +339,7 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
 
   const onInit = useCallback(
     (instance: ReactFlowInstance) => {
+      // Store instance for Controls to use
       // Zoom out for global map view - show entire graph
       setTimeout(() => {
         instance.fitView({ 
@@ -331,9 +348,12 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
           minZoom: 0.1,
           maxZoom: 1,
         });
+        // Update viewport after fitView
+        const viewport = instance.getViewport();
+        setViewport(viewport);
       }, 100);
     },
-    []
+    [setViewport]
   );
 
   const onMove = useCallback(
@@ -350,6 +370,35 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     },
     [setViewport]
   );
+
+  // Listen for viewport changes from Controls (zoom in/out/fit view)
+  // This ensures minimap updates when Controls buttons are clicked
+  useEffect(() => {
+    if (!reactFlowInstance) return;
+
+    // Use a more frequent check to catch Controls button clicks
+    // Controls buttons might not always trigger onMove immediately
+    const interval = setInterval(() => {
+      try {
+        const currentViewport = reactFlowInstance.getViewport();
+        const storedViewport = viewport;
+        
+        // Check if viewport has changed (with small threshold to avoid unnecessary updates)
+        if (
+          !storedViewport ||
+          Math.abs(currentViewport.x - storedViewport.x) > 0.01 ||
+          Math.abs(currentViewport.y - storedViewport.y) > 0.01 ||
+          Math.abs(currentViewport.zoom - storedViewport.zoom) > 0.001
+        ) {
+          setViewport(currentViewport);
+        }
+      } catch (error) {
+        // Ignore errors if instance is not ready
+      }
+    }, 50); // Check every 50ms for responsive updates
+
+    return () => clearInterval(interval);
+  }, [reactFlowInstance, viewport, setViewport]);
 
   // Note: Removed sync from React Flow nodes back to canvas store
   // This was causing a circular update loop. The sync effect above (line 118) 
@@ -465,7 +514,6 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         
             {/* Minimap - premium styling with accurate positioning */}
             <MiniMap
-              key={`minimap-${Math.round((viewport?.zoom || 1) * 100)}-${Math.round((viewport?.x || 0) / 100)}-${Math.round((viewport?.y || 0) / 100)}`}
               nodeColor={(node) => {
                 const nodeData = node.data as any;
                 if (nodeData?.node) {
@@ -490,6 +538,25 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
               ariaLabel="Minimap"
               position="bottom-right"
               offsetScale={5}
+              onClick={(event, position) => {
+                // Clicking on minimap should navigate to that position
+                if (reactFlowInstance) {
+                  reactFlowInstance.setCenter(position.x, position.y, { 
+                    zoom: viewport?.zoom || 1,
+                    duration: 400 
+                  });
+                }
+              }}
+              onNodeClick={(event, node) => {
+                // Clicking on a node in minimap should select it and navigate to it
+                if (reactFlowInstance && node.position) {
+                  selectNode(node.id);
+                  reactFlowInstance.setCenter(node.position.x, node.position.y, { 
+                    zoom: 1.2,
+                    duration: 400 
+                  });
+                }
+              }}
             />
           </ReactFlow>
 

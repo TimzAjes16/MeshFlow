@@ -111,6 +111,66 @@ const nodeTypeConfigs: Record<string, NodeTypeConfig> = {
       },
     },
   },
+  'bar-chart': {
+    id: 'bar-chart',
+    label: 'Bar Chart',
+    icon: Type,
+    settings: {
+      style: {
+        label: 'Chart Size',
+        options: ['Small (300x200)', 'Medium (400x300)', 'Large (500x400)'],
+      },
+      color: {
+        label: 'Color Scheme',
+        options: ['Blue', 'Purple', 'Green', 'Rainbow'],
+      },
+    },
+  },
+  'line-chart': {
+    id: 'line-chart',
+    label: 'Line Chart',
+    icon: Type,
+    settings: {
+      style: {
+        label: 'Chart Size',
+        options: ['Small (300x200)', 'Medium (400x300)', 'Large (500x400)'],
+      },
+      color: {
+        label: 'Line Color',
+        options: ['Blue', 'Purple', 'Green', 'Red'],
+      },
+    },
+  },
+  'pie-chart': {
+    id: 'pie-chart',
+    label: 'Pie Chart',
+    icon: Type,
+    settings: {
+      style: {
+        label: 'Chart Size',
+        options: ['Small (300x200)', 'Medium (400x300)', 'Large (500x400)'],
+      },
+      color: {
+        label: 'Color Scheme',
+        options: ['Pastel', 'Vibrant', 'Monochrome'],
+      },
+    },
+  },
+  'area-chart': {
+    id: 'area-chart',
+    label: 'Area Chart',
+    icon: Type,
+    settings: {
+      style: {
+        label: 'Chart Size',
+        options: ['Small (300x200)', 'Medium (400x300)', 'Large (500x400)'],
+      },
+      color: {
+        label: 'Fill Color',
+        options: ['Blue', 'Purple', 'Green', 'Gradient'],
+      },
+    },
+  },
 };
 
 export default function ToolbarSettingsPanel({ selectedNodeType, onClose }: ToolbarSettingsPanelProps) {

@@ -5,6 +5,9 @@ Visual knowledge mapping with AI-powered auto-linking and intelligent node organ
 ## Features
 
 - ✅ **Infinite Canvas** - Zoom, pan, and explore your knowledge map
+- ✅ **Dashboard Graph View** - 2D force-directed graph visualization of all workspaces (Obsidian-style)
+- ✅ **Interactive Minimap** - Real-time minimap that syncs with zoom/pan operations
+- ✅ **Zoom Controls** - Zoom in (+), zoom out (-), and fit view ([]) buttons with minimap sync
 - ✅ **Double-Click Node Creation** - Create nodes instantly with FloatingToolbar
 - ✅ **Multiple Node Types** - Text, Note, Link, Image, Box, Circle
 - ✅ **Rich Text Editor** - TipTap-powered editor with formatting toolbar and slash commands
@@ -44,17 +47,20 @@ npm run dev
 ## Usage
 
 ### Quick Start
-1. **Create a Workspace**: Sign up, go to Dashboard, and click "New Workspace"
-2. **Create Nodes**: **Double-click** anywhere on the canvas to open the FloatingToolbar and select a node type
-3. **Edit Nodes**: Click a node to open the editor panel on the right with rich text editing
-4. **Keyboard Shortcuts**: 
+1. **Dashboard**: View all workspaces as an interactive 2D force-directed graph
+2. **Create a Workspace**: Click "New Workspace" on the dashboard
+3. **Create Nodes**: **Double-click** anywhere on the canvas to open the FloatingToolbar and select a node type
+4. **Edit Nodes**: Click a node to open the editor panel on the right with rich text editing
+5. **Zoom Controls**: Use the +, -, and [] buttons (bottom-left) to zoom in, zoom out, and fit view
+6. **Minimap**: View your canvas overview in the bottom-right minimap (updates in real-time)
+7. **Keyboard Shortcuts**: 
    - `Ctrl/Cmd+N` - Create new node
    - `Ctrl/Cmd+F` - Focus search
    - `Delete/Backspace` - Delete selected node
    - `Escape` - Close panels/deselect
-5. **Search**: Use the search bar (top-left) to find and zoom to nodes
-6. **Auto-Organize**: Click "Auto-Organize" button or press `Ctrl+O` to reorganize layout
-7. **Layouts**: Switch between Force, Radial, Hierarchical, and Semantic cluster views
+8. **Search**: Use the search bar (top-left) to find and zoom to nodes
+9. **Auto-Organize**: Click "Auto-Organize" button or press `Ctrl+O` to reorganize layout
+10. **Layouts**: Switch between Force, Radial, Hierarchical, and Semantic cluster views
 
 ### Node Creation
 - **Double-click canvas** → FloatingToolbar appears → Select node type (Text, Note, Link, Image, Box, Circle)

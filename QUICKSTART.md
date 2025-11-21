@@ -88,10 +88,18 @@ Visit `http://localhost:3000` 🎉
 
 ## ✨ Key Features to Try
 
+### Dashboard Graph View
+1. After logging in, you'll see the **Dashboard** with all your workspaces
+2. Workspaces are displayed as an **interactive 2D force-directed graph** (similar to Obsidian's graph view)
+3. **Click any workspace node** to open it
+4. **Search workspaces** using the search bar - matching workspaces are highlighted in orange
+5. **Drag workspace nodes** to reposition them in the graph
+6. **Zoom and pan** the dashboard graph to explore your workspaces
+
 ### Create Your First Workspace
-1. Sign up or log in at `/auth/signup` or `/auth/login`
-2. Go to Dashboard and click **"New Workspace"**
-3. Enter a workspace name and click **"Create"**
+1. On the Dashboard, click **"New Workspace"**
+2. Enter a workspace name and click **"Create"**
+3. You'll be taken to the canvas view
 
 ### Create Your First Node
 1. **Double-click** anywhere on the canvas to open the FloatingToolbar
@@ -119,6 +127,15 @@ Switch between 4 different layouts in the top bar:
 ### Auto-Organize
 - Click **"Auto-Organize"** button (top-right of canvas)
 - Or press **Ctrl+O** to reorganize your graph layout
+
+### Zoom Controls & Minimap
+- **Zoom In (+)**: Click the + button (bottom-left) to zoom in
+- **Zoom Out (-)**: Click the - button (bottom-left) to zoom out
+- **Fit View ([])**: Click the [] button (bottom-left) to fit all nodes in view
+- **Minimap**: View your canvas overview in the bottom-right minimap
+  - The minimap updates in real-time as you zoom, pan, or use controls
+  - Click and drag on the minimap to pan the canvas
+  - The highlighted area shows your current viewport
 
 ### Search & Navigate
 - Use the **search bar** (top-left) to find nodes
