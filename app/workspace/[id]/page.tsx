@@ -1,20 +1,11 @@
-import Canvas from '@/components/Canvas';
-import { notFound } from 'next/navigation';
-import db from '@/lib/db';
+import { redirect } from 'next/navigation';
 
+// Redirect /workspace/[id] to /workspace/[id]/canvas by default
 export default async function WorkspacePage({
   params,
 }: {
   params: { id: string };
 }) {
-  const workspace = db
-    .prepare('SELECT * FROM workspaces WHERE id = ?')
-    .get(params.id) as any;
-
-  if (!workspace) {
-    notFound();
-  }
-
-  return <Canvas workspaceId={params.id} />;
+  redirect(`/workspace/${params.id}/canvas`);
 }
 

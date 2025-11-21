@@ -1,62 +1,71 @@
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import Sidebar from '@/components/Sidebar';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
+import { prisma } from '@/lib/db';
+import DashboardTopNav from '@/components/DashboardTopNav';
+import DashboardContent from '@/components/DashboardContent';
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const session = await getServerSession(authOptions);
 
-  if (!user) {
+  if (!session?.user?.id) {
     redirect('/auth/login');
   }
 
-  // Get user's workspaces
-  const { data: workspaces } = await supabase
-    .from('workspaces')
-    .select('*')
-    .or(`owner_id.eq.${user.id},workspace_members.user_id.eq.${user.id}`)
-    .order('created_at', { ascending: false });
+  // Fetch user's workspaces
+  const workspaces = await prisma.workspace.findMany({
+    where: {
+      OR: [
+        { ownerId: session.user.id },
+        {
+          members: {
+            some: {
+              userId: session.user.id,
+            },
+          },
+        },
+      ],
+    },
+    include: {
+      owner: {
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          avatarUrl: true,
+        },
+      },
+      _count: {
+        select: {
+          nodes: true,
+          edges: true,
+        },
+      },
+    },
+    orderBy: {
+      updatedAt: 'desc',
+    },
+  });
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
-      <main className="flex-1 overflow-auto p-8">
-        <div className="max-w-6xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">Dashboard</h1>
-          
-          {/* Workspaces Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {workspaces && workspaces.length > 0 ? (
-              workspaces.map((workspace: any) => (
-                <a
-                  key={workspace.id}
-                  href={`/workspace/${workspace.id}/canvas`}
-                  className="block p-6 bg-white rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all"
-                >
-                  <h2 className="text-lg font-semibold text-gray-900 mb-2">
-                    {workspace.name}
-                  </h2>
-                  <p className="text-sm text-gray-500">
-                    Created {new Date(workspace.created_at).toLocaleDateString()}
-                  </p>
-                </a>
-              ))
-            ) : (
-              <div className="col-span-full text-center py-12">
-                <p className="text-gray-500 mb-4">No workspaces yet</p>
-                <a
-                  href="/dashboard/workspaces"
-                  className="inline-block px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-                >
-                  Create Workspace
-                </a>
-              </div>
-            )}
-          </div>
-        </div>
+    <div className="min-h-screen bg-slate-50">
+      {/* Top Nav - consistent with workspace */}
+      <DashboardTopNav />
+      
+      {/* Main Content */}
+      <main className="mx-auto max-w-5xl px-6 pb-12 pt-8">
+        <DashboardContent 
+          workspaces={workspaces.map((w) => ({
+            id: w.id,
+            name: w.name,
+            ownerId: w.ownerId,
+            owner: w.owner,
+            nodeCount: w._count.nodes,
+            edgeCount: w._count.edges,
+            createdAt: w.createdAt.toISOString(),
+            updatedAt: w.updatedAt.toISOString(),
+          }))} 
+        />
       </main>
     </div>
   );

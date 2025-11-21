@@ -7,18 +7,49 @@
 npm install
 ```
 
-### 2. Set Up Environment Variables
-Create `.env.local` in the root directory:
+### 2. Set Up PostgreSQL Database
+
+**Install PostgreSQL 15+ on your system:**
+- **macOS**: `brew install postgresql@15` or download from [PostgreSQL.org](https://www.postgresql.org/download/)
+- **Linux**: `sudo apt-get install postgresql-15 postgresql-contrib` (Ubuntu/Debian) or use your package manager
+- **Windows**: Download installer from [PostgreSQL.org](https://www.postgresql.org/download/windows/)
+
+**Install pgvector extension:**
+- **macOS**: `brew install pgvector`
+- **Linux**: Follow instructions at [pgvector GitHub](https://github.com/pgvector/pgvector)
+- **Windows**: Follow instructions at [pgvector GitHub](https://github.com/pgvector/pgvector)
+
+**Create database and enable extension:**
 ```bash
-cp .env.local.example .env.local
+# Start PostgreSQL (if not already running)
+# macOS: brew services start postgresql@15
+# Linux: sudo systemctl start postgresql
+
+# Connect to PostgreSQL
+psql postgres
+
+# In PostgreSQL prompt:
+CREATE DATABASE meshflow;
+\c meshflow
+CREATE EXTENSION IF NOT EXISTS vector;
+\q
 ```
 
-Then add your API keys:
+### 3. Set Up Environment Variables
+Create `.env.local` in the root directory:
+```bash
+cp .env.example .env.local
+```
+
+Then add your configuration (update with your PostgreSQL credentials):
 ```env
-# Supabase (Required)
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+# Database (Required)
+# Update username, password, and database name as needed
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/meshflow"
+
+# NextAuth.js (Required)
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="generate-a-random-secret-here"
 
 # OpenAI (Optional - for auto-linking)
 OPENAI_API_KEY=your_openai_api_key
@@ -27,22 +58,28 @@ OPENAI_API_KEY=your_openai_api_key
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-**Note**: MeshFlow can work without OpenAI! Auto-linking uses intelligent fallback algorithms.
-
-### 3. Set Up Database
-Run the Supabase migrations to create all tables:
+Generate NEXTAUTH_SECRET:
 ```bash
-# In Supabase SQL Editor, run the schema from:
-supabase/schema.sql
-supabase/migrations.sql
+openssl rand -base64 32
 ```
 
-Or use the migration script (if configured):
+**Note**: MeshFlow can work without OpenAI! Auto-linking uses intelligent fallback algorithms.
+
+### 4. Generate Prisma Client and Run Migrations
 ```bash
+# Generate Prisma Client
+npm run db:generate
+
+# Run database migrations
 npm run db:migrate
 ```
 
-### 4. Start the Development Server
+Or for development (pushes schema directly):
+```bash
+npm run db:push
+```
+
+### 5. Start the Development Server
 ```bash
 npm run dev
 ```
@@ -127,13 +164,18 @@ Switch between 4 different layouts in the top bar:
 
 **Environment variables missing?**
 - Create `.env.local` file in root directory
-- Copy from `.env.local.example` if available
-- Make sure Supabase credentials are set (required)
+- Copy from `.env.example`
+- Make sure DATABASE_URL and NEXTAUTH_SECRET are set (required)
 
 **Database connection fails?**
-- Verify Supabase URL and keys in `.env.local`
-- Check that you've run migrations in Supabase SQL Editor
-- Ensure `pgvector` extension is enabled: `CREATE EXTENSION IF NOT EXISTS vector;`
+- Verify DATABASE_URL in `.env.local` is correct
+- Check that PostgreSQL is running:
+  - macOS: `brew services list | grep postgresql`
+  - Linux: `sudo systemctl status postgresql`
+  - Windows: Check Services for PostgreSQL
+- Ensure `pgvector` extension is enabled: `psql meshflow -c "CREATE EXTENSION IF NOT EXISTS vector;"`
+- Try connecting with: `psql $DATABASE_URL` or `psql -d meshflow`
+- Make sure PostgreSQL is listening on localhost:5432
 
 **Development server won't start?**
 - Check that port 3000 is available

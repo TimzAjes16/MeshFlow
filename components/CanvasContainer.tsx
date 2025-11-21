@@ -25,6 +25,8 @@ import NodeComponent from './NodeComponent';
 import EdgeComponent from './EdgeComponent';
 import { useAutoOrganize } from '@/lib/useAutoOrganize';
 import { getNodeColor } from '@/lib/nodeColors';
+import EmptyState from './EmptyState';
+import MinimalEmptyHint from './MinimalEmptyHint';
 
 const nodeTypes: NodeTypes = {
   custom: NodeComponent,
@@ -62,7 +64,11 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   
   // Auto-organize state
   const [autoOrganize, setAutoOrganize] = useState(false);
-
+  
+  // Empty state - track if user has manually dismissed it
+  const [hasDismissedEmptyState, setHasDismissedEmptyState] = useState(false);
+  const [showEmptyState, setShowEmptyState] = useState(nodes.length === 0 && !hasDismissedEmptyState);
+  
   // Handle position updates from auto-organize animation
   const handlePositionUpdate = useCallback(
     (nodeId: string, position: { x: number; y: number }) => {
@@ -91,11 +97,13 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   // Track if we've done initial organization for current workspace
   const [hasOrganized, setHasOrganized] = useState(false);
 
-  // Reset organization state when workspace nodes change (new workspace loaded)
+  // Reset organization state and empty state dismissal when workspace nodes change (new workspace loaded)
   useEffect(() => {
     if (workspaceNodes.length > 0) {
       setHasOrganized(false);
     }
+    // Reset empty state dismissal when switching workspaces
+    setHasDismissedEmptyState(false);
   }, [workspaceId, workspaceNodes.length]);
 
   // Auto-organize when nodes are first loaded
@@ -180,13 +188,28 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     (event: React.MouseEvent) => {
       if (!onCreateNode) return;
       
-      const reactFlowBounds = reactFlowInstance.getViewport();
-      const position = reactFlowInstance.screenToFlowPosition({
+      // Don't prevent default - let ReactFlow handle the event first
+      // Convert screen coordinates to flow position for node creation
+      const flowPos = reactFlowInstance.screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
       
-      onCreateNode(position);
+      // Store flow position in global state for CanvasPageClient to access
+      (window as any).lastFlowPosition = flowPos;
+      
+      // Use screen coordinates for toolbar placement
+      const screenPos = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+      
+      // Show toolbar to select node type
+      onCreateNode(screenPos);
+      
+      // Trigger empty state dismissal
+      const dismissEvent = new CustomEvent('dismiss-empty-state');
+      window.dispatchEvent(dismissEvent);
     },
     [onCreateNode, reactFlowInstance]
   );
@@ -207,6 +230,42 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
       }
     }
   }, [selectedNodeId, nodes, reactFlowInstance]);
+
+  // Listen for zoom-to-node events from search
+  useEffect(() => {
+    const handleZoomToNode = (event: CustomEvent) => {
+      const { nodeId } = event.detail;
+      if (nodeId && nodes.length > 0) {
+        const node = nodes.find((n) => n.id === nodeId);
+        if (node) {
+          selectNode(nodeId);
+          setTimeout(() => {
+            reactFlowInstance.fitView({
+              nodes: [{ id: nodeId }],
+              padding: 0.2,
+              duration: 500,
+            });
+          }, 100);
+        }
+      }
+    };
+
+    const handleLayoutChange = (event: CustomEvent) => {
+      const { layout: newLayout } = event.detail;
+      // Trigger auto-organize when layout changes
+      if (newLayout) {
+        triggerAutoOrganize();
+      }
+    };
+
+    window.addEventListener('zoom-to-node', handleZoomToNode as EventListener);
+    window.addEventListener('layout-change', handleLayoutChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('zoom-to-node', handleZoomToNode as EventListener);
+      window.removeEventListener('layout-change', handleLayoutChange as EventListener);
+    };
+  }, [nodes, reactFlowInstance, selectNode, triggerAutoOrganize]);
 
   const onPaneClick = useCallback(() => {
     selectNode(null);
@@ -249,22 +308,34 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     (window as any).triggerAutoOrganize = triggerAutoOrganize;
   }, [triggerAutoOrganize]);
 
-  return (
-    <div className="relative w-full h-full">
-      {/* Auto-organize button - minimalistic, top-right, very subtle */}
-      <button
-        onClick={triggerAutoOrganize}
-        disabled={isAnimating}
-        className="absolute top-4 right-4 z-10 px-3 py-1.5 bg-black/40 backdrop-blur-md text-xs text-slate-400 rounded border border-slate-700/50 hover:bg-black/60 hover:border-slate-600/50 hover:text-slate-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
-        style={{
-          fontSize: '11px',
-          letterSpacing: '0.5px',
-        }}
-      >
-        {isAnimating ? 'Organizing...' : 'Auto-Organize'}
-      </button>
+  // Dismiss empty state when nodes are added
+  useEffect(() => {
+    const handleDismiss = () => {
+      setShowEmptyState(false);
+      setHasDismissedEmptyState(true);
+    };
+    
+    window.addEventListener('dismiss-empty-state', handleDismiss);
+    
+    // Hide empty state when nodes are added
+    if (nodes.length > 0 && showEmptyState) {
+      setShowEmptyState(false);
+    }
+    
+    // Show empty state when all nodes are removed (only if not manually dismissed)
+    if (nodes.length === 0 && !showEmptyState && !hasDismissedEmptyState) {
+      setShowEmptyState(true);
+    }
+    
+    return () => {
+      window.removeEventListener('dismiss-empty-state', handleDismiss);
+    };
+  }, [nodes.length, showEmptyState, hasDismissedEmptyState]);
 
-      <ReactFlow
+      return (
+        <div className="relative w-full h-full min-h-0 bg-white overflow-hidden">
+          {/* Canvas - always visible and rendered, empty state is just an overlay */}
+          <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
@@ -277,51 +348,92 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         onMoveEnd={onMoveEnd}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        nodesDraggable={true}
+        nodesConnectable={true}
+        panOnDrag={true}
+        zoomOnScroll={true}
+        zoomOnPinch={true}
+        zoomOnDoubleClick={false}
         fitView
         attributionPosition="bottom-left"
-        className="bg-[#0a0a0a]"
+        className="bg-white"
         minZoom={0.05}
         maxZoom={2}
         defaultViewport={{ x: 0, y: 0, zoom: 0.25 }}
         proOptions={{ hideAttribution: true }}
       >
-        {/* Infinite dark canvas - minimalistic dots for global view */}
-        <Background
-          variant={BackgroundVariant.Dots}
-          gap={50}
-          size={0.8}
-          color="rgba(250, 204, 21, 0.08)"
-          style={{ opacity: 0.5 }}
-        />
+            {/* Infinite canvas - premium subtle grid */}
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={40}
+              size={0.6}
+              color="rgba(156, 163, 175, 0.15)"
+              style={{ opacity: 0.4 }}
+            />
         
-        {/* Custom dark controls - minimalistic */}
-        <Controls
-          className="[&_button]:bg-black/40 [&_button]:border-slate-700/50 [&_button]:text-slate-400 [&_button:hover]:bg-black/60 [&_button:hover]:border-slate-600/50 [&_button:hover]:text-slate-300"
-          showZoom={true}
-          showFitView={true}
-          showInteractive={false}
-          style={{
-            opacity: 0.8,
-          }}
-        />
+            {/* Controls - premium rounded with shadow */}
+            <Controls
+              className="[&_button]:bg-white/95 [&_button]:border-gray-200 [&_button]:text-gray-700 [&_button:hover]:bg-gray-50 [&_button:hover]:border-gray-300 [&_button:hover]:text-gray-900 [&_button]:rounded-lg [&_button]:shadow-sm [&_button]:backdrop-blur-sm"
+              showZoom={true}
+              showFitView={true}
+              showInteractive={false}
+              style={{
+                opacity: 0.95,
+              }}
+            />
         
-        {/* Dark minimap - minimalistic, smaller */}
-        <MiniMap
-          nodeColor="rgba(148, 163, 184, 0.4)"
-          maskColor="rgba(0, 0, 0, 0.5)"
-          className="bg-black/30 backdrop-blur-sm rounded border border-slate-700/30"
-          style={{
-            width: '120px',
-            height: '120px',
-            opacity: 0.6,
-          }}
-          pannable={true}
-          zoomable={true}
-        />
-      </ReactFlow>
-    </div>
-  );
-}
+            {/* Minimap - premium styling */}
+            <MiniMap
+              nodeColor="rgba(59, 130, 246, 0.5)"
+              maskColor="rgba(255, 255, 255, 0.6)"
+              className="bg-white/95 backdrop-blur-sm rounded-lg border border-gray-200 shadow-lg"
+              style={{
+                width: '140px',
+                height: '140px',
+                opacity: 0.9,
+              }}
+              pannable={true}
+              zoomable={true}
+            />
+          </ReactFlow>
+
+          {/* Empty State Overlay - shows on top when no nodes (first time only) */}
+          {!hasDismissedEmptyState && showEmptyState && nodes.length === 0 && (
+            <div className="absolute inset-0" style={{ zIndex: 100, pointerEvents: 'auto' }}>
+              <EmptyState 
+                visible={true}
+                onDismiss={() => {
+                  setShowEmptyState(false);
+                  setHasDismissedEmptyState(true);
+                }} 
+              />
+            </div>
+          )}
+
+          {/* Minimal inline hint - shows after dismissal or when no nodes and already dismissed */}
+          {hasDismissedEmptyState && nodes.length === 0 && (
+            <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 10 }}>
+              <MinimalEmptyHint />
+            </div>
+          )}
+
+          {/* Auto-organize button - minimalistic, top-right, very subtle */}
+          {nodes.length > 0 && (
+            <button
+              onClick={triggerAutoOrganize}
+              disabled={isAnimating}
+              className="absolute top-4 right-4 z-10 px-3 py-1.5 bg-white/90 backdrop-blur-md text-xs text-gray-700 rounded-lg border border-gray-300 shadow-sm hover:bg-gray-100 hover:border-gray-400 hover:text-gray-900 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+              style={{
+                fontSize: '11px',
+                letterSpacing: '0.5px',
+              }}
+            >
+              {isAnimating ? 'Organizing...' : 'Auto-Organize'}
+            </button>
+          )}
+        </div>
+      );
+    }
 
 export default function CanvasContainer({ workspaceId, onCreateNode }: CanvasContainerProps) {
   return (

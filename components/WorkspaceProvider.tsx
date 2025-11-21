@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useWorkspaceStore } from '@/state/workspaceStore';
-import { createClient } from '@/lib/supabase/client';
 import type { Workspace } from '@/types/Workspace';
 import type { Node } from '@/types/Node';
 import type { Edge } from '@/types/Edge';
@@ -14,98 +13,77 @@ interface WorkspaceProviderProps {
 
 export default function WorkspaceProvider({ workspaceId, children }: WorkspaceProviderProps) {
   const { setWorkspace, setNodes, setEdges } = useWorkspaceStore();
-  const supabase = createClient();
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Load workspace data - single effect with polling (fixed reload loop)
   useEffect(() => {
-    async function loadWorkspace() {
-      // Load workspace
-      const { data: workspace } = await supabase
-        .from('workspaces')
-        .select('*')
-        .eq('id', workspaceId)
-        .single();
+    let isMounted = true;
+    let pollInterval: NodeJS.Timeout | null = null;
 
-      if (workspace) {
-        setWorkspace(workspace as Workspace);
+    async function loadWorkspace(setLoading: boolean = true) {
+      if (!isMounted) return;
+      
+      try {
+        const response = await fetch(`/api/workspaces/${workspaceId}/data`);
+
+        if (!response.ok) {
+          console.error('Failed to load workspace');
+          if (isMounted && setLoading) setIsLoading(false);
+          return;
+        }
+
+        const data = await response.json();
+        
+        if (!isMounted) return;
+
+        if (data.workspace) {
+          setWorkspace(data.workspace as Workspace);
+        }
+
+        if (data.nodes) {
+          setNodes(data.nodes as Node[]);
+        }
+
+        if (data.edges) {
+          setEdges(data.edges as Edge[]);
+        }
+        
+        if (setLoading && isMounted) {
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error('Error loading workspace:', error);
+        if (isMounted && setLoading) setIsLoading(false);
       }
-
-      // Load nodes
-      const { data: nodes } = await supabase
-        .from('nodes')
-        .select('*')
-        .eq('workspace_id', workspaceId)
-        .order('created_at', { ascending: false });
-
-      if (nodes) {
-        setNodes(nodes as Node[]);
-      }
-
-      // Load edges
-      const { data: edges } = await supabase
-        .from('edges')
-        .select('*')
-        .eq('workspace_id', workspaceId);
-
-      if (edges) {
-        setEdges(edges as Edge[]);
-      }
-
-      // Subscribe to realtime updates
-      const nodesChannel = supabase
-        .channel(`nodes:${workspaceId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'nodes',
-            filter: `workspace_id=eq.${workspaceId}`,
-          },
-          async () => {
-            const { data: updatedNodes } = await supabase
-              .from('nodes')
-              .select('*')
-              .eq('workspace_id', workspaceId)
-              .order('created_at', { ascending: false });
-
-            if (updatedNodes) {
-              setNodes(updatedNodes as Node[]);
-            }
-          }
-        )
-        .subscribe();
-
-      const edgesChannel = supabase
-        .channel(`edges:${workspaceId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'edges',
-            filter: `workspace_id=eq.${workspaceId}`,
-          },
-          async () => {
-            const { data: updatedEdges } = await supabase
-              .from('edges')
-              .select('*')
-              .eq('workspace_id', workspaceId);
-
-            if (updatedEdges) {
-              setEdges(updatedEdges as Edge[]);
-            }
-          }
-        )
-        .subscribe();
-
-      return () => {
-        nodesChannel.unsubscribe();
-        edgesChannel.unsubscribe();
-      };
     }
 
-    loadWorkspace();
-  }, [workspaceId, supabase, setWorkspace, setNodes, setEdges]);
+    // Initial load
+    loadWorkspace(true);
+
+    // Set up polling after initial load (only refresh data, don't change loading state)
+    const timeoutId = setTimeout(() => {
+      if (pollInterval) clearInterval(pollInterval);
+      
+      pollInterval = setInterval(() => {
+        loadWorkspace(false); // Don't set loading state during polling
+      }, 5000);
+    }, 1000); // Wait 1 second after initial load before starting polling
+
+    return () => {
+      isMounted = false;
+      if (pollInterval) clearInterval(pollInterval);
+      clearTimeout(timeoutId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]); // Only depend on workspaceId - no reload loop
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-yellow-400">Loading workspace...</div>
+      </div>
+    );
+  }
 
   return <>{children}</>;
 }

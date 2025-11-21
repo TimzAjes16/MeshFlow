@@ -1,46 +1,139 @@
 import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db';
-import { generateId } from '@/lib/utils';
+import { requireWorkspaceAccess } from '@/lib/api-helpers';
+import { prisma } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { workspaceId, sourceId, targetId, weight } = body;
+    const { workspaceId, source, target, label, similarity } = body;
 
-    if (!workspaceId || !sourceId || !targetId) {
+    if (!workspaceId || !source || !target) {
       return NextResponse.json(
-        { error: 'Workspace ID, source ID, and target ID are required' },
+        { error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
-    // Check if edge already exists
-    const existing = db
-      .prepare(
-        'SELECT id FROM edges WHERE workspace_id = ? AND ((source_id = ? AND target_id = ?) OR (source_id = ? AND target_id = ?))'
-      )
-      .get(workspaceId, sourceId, targetId, targetId, sourceId);
+    // Check access
+    const { user, role } = await requireWorkspaceAccess(workspaceId, true);
 
-    if (existing) {
-      return NextResponse.json({ edge: existing });
+    // Verify nodes exist and belong to workspace
+    const nodes = await prisma.node.findMany({
+      where: {
+        id: { in: [source, target] },
+        workspaceId,
+      },
+    });
+
+    if (nodes.length !== 2) {
+      return NextResponse.json({ error: 'Invalid source or target node' }, { status: 400 });
     }
 
-    const id = generateId();
-    const now = Date.now();
+    // Create edge
+    const edge = await prisma.edge.create({
+      data: {
+        workspaceId,
+        source,
+        target,
+        label: label || null,
+        similarity: similarity || null,
+      },
+    });
 
-    db.prepare(
-      'INSERT INTO edges (id, workspace_id, source_id, target_id, weight, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(id, workspaceId, sourceId, targetId, weight || 1.0, now);
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        workspaceId,
+        userId: user.id,
+        action: 'create',
+        entityType: 'edge',
+        entityId: edge.id,
+        details: { source, target },
+      },
+    });
 
-    const edge = db.prepare('SELECT * FROM edges WHERE id = ?').get(id);
-
-    return NextResponse.json({ edge });
-  } catch (error) {
+    return NextResponse.json({
+      edge: {
+        id: edge.id,
+        workspaceId: edge.workspaceId,
+        source: edge.source,
+        target: edge.target,
+        label: edge.label,
+        similarity: edge.similarity,
+        createdAt: edge.createdAt.toISOString(),
+      },
+    }, { status: 201 });
+  } catch (error: any) {
     console.error('Error creating edge:', error);
+    
+    if (error.code === 'P2002') {
+      return NextResponse.json({ error: 'Edge already exists' }, { status: 409 });
+    }
+    
+    if (error.message === 'Unauthorized' || error.message.includes('Forbidden')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    
     return NextResponse.json(
-      { error: 'Failed to create edge' },
+      { error: error.message || 'Internal server error' },
       { status: 500 }
     );
   }
 }
 
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const edgeId = searchParams.get('edgeId');
+    const workspaceId = searchParams.get('workspaceId');
+
+    if (!edgeId || !workspaceId) {
+      return NextResponse.json(
+        { error: 'Missing edgeId or workspaceId' },
+        { status: 400 }
+      );
+    }
+
+    // Check access
+    const { user, role } = await requireWorkspaceAccess(workspaceId, true);
+
+    // Get edge to verify it exists
+    const edge = await prisma.edge.findUnique({
+      where: { id: edgeId },
+    });
+
+    if (!edge || edge.workspaceId !== workspaceId) {
+      return NextResponse.json({ error: 'Edge not found' }, { status: 404 });
+    }
+
+    // Delete edge
+    await prisma.edge.delete({
+      where: { id: edgeId },
+    });
+
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        workspaceId,
+        userId: user.id,
+        action: 'delete',
+        entityType: 'edge',
+        entityId: edgeId,
+        details: { source: edge.source, target: edge.target },
+      },
+    });
+
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch (error: any) {
+    console.error('Error deleting edge:', error);
+    
+    if (error.message === 'Unauthorized' || error.message.includes('Forbidden')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

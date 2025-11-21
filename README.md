@@ -14,39 +14,28 @@ Visual knowledge mapping with AI-powered auto-linking.
 
 ## Getting Started
 
-### Prerequisites
+For detailed setup instructions, see **[QUICKSTART.md](./QUICKSTART.md)**.
 
-- Node.js 18+ 
-- npm or yarn
-
-### Installation
+### Quick Setup
 
 1. Install dependencies:
 ```bash
 npm install
 ```
 
-2. Set up environment variables:
+2. Set up PostgreSQL database and environment variables:
 ```bash
-cp .env.example .env
+npm run setup:full
 ```
 
-Add your OpenAI API key (optional, will use fallback if not set):
-```
-OPENAI_API_KEY=your_key_here
-```
-
-3. Run database migrations:
-```bash
-npm run db:migrate
-```
-
-4. Start the development server:
+3. Start the development server:
 ```bash
 npm run dev
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser.
+4. Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+📖 **Full setup guide**: See [QUICKSTART.md](./QUICKSTART.md) for complete instructions.
 
 ## Usage
 
@@ -61,11 +50,12 @@ npm run dev
 
 ## Tech Stack
 
-- **Frontend**: Next.js 14, React, TypeScript
+- **Frontend**: Next.js 14 (App Router), React, TypeScript
 - **Canvas**: React Flow
 - **Layout**: D3.js force simulation
-- **Database**: SQLite (better-sqlite3)
-- **AI**: OpenAI Embeddings API (with fallback)
+- **Database**: PostgreSQL with Prisma ORM
+- **Auth**: NextAuth.js
+- **AI**: OpenAI Embeddings API (optional)
 - **Styling**: Tailwind CSS
 
 ## Project Structure
@@ -82,11 +72,12 @@ MeshFlow/
 │   ├── SearchBar.tsx      # Search functionality
 │   └── WorkspaceList.tsx  # Workspace list
 ├── lib/                   # Utilities
-│   ├── db.ts             # Database setup
-│   ├── ai.ts             # AI/embeddings
-│   ├── layout.ts         # Layout algorithms
-│   └── types.ts          # TypeScript types
-└── data/                  # SQLite database (gitignored)
+│   ├── db.ts             # Prisma database client
+│   ├── auth.ts           # NextAuth configuration
+│   ├── embeddings.ts     # AI/embeddings
+│   └── layoutEngine.ts   # Layout algorithms
+├── prisma/               # Prisma schema
+└── types/                # TypeScript types
 ```
 
 ## Roadmap

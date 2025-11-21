@@ -1,81 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireWorkspaceAccess } from '@/lib/api-helpers';
+import { prisma } from '@/lib/db';
 
-export async function DELETE(
+export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
-    
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const nodeId = params.id;
 
-    // Get node to check permissions
-    const { data: node, error: nodeError } = await supabase
-      .from('nodes')
-      .select('workspace_id')
-      .eq('id', nodeId)
-      .single();
+    const node = await prisma.node.findUnique({
+      where: { id: nodeId },
+      include: { workspace: true },
+    });
 
-    if (nodeError || !node) {
+    if (!node) {
       return NextResponse.json({ error: 'Node not found' }, { status: 404 });
     }
 
-    // Check workspace permissions
-    const { data: workspace } = await supabase
-      .from('workspaces')
-      .select('owner_id')
-      .eq('id', node.workspace_id)
-      .single();
+    // Check access
+    await requireWorkspaceAccess(node.workspaceId, false);
 
-    const { data: member } = await supabase
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', node.workspace_id)
-      .eq('user_id', user.id)
-      .single();
-
-    const canDelete =
-      workspace?.owner_id === user.id ||
-      member?.role === 'owner' ||
-      member?.role === 'editor';
-
-    if (!canDelete) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    // Delete node (cascade will delete edges and related data)
-    const { error: deleteError } = await supabase
-      .from('nodes')
-      .delete()
-      .eq('id', nodeId);
-
-    if (deleteError) {
-      console.error('Error deleting node:', deleteError);
-      return NextResponse.json({ error: deleteError.message }, { status: 500 });
-    }
-
-    // Log activity
-    await supabase.rpc('log_activity', {
-      p_workspace_id: node.workspace_id,
-      p_user_id: user.id,
-      p_action: 'delete',
-      p_entity_type: 'node',
-      p_entity_id: nodeId,
-      p_details: { node_id: nodeId },
-    });
-
-    return NextResponse.json({ success: true }, { status: 200 });
+    return NextResponse.json({
+      node: {
+        ...node,
+        createdAt: node.createdAt.toISOString(),
+        updatedAt: node.updatedAt.toISOString(),
+      },
+    }, { status: 200 });
   } catch (error: any) {
-    console.error('Error in delete node API:', error);
+    console.error('Error in get node API:', error);
+    
+    if (error.message === 'Unauthorized' || error.message.includes('Forbidden')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -83,36 +42,51 @@ export async function DELETE(
   }
 }
 
-export async function GET(
+export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
-    
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const nodeId = params.id;
 
-    const { data: node, error } = await supabase
-      .from('nodes')
-      .select('*')
-      .eq('id', nodeId)
-      .single();
+    // Get node to check permissions
+    const node = await prisma.node.findUnique({
+      where: { id: nodeId },
+      include: { workspace: true },
+    });
 
-    if (error || !node) {
+    if (!node) {
       return NextResponse.json({ error: 'Node not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ node }, { status: 200 });
+    // Check permissions
+    const { user, role } = await requireWorkspaceAccess(node.workspaceId, true);
+
+    // Delete node (cascade will delete edges and related data)
+    await prisma.node.delete({
+      where: { id: nodeId },
+    });
+
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        workspaceId: node.workspaceId,
+        userId: user.id,
+        action: 'delete',
+        entityType: 'node',
+        entityId: nodeId,
+        details: { nodeId },
+      },
+    });
+
+    return NextResponse.json({ success: true }, { status: 200 });
   } catch (error: any) {
-    console.error('Error in get node API:', error);
+    console.error('Error in delete node API:', error);
+    
+    if (error.message === 'Unauthorized' || error.message.includes('Forbidden')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

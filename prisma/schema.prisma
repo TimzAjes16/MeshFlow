@@ -1,0 +1,298 @@
+// Prisma schema for MeshFlow
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User authentication (replacing Supabase auth)
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  name          String?
+  password      String // Hashed password
+  avatarUrl     String?   @map("avatar_url")
+  plan          Plan      @default(FREE)
+  emailVerified DateTime? @map("email_verified")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  workspaces       Workspace[]       @relation("WorkspaceOwner")
+  workspaceMembers WorkspaceMember[]
+  comments         Comment[]
+  attachments      Attachment[]
+  activityLogs     ActivityLog[]
+  workspaceInvites WorkspaceInvite[] @relation("Inviter")
+  layoutPresets    LayoutPreset[]
+  userPreferences  UserPreferences?
+  savedSearches    SavedSearch[]
+  spatialBookmarks SpatialBookmark[]
+  sessions         Session[]
+
+  @@map("users")
+}
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+// Session management for NextAuth-like auth
+model Session {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("sessions")
+}
+
+model Workspace {
+  id        String   @id @default(uuid())
+  ownerId   String   @map("owner_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  owner            User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members          WorkspaceMember[]
+  nodes            Node[]
+  edges            Edge[]
+  invites          WorkspaceInvite[]
+  activityLogs     ActivityLog[]
+  layoutPresets    LayoutPreset[]
+  savedSearches    SavedSearch[]
+  spatialBookmarks SpatialBookmark[]
+  attachments      Attachment[]
+
+  @@index([ownerId])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  workspaceId String        @map("workspace_id")
+  userId      String        @map("user_id")
+  role        WorkspaceRole
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([userId])
+  @@index([workspaceId])
+  @@map("workspace_members")
+}
+
+enum WorkspaceRole {
+  owner
+  editor
+  viewer
+}
+
+model Node {
+  id          String                       @id @default(uuid())
+  workspaceId String                       @map("workspace_id")
+  title       String
+  content     Json                         @default("{}")
+  tags        String[]
+  // embedding   Unsupported("vector(1536)")? // pgvector type - temporarily disabled - use raw SQL for vector operations
+  x           Float                        @default(0)
+  y           Float                        @default(0)
+  createdAt   DateTime                     @default(now()) @map("created_at")
+  updatedAt   DateTime                     @updatedAt @map("updated_at")
+
+  // Relations
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sourceEdges Edge[]        @relation("SourceNode")
+  targetEdges Edge[]        @relation("TargetNode")
+  comments    Comment[]
+  attachments Attachment[]
+  history     NodeHistory[]
+
+  @@index([workspaceId])
+  @@map("nodes")
+}
+
+model Edge {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  source      String
+  target      String
+  label       String?
+  similarity  Float?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sourceNode Node      @relation("SourceNode", fields: [source], references: [id], onDelete: Cascade)
+  targetNode Node      @relation("TargetNode", fields: [target], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, source, target])
+  @@index([workspaceId])
+  @@index([source])
+  @@index([target])
+  @@map("edges")
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  nodeId    String   @map("node_id")
+  userId    String   @map("user_id")
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  node Node @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId])
+  @@index([userId])
+  @@map("comments")
+}
+
+model Attachment {
+  id          String   @id @default(uuid())
+  nodeId      String   @map("node_id")
+  workspaceId String   @map("workspace_id")
+  userId      String   @map("user_id")
+  filename    String
+  fileUrl     String   @map("file_url")
+  fileSize    Int?     @map("file_size")
+  fileType    String?  @map("file_type")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  node      Node      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId])
+  @@index([workspaceId])
+  @@map("attachments")
+}
+
+model NodeHistory {
+  id        String   @id @default(uuid())
+  nodeId    String   @map("node_id")
+  title     String
+  content   Json
+  tags      String[]
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  node Node @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId])
+  @@map("node_history")
+}
+
+model WorkspaceInvite {
+  id          String        @id @default(uuid())
+  workspaceId String        @map("workspace_id")
+  inviterId   String        @map("inviter_id")
+  email       String?
+  token       String        @unique
+  role        WorkspaceRole @default(editor)
+  expiresAt   DateTime      @map("expires_at")
+  acceptedAt  DateTime?     @map("accepted_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  inviter   User      @relation("Inviter", fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, email, token])
+  @@index([token])
+  @@index([workspaceId])
+  @@map("workspace_invites")
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  userId      String   @map("user_id")
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  details     Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
+  @@map("activity_log")
+}
+
+model UserPreferences {
+  userId               String   @id @map("user_id")
+  theme                String   @default("dark")
+  defaultLayout        String   @default("force-directed") @map("default_layout")
+  notificationsEnabled Boolean  @default(true) @map("notifications_enabled")
+  preferences          Json     @default("{}")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model LayoutPreset {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  userId      String   @map("user_id")
+  name        String
+  layoutType  String   @map("layout_type")
+  config      Json
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("layout_presets")
+}
+
+model SavedSearch {
+  id          String   @id @default(uuid())
+  workspaceId String?  @map("workspace_id")
+  userId      String   @map("user_id")
+  name        String
+  query       String
+  filters     Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([workspaceId])
+  @@map("saved_searches")
+}
+
+model SpatialBookmark {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  userId      String   @map("user_id")
+  name        String
+  viewport    Json
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("spatial_bookmarks")
+}

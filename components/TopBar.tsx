@@ -1,10 +1,9 @@
 'use client';
 
-import { Search, Layout, Plus, Settings } from 'lucide-react';
+import { Search, Layout, Plus, Settings, Link2 } from 'lucide-react';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
 import { useState, useCallback, useRef } from 'react';
-import { searchNodes } from '@/lib/search';
 
 interface TopBarProps {
   workspaceId: string;
@@ -19,7 +18,7 @@ export default function TopBar({ workspaceId, onCreateNode }: TopBarProps) {
   const [showResults, setShowResults] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout>();
 
-  const handleSearch = (query: string) => {
+  const handleSearch = async (query: string) => {
     setSearchQuery(query);
 
     // Clear previous timeout
@@ -33,11 +32,39 @@ export default function TopBar({ workspaceId, onCreateNode }: TopBarProps) {
       return;
     }
 
-    // Debounce search
-    searchTimeoutRef.current = setTimeout(() => {
-      const results = searchNodes(query, nodes);
-      setSearchResults(results);
-      setShowResults(results.length > 0);
+    // Debounce search and use API
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `/api/nodes/search?q=${encodeURIComponent(query)}&workspaceId=${workspaceId}`
+        );
+        
+        if (!response.ok) {
+          console.error('Search failed:', response.statusText);
+          setSearchResults([]);
+          setShowResults(false);
+          return;
+        }
+
+        const data = await response.json();
+        const results = data.results || [];
+        
+        // Format results for display
+        const formattedResults = results.map((node: any) => ({
+          node: {
+            id: node.id,
+            title: node.title,
+            tags: node.tags || [],
+          },
+        }));
+        
+        setSearchResults(formattedResults);
+        setShowResults(formattedResults.length > 0);
+      } catch (error) {
+        console.error('Error searching:', error);
+        setSearchResults([]);
+        setShowResults(false);
+      }
     }, 300);
   };
 
@@ -46,8 +73,9 @@ export default function TopBar({ workspaceId, onCreateNode }: TopBarProps) {
     setShowResults(false);
     setSearchQuery('');
     
-    // Zoom to node will be handled by Canvas component
-    // when selectedNodeId changes
+    // Trigger zoom to node event
+    const event = new CustomEvent('zoom-to-node', { detail: { nodeId } });
+    window.dispatchEvent(event);
   }, [selectNode]);
 
   return (
@@ -104,8 +132,14 @@ export default function TopBar({ workspaceId, onCreateNode }: TopBarProps) {
         {/* Layout selector */}
         <select
           value={layout}
-          onChange={(e) => setLayout(e.target.value as any)}
-          className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          onChange={(e) => {
+            const newLayout = e.target.value;
+            setLayout(newLayout as any);
+            // Trigger layout change - this should trigger re-layout in CanvasContainer
+            const event = new CustomEvent('layout-change', { detail: { layout: newLayout } });
+            window.dispatchEvent(event);
+          }}
+          className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 hover:bg-gray-50 transition-colors"
         >
           <option value="force-directed">Force Directed</option>
           <option value="radial">Radial</option>
@@ -113,6 +147,19 @@ export default function TopBar({ workspaceId, onCreateNode }: TopBarProps) {
           <option value="semantic">Semantic</option>
         </select>
 
+        {/* Auto-Link Toggle */}
+        <button
+          onClick={() => {
+            const event = new CustomEvent('toggle-auto-link');
+            window.dispatchEvent(event);
+          }}
+          className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          <Link2 className="w-4 h-4" />
+          <span className="hidden sm:inline">Auto-Link</span>
+        </button>
+
+        {/* New Node Button */}
         <button
           onClick={onCreateNode}
           className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
@@ -121,6 +168,7 @@ export default function TopBar({ workspaceId, onCreateNode }: TopBarProps) {
           New Node
         </button>
 
+        {/* Settings Button */}
         <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
           <Settings className="w-5 h-5 text-gray-600" />
         </button>

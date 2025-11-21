@@ -1,19 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireWorkspaceAccess } from '@/lib/api-helpers';
+import { prisma } from '@/lib/db';
 import { searchNodes } from '@/lib/search';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q');
     const workspaceId = searchParams.get('workspaceId');
@@ -30,32 +21,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing workspaceId' }, { status: 400 });
     }
 
-    // Build query
-    let nodesQuery = supabase
-      .from('nodes')
-      .select('*')
-      .eq('workspace_id', workspaceId)
-      .limit(limit);
+    // Check access
+    await requireWorkspaceAccess(workspaceId, false);
+
+    // Build Prisma query
+    const where: any = {
+      workspaceId,
+    };
 
     // Apply filters
     if (tags && tags.length > 0) {
-      nodesQuery = nodesQuery.contains('tags', tags);
+      where.tags = {
+        hasSome: tags,
+      };
     }
 
-    if (dateFrom) {
-      nodesQuery = nodesQuery.gte('created_at', dateFrom);
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) {
+        where.createdAt.gte = new Date(dateFrom);
+      }
+      if (dateTo) {
+        where.createdAt.lte = new Date(dateTo);
+      }
     }
 
-    if (dateTo) {
-      nodesQuery = nodesQuery.lte('created_at', dateTo);
-    }
-
-    const { data: nodes, error } = await nodesQuery;
-
-    if (error) {
-      console.error('Error searching nodes:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    // Fetch nodes
+    const nodes = await prisma.node.findMany({
+      where,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+    });
 
     if (!nodes || nodes.length === 0) {
       return NextResponse.json({ results: [], total: 0 }, { status: 200 });
@@ -64,8 +60,32 @@ export async function GET(request: NextRequest) {
     // Apply text search if query provided
     let results = nodes;
     if (query) {
-      const searchResults = searchNodes(query, nodes as any[], { limit });
+      const searchResults = searchNodes(
+        query,
+        nodes.map((n) => ({
+          id: n.id,
+          title: n.title,
+          content: n.content,
+          tags: n.tags,
+          x: n.x,
+          y: n.y,
+          createdAt: n.createdAt.toISOString(),
+          updatedAt: n.updatedAt.toISOString(),
+        })),
+        { limit }
+      );
       results = searchResults.map((r) => r.node);
+    } else {
+      results = nodes.map((n) => ({
+        id: n.id,
+        title: n.title,
+        content: n.content,
+        tags: n.tags,
+        x: n.x,
+        y: n.y,
+        createdAt: n.createdAt.toISOString(),
+        updatedAt: n.updatedAt.toISOString(),
+      }));
     }
 
     return NextResponse.json(
@@ -83,6 +103,11 @@ export async function GET(request: NextRequest) {
     );
   } catch (error: any) {
     console.error('Error in search nodes API:', error);
+    
+    if (error.message === 'Unauthorized' || error.message.includes('Forbidden')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

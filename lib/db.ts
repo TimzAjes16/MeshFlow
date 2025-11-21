@@ -1,70 +1,95 @@
-import Database from 'better-sqlite3';
-import { join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import { PrismaClient } from '@prisma/client';
 
-const dbDir = join(process.cwd(), 'data');
-if (!existsSync(dbDir)) {
-  mkdirSync(dbDir, { recursive: true });
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
+
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+  });
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+
+// Helper function to convert embedding array to PostgreSQL vector format
+// pgvector stores as: dimensions (uint32), unused (uint16), unused (uint16), data (float32[])
+export function arrayToVector(embedding: number[]): Buffer {
+  // pgvector binary format
+  const dimensions = embedding.length;
+  const buffer = Buffer.allocUnsafe(4 + 2 + 2 + dimensions * 4);
+  
+  buffer.writeUInt32LE(dimensions, 0);
+  buffer.writeUInt16LE(0, 4); // unused
+  buffer.writeUInt16LE(0, 6); // unused
+  
+  for (let i = 0; i < dimensions; i++) {
+    buffer.writeFloatLE(embedding[i], 8 + i * 4);
+  }
+  
+  return buffer;
 }
 
-const dbPath = join(dbDir, 'meshflow.db');
-const db = new Database(dbPath);
+// Helper function to convert PostgreSQL vector to array
+export function vectorToArray(vector: Buffer | null): number[] | null {
+  if (!vector || vector.length === 0) return null;
+  
+  const dimensions = vector.readUInt32LE(0);
+  const array: number[] = [];
+  
+  for (let i = 0; i < dimensions; i++) {
+    array.push(vector.readFloatLE(8 + i * 4));
+  }
+  
+  return array;
+}
 
-// Enable foreign keys
-db.pragma('foreign_keys = ON');
+// Raw SQL helper for vector similarity search using pgvector
+export async function findSimilarNodes(
+  embedding: number[],
+  workspaceId: string,
+  excludeNodeId?: string,
+  threshold: number = 0.65,
+  limit: number = 10
+): Promise<Array<{ id: string; similarity: number }>> {
+  const vectorBuffer = arrayToVector(embedding);
+  
+  // Use Prisma raw query with pgvector cosine distance
+  let query = `
+    SELECT 
+      id,
+      1 - (embedding <=> $1::vector) as similarity
+    FROM nodes
+    WHERE workspace_id = $2::uuid
+      AND embedding IS NOT NULL
+  `;
+  
+  const params: any[] = [
+    Buffer.from(`\\x${vectorBuffer.toString('hex')}`),
+    workspaceId,
+  ];
+  
+  if (excludeNodeId) {
+    query += ` AND id != $${params.length + 1}::uuid`;
+    params.push(excludeNodeId);
+  }
+  
+  query += `
+    AND 1 - (embedding <=> $1::vector) >= $${params.length + 1}
+    ORDER BY embedding <=> $1::vector
+    LIMIT $${params.length + 2}
+  `;
+  
+  params.push(threshold, limit);
+  
+  // Use Prisma's raw query with proper parameter binding
+  const results = await prisma.$queryRawUnsafe<any[]>(query, ...params);
+  
+  return results.map((row: any) => ({
+    id: row.id,
+    similarity: parseFloat(row.similarity?.toString() || '0'),
+  }));
+}
 
-// Initialize schema
-db.exec(`
-  CREATE TABLE IF NOT EXISTS workspaces (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    owner_id TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS nodes (
-    id TEXT PRIMARY KEY,
-    workspace_id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    content TEXT,
-    x REAL NOT NULL DEFAULT 0,
-    y REAL NOT NULL DEFAULT 0,
-    embedding TEXT,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS edges (
-    id TEXT PRIMARY KEY,
-    workspace_id TEXT NOT NULL,
-    source_id TEXT NOT NULL,
-    target_id TEXT NOT NULL,
-    weight REAL DEFAULT 1.0,
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
-    FOREIGN KEY (source_id) REFERENCES nodes(id) ON DELETE CASCADE,
-    FOREIGN KEY (target_id) REFERENCES nodes(id) ON DELETE CASCADE,
-    UNIQUE(source_id, target_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS workspace_shares (
-    id TEXT PRIMARY KEY,
-    workspace_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    permission TEXT NOT NULL DEFAULT 'read',
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
-    UNIQUE(workspace_id, user_id)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_nodes_workspace ON nodes(workspace_id);
-  CREATE INDEX IF NOT EXISTS idx_edges_workspace ON edges(workspace_id);
-  CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id);
-  CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id);
-`);
-
-export default db;
-
+// Type exports
+export type PrismaClientType = PrismaClient;

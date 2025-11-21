@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 
 export default function SignupPage() {
@@ -12,45 +12,64 @@ export default function SignupPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    const { data, error: signupError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          name,
+    try {
+      // Step 1: Create the user account
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      },
-    });
-
-    if (signupError) {
-      setError(signupError.message);
-      setLoading(false);
-      return;
-    }
-
-    if (data.user) {
-      // Create profile
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
-        email,
-        name,
-        plan: 'FREE',
+        body: JSON.stringify({
+          email,
+          password,
+          name,
+        }),
       });
 
-      if (profileError) {
-        console.error('Error creating profile:', profileError);
-      }
-    }
+      const data = await response.json();
 
-    router.push('/dashboard');
-    router.refresh();
+      if (!response.ok) {
+        setError(data.error || 'Failed to create account');
+        setLoading(false);
+        return;
+      }
+
+      // Step 2: Automatically sign in the user
+      const result = await signIn('credentials', {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        // If auto-signin fails, show error and redirect to login
+        setError('Account created successfully, but automatic sign-in failed. Please sign in manually.');
+        setLoading(false);
+        setTimeout(() => {
+          router.push('/auth/login?message=Account created. Please sign in.');
+        }, 2000);
+        return;
+      }
+
+      if (result?.ok) {
+        // Sign-in successful - redirect to dashboard
+        router.push('/dashboard');
+        router.refresh();
+      } else {
+        // Fallback: redirect to login
+        setLoading(false);
+        router.push('/auth/login?message=Account created. Please sign in.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+      setLoading(false);
+    }
   };
 
   return (
@@ -110,6 +129,7 @@ export default function SignupPage() {
                 type="password"
                 autoComplete="new-password"
                 required
+                minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"

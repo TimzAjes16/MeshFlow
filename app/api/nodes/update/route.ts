@@ -1,21 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireWorkspaceAccess } from '@/lib/api-helpers';
+import { prisma } from '@/lib/db';
 import { getNodeEmbedding } from '@/lib/embeddings';
-import { getAutoLinkNodes, createAutoEdges } from '@/lib/autoLink';
-import type { Node } from '@/types/Node';
+import { arrayToVector, findSimilarNodes } from '@/lib/db';
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await request.json();
     const { nodeId, title, content, tags, x, y } = body;
 
@@ -27,20 +17,20 @@ export async function PUT(request: NextRequest) {
     }
 
     // Get existing node
-    const { data: existingNode } = await supabase
-      .from('nodes')
-      .select('*')
-      .eq('id', nodeId)
-      .single();
+    const existingNode = await prisma.node.findUnique({
+      where: { id: nodeId },
+      include: { workspace: true },
+    });
 
     if (!existingNode) {
       return NextResponse.json({ error: 'Node not found' }, { status: 404 });
     }
 
+    // Check permissions
+    const { user, role } = await requireWorkspaceAccess(existingNode.workspaceId, true);
+
     // Update fields
-    const updateData: any = {
-      updated_at: new Date().toISOString(),
-    };
+    const updateData: any = {};
 
     if (title !== undefined) updateData.title = title;
     if (content !== undefined) updateData.content = content;
@@ -49,80 +39,107 @@ export async function PUT(request: NextRequest) {
     if (y !== undefined) updateData.y = y;
 
     // Regenerate embedding if title or content changed
+    let newEmbedding: number[] | null = null;
     if (title !== undefined || content !== undefined) {
-      const embedding = await getNodeEmbedding({
+      newEmbedding = await getNodeEmbedding({
         title: title || existingNode.title,
         content: content !== undefined ? content : existingNode.content,
       });
-      updateData.embedding = embedding;
+
+      // Update embedding using raw SQL
+      const embeddingVector = arrayToVector(newEmbedding);
+      await prisma.$executeRaw`
+        UPDATE nodes
+        SET embedding = ${embeddingVector}::vector
+        WHERE id = ${nodeId}::uuid
+      `;
 
       // Re-check auto-linking
-      const { data: allNodes } = await supabase
-        .from('nodes')
-        .select('*')
-        .eq('workspace_id', existingNode.workspace_id)
-        .neq('id', nodeId);
+      const similarNodes = await findSimilarNodes(
+        newEmbedding,
+        existingNode.workspaceId,
+        nodeId,
+        0.82, // auto-link threshold
+        10 // limit
+      );
 
-      if (allNodes && allNodes.length > 0) {
-        const similarNodes = getAutoLinkNodes(
-          embedding,
-          allNodes as Node[],
-          nodeId
-        );
+      if (similarNodes.length > 0) {
+        // Get existing edges from this node
+        const existingEdges = await prisma.edge.findMany({
+          where: {
+            workspaceId: existingNode.workspaceId,
+            source: nodeId,
+          },
+          select: { target: true },
+        });
 
-        // Get existing edges for this node
-        const { data: existingEdges } = await supabase
-          .from('edges')
-          .select('*')
-          .or(`source.eq.${nodeId},target.eq.${nodeId}`)
-          .eq('workspace_id', existingNode.workspace_id);
+        const existingTargets = new Set(existingEdges.map((e) => e.target));
 
-        const existingTargets = new Set(
-          existingEdges
-            ?.filter((e) => e.source === nodeId)
-            .map((e) => e.target) || []
-        );
-
-        // Create new auto-edges
-        const newAutoEdges = similarNodes.filter(
+        // Create new auto-edges for nodes that don't already have edges
+        const newTargets = similarNodes.filter(
           (node) => !existingTargets.has(node.id)
         );
 
-        if (newAutoEdges.length > 0) {
-          const autoEdges = createAutoEdges(
-            nodeId,
-            newAutoEdges,
-            existingNode.workspace_id
-          );
+        if (newTargets.length > 0) {
+          await prisma.edge.createMany({
+            data: newTargets.map((targetNode) => ({
+              workspaceId: existingNode.workspaceId,
+              source: nodeId,
+              target: targetNode.id,
+              similarity: targetNode.similarity || 1,
+            })),
+            skipDuplicates: true,
+          });
 
-          await supabase.from('edges').insert(
-            autoEdges.map((edge) => ({
-              workspace_id: edge.workspaceId,
-              source: edge.source,
-              target: edge.target,
-              similarity: 1,
-            }))
-          );
+          // Log activity
+          await prisma.activityLog.create({
+            data: {
+              workspaceId: existingNode.workspaceId,
+              userId: user.id,
+              action: 'auto_link',
+              entityType: 'edge',
+              details: {
+                sourceNodeId: nodeId,
+                targetNodesCount: newTargets.length,
+              },
+            },
+          });
         }
       }
     }
 
     // Update node
-    const { data: updatedNode, error: updateError } = await supabase
-      .from('nodes')
-      .update(updateData)
-      .eq('id', nodeId)
-      .select()
-      .single();
+    const updatedNode = await prisma.node.update({
+      where: { id: nodeId },
+      data: updateData,
+    });
 
-    if (updateError) {
-      console.error('Error updating node:', updateError);
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
-    }
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        workspaceId: existingNode.workspaceId,
+        userId: user.id,
+        action: 'update',
+        entityType: 'node',
+        entityId: nodeId,
+        details: { title: updatedNode.title },
+      },
+    });
 
-    return NextResponse.json({ node: updatedNode }, { status: 200 });
+    return NextResponse.json({
+      node: {
+        ...updatedNode,
+        createdAt: updatedNode.createdAt.toISOString(),
+        updatedAt: updatedNode.updatedAt.toISOString(),
+      },
+    }, { status: 200 });
   } catch (error: any) {
     console.error('Error in update node API:', error);
+    
+    if (error.message === 'Unauthorized' || error.message.includes('Forbidden')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
