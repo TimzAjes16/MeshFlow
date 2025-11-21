@@ -86,6 +86,7 @@ export default function EmptyState({ onDismiss, visible }: EmptyStateProps) {
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                console.log('Got it button clicked - dismissing empty state');
                 handleDismiss();
               }}
               className="mt-6 w-full inline-flex items-center justify-center rounded-full bg-gray-900 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 active:scale-95"

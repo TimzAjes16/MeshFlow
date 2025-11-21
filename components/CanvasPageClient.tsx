@@ -20,7 +20,11 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
 
   const handleCreateNode = useCallback(
     async (type: string = 'note', screenPosition: { x: number; y: number }) => {
-      if (isCreating) return;
+      console.log('handleCreateNode called with type:', type, 'position:', screenPosition);
+      if (isCreating) {
+        console.log('Already creating node, skipping');
+        return;
+      }
       
       setIsCreating(true);
       setToolbarPosition(null); // Hide toolbar
@@ -90,6 +94,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
   );
 
   const handleShowToolbar = useCallback((position: { x: number; y: number }) => {
+    console.log('handleShowToolbar called with position:', position);
     setToolbarPosition(position);
   }, []);
 
@@ -193,11 +198,26 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           onCreateNode={(pos) => handleShowToolbar(pos)}
         />
         {toolbarPosition && (
-          <FloatingToolbar
-            position={toolbarPosition}
-            onClose={handleHideToolbar}
-            onCreateNode={handleCreateNode}
-          />
+          <>
+            <div 
+              className="fixed inset-0 z-[99998] bg-black/10"
+              onClick={() => {
+                console.log('Backdrop clicked - closing toolbar');
+                handleHideToolbar();
+              }}
+            />
+            <FloatingToolbar
+              position={toolbarPosition}
+              onClose={() => {
+                console.log('FloatingToolbar onClose called');
+                handleHideToolbar();
+              }}
+              onCreateNode={(type, pos) => {
+                console.log('FloatingToolbar onCreateNode called with type:', type);
+                handleCreateNode(type, pos);
+              }}
+            />
+          </>
         )}
       </div>
       

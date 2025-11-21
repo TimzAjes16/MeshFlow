@@ -46,14 +46,17 @@ export default function FloatingToolbar({ position, onClose, onCreateNode }: Flo
 
   if (!position) return null;
 
+  console.log('FloatingToolbar rendering at position:', position);
+
   return (
     <div
-      className="fixed bg-white border border-gray-200 rounded-lg shadow-lg p-2 min-w-[200px]"
+      className="fixed bg-white border border-gray-200 rounded-lg shadow-xl p-2 min-w-[200px]"
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
-        zIndex: 9999,
+        zIndex: 99999,
         pointerEvents: 'auto',
+        transform: 'translate(-50%, 10px)',
       }}
       onClick={(e) => {
         e.stopPropagation();

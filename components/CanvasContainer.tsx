@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -184,32 +184,43 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   );
 
   // Handle double-click to create node
-  const onPaneDoubleClick = useCallback(
+  const handlePaneDoubleClick = useCallback(
     (event: React.MouseEvent) => {
-      if (!onCreateNode) return;
+      console.log('[CanvasContainer] handlePaneDoubleClick called');
+      if (!onCreateNode) {
+        console.error('[CanvasContainer] onCreateNode callback is not provided');
+        return;
+      }
       
-      // Don't prevent default - let ReactFlow handle the event first
       // Convert screen coordinates to flow position for node creation
-      const flowPos = reactFlowInstance.screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-      
-      // Store flow position in global state for CanvasPageClient to access
-      (window as any).lastFlowPosition = flowPos;
-      
-      // Use screen coordinates for toolbar placement
-      const screenPos = {
-        x: event.clientX,
-        y: event.clientY,
-      };
-      
-      // Show toolbar to select node type
-      onCreateNode(screenPos);
-      
-      // Trigger empty state dismissal
-      const dismissEvent = new CustomEvent('dismiss-empty-state');
-      window.dispatchEvent(dismissEvent);
+      try {
+        const flowPos = reactFlowInstance.screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+        
+        console.log('[CanvasContainer] Converted flow position:', flowPos);
+        
+        // Store flow position for CanvasPageClient to access when creating node
+        (window as any).lastFlowPosition = flowPos;
+        
+        // Use screen coordinates for toolbar placement (relative to viewport)
+        const screenPos = {
+          x: event.clientX,
+          y: event.clientY,
+        };
+        
+        console.log('[CanvasContainer] Calling onCreateNode with screen position:', screenPos);
+        
+        // Show toolbar to select node type
+        onCreateNode(screenPos);
+        
+        // Trigger empty state dismissal if it's showing
+        const dismissEvent = new CustomEvent('dismiss-empty-state');
+        window.dispatchEvent(dismissEvent);
+      } catch (error) {
+        console.error('[CanvasContainer] Error in handlePaneDoubleClick:', error);
+      }
     },
     [onCreateNode, reactFlowInstance]
   );
@@ -333,7 +344,35 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   }, [nodes.length, showEmptyState, hasDismissedEmptyState]);
 
       return (
-        <div className="relative w-full h-full min-h-0 bg-white overflow-hidden">
+        <div 
+          className="relative w-full h-full min-h-0 bg-white overflow-hidden"
+          onDoubleClick={(e) => {
+            // Handle double-click on canvas wrapper
+            // Only process if clicking on the canvas background, not on React Flow UI elements
+            const target = e.target as HTMLElement;
+            
+            // Ignore if clicking on React Flow UI elements (nodes, edges, controls, etc.)
+            if (
+              target.closest('.react-flow__node') || 
+              target.closest('.react-flow__edge') ||
+              target.closest('.react-flow__controls') ||
+              target.closest('.react-flow__minimap') ||
+              target.closest('.react-flow__attribution') ||
+              target.closest('.react-flow__handle') ||
+              target.closest('button') ||
+              target.closest('[role="button"]')
+            ) {
+              return;
+            }
+            
+            // Process double-click on canvas background
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('[CanvasContainer] Double-click detected on canvas background');
+            handlePaneDoubleClick(e);
+          }}
+        >
           {/* Canvas - always visible and rendered, empty state is just an overlay */}
           <ReactFlow
         nodes={nodes}
@@ -343,7 +382,6 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         onConnect={onConnect}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
-        onPaneDoubleClick={onPaneDoubleClick}
         onInit={onInit}
         onMoveEnd={onMoveEnd}
         nodeTypes={nodeTypes}
@@ -399,10 +437,22 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
 
           {/* Empty State Overlay - shows on top when no nodes (first time only) */}
           {!hasDismissedEmptyState && showEmptyState && nodes.length === 0 && (
-            <div className="absolute inset-0" style={{ zIndex: 100, pointerEvents: 'auto' }}>
+            <div 
+              className="absolute inset-0" 
+              style={{ zIndex: 100, pointerEvents: 'auto' }}
+              onClick={(e) => {
+                // Allow clicking backdrop to dismiss
+                if (e.target === e.currentTarget) {
+                  console.log('Empty state backdrop clicked - dismissing');
+                  setShowEmptyState(false);
+                  setHasDismissedEmptyState(true);
+                }
+              }}
+            >
               <EmptyState 
                 visible={true}
                 onDismiss={() => {
+                  console.log('Empty state onDismiss called - canvas should now be interactive');
                   setShowEmptyState(false);
                   setHasDismissedEmptyState(true);
                 }} 
