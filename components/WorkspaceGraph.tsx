@@ -124,10 +124,15 @@ export default function WorkspaceGraph({ workspaces, searchQuery = '' }: Props) 
 
   if (filteredWorkspaces.length === 0) {
     return (
-      <div className="mt-6 h-72 w-full flex items-center justify-center rounded-2xl border border-slate-200 bg-slate-50">
-        <p className="text-slate-500 text-sm">
+      <div className="mt-6 h-72 w-full flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-50">
+        <p className="text-slate-500 text-sm font-medium">
           {searchQuery ? 'No workspaces found' : 'No workspaces yet'}
         </p>
+        {!searchQuery && (
+          <p className="text-slate-400 text-xs mt-1">
+            Click "New Workspace" to get started
+          </p>
+        )}
       </div>
     );
   }

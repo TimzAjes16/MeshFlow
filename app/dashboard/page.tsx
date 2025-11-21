@@ -8,7 +8,8 @@ import DashboardContent from '@/components/DashboardContent';
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
 
-  if (!session?.user?.id) {
+  const userId = (session?.user as any)?.id;
+  if (!userId) {
     redirect('/auth/login');
   }
 
@@ -16,11 +17,11 @@ export default async function DashboardPage() {
   const workspaces = await prisma.workspace.findMany({
     where: {
       OR: [
-        { ownerId: session.user.id },
+        { ownerId: userId },
         {
           members: {
             some: {
-              userId: session.user.id,
+              userId: userId,
             },
           },
         },
@@ -55,7 +56,7 @@ export default async function DashboardPage() {
       {/* Main Content */}
       <main className="mx-auto max-w-5xl px-6 pb-12 pt-8">
         <DashboardContent 
-          workspaces={workspaces.map((w) => ({
+          workspaces={workspaces.map((w: any) => ({
             id: w.id,
             name: w.name,
             ownerId: w.ownerId,
