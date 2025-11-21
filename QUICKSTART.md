@@ -94,10 +94,13 @@ Visit `http://localhost:3000` 🎉
 3. Enter a workspace name and click **"Create"**
 
 ### Create Your First Node
-1. **Double-click** anywhere on the canvas to create a node
-2. Or click **"New Node"** button in the top bar
-3. Enter a title and content in the editor panel
-4. Add tags to organize your nodes
+1. **Double-click** anywhere on the canvas to open the FloatingToolbar
+2. Select a node type from the toolbar (Text, Note, Link, Image, Box, Circle)
+3. Or press **Ctrl/Cmd+N** to show the toolbar at the viewport center
+4. The new node will appear and auto-select
+5. Enter a title and content in the editor panel on the right
+6. Add tags to organize your nodes
+7. Use the rich text editor with formatting toolbar and slash commands (`/`)
 
 ### Auto-Linking
 - When you create or update a node, MeshFlow automatically:
@@ -132,25 +135,33 @@ Switch between 4 different layouts in the top bar:
 ## 🎯 Tips
 
 ### Navigation
+- **Double-click canvas** to create new nodes (opens FloatingToolbar)
+- **Click nodes** to select and edit them in the right panel
 - **Drag nodes** to reposition them manually
-- **Click nodes** to select and edit them
-- **Double-click canvas** to create new nodes
 - **Pan** by dragging the canvas background
 - **Zoom** using mouse wheel or trackpad pinch
-- **Press Ctrl+K** to open command palette with all shortcuts
+- **FloatingToolbar** - Appears on double-click with 6 node types
+- **Rich Text Editor** - Formatting toolbar appears when selecting text
+- **Slash Commands** - Type `/` in editor for quick actions (Notion-style)
+- **Press Ctrl+/** to see all keyboard shortcuts
 
 ### Keyboard Shortcuts
-- **Ctrl+N** - Create new node
-- **Ctrl+F** - Focus search bar
-- **Ctrl+K** - Open command palette
-- **Ctrl+O** - Auto-organize layout
-- **Delete** - Delete selected node
-- **Escape** - Close panels/deselect
+- **Double-click** - Create new node (opens FloatingToolbar)
+- **Ctrl/Cmd+N** - Create new node (shows toolbar at center)
+- **Ctrl/Cmd+F** - Focus search bar
+- **Ctrl/Cmd+K** - Open command palette
+- **Ctrl/Cmd+/** - Show keyboard shortcuts modal
+- **Delete/Backspace** - Delete selected node
+- **Escape** - Close panels/deselect node/close toolbar
+- **Arrow Keys** - Navigate FloatingToolbar options
+- **Enter/Space** - Select node type from toolbar
 
 ### Auto-Features
-- Nodes are **auto-saved** when you edit them
-- Connections are **auto-created** based on similarity
-- Layout **auto-organizes** on load
+- Nodes are **auto-saved** when you edit them (title on blur, content on change)
+- New nodes **auto-select** after creation with title field focused
+- Empty state **auto-dismisses** when first node is created
+- Connections are **auto-created** based on similarity (when OpenAI API key is set)
+- Layout **auto-organizes** on initial load
 - Changes **sync in real-time** across collaborators
 
 ## 🛠️ Troubleshooting
@@ -196,8 +207,11 @@ Switch between 4 different layouts in the top bar:
 
 **Canvas looks empty?**
 - Create your first workspace from the dashboard
-- Double-click on the canvas to create a node
-- Click "New Node" button in the top bar
+- You'll see an onboarding message - click "Got it" to dismiss
+- **Double-click** anywhere on the canvas to open the FloatingToolbar
+- Select a node type (Text, Note, Link, Image, Box, or Circle)
+- Or press **Ctrl/Cmd+N** to show the toolbar
+- The empty state will automatically dismiss when you create your first node
 
 **Search not finding nodes?**
 - Make sure nodes have content (title or text)

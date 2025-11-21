@@ -1,16 +1,20 @@
 # MeshFlow
 
-Visual knowledge mapping with AI-powered auto-linking.
+Visual knowledge mapping with AI-powered auto-linking and intelligent node organization.
 
-## Features (MVP)
+## Features
 
-- ✅ Create/edit nodes
-- ✅ Infinite canvas
-- ✅ Basic force-directed layout
-- ✅ Auto-linking via embeddings
-- ✅ Search → highlight node
-- ✅ Workspace creation
-- ✅ Basic sharing (database structure ready)
+- ✅ **Infinite Canvas** - Zoom, pan, and explore your knowledge map
+- ✅ **Double-Click Node Creation** - Create nodes instantly with FloatingToolbar
+- ✅ **Multiple Node Types** - Text, Note, Link, Image, Box, Circle
+- ✅ **Rich Text Editor** - TipTap-powered editor with formatting toolbar and slash commands
+- ✅ **Auto-Linking** - AI-powered semantic connections between related nodes
+- ✅ **Smart Layouts** - Force-directed, Radial, Hierarchical, and Semantic clustering
+- ✅ **Keyboard Shortcuts** - Power user shortcuts for fast navigation
+- ✅ **Search & Zoom** - Find and navigate to nodes instantly
+- ✅ **Workspace Management** - Create and organize multiple workspaces
+- ✅ **Real-time Collaboration** - Share workspaces with team members
+- ✅ **Empty State Onboarding** - Guided introduction for new users
 
 ## Getting Started
 
@@ -39,14 +43,23 @@ npm run dev
 
 ## Usage
 
-1. **Create a Workspace**: Click "New Workspace" on the home page and enter a name
-2. **Add Nodes**: Right-click on the canvas to create a new node (enter a title when prompted)
-3. **Edit Nodes**: Click on a node to open the editor panel on the right
-4. **Connect Nodes**: Drag from one node's handle (bottom) to another node's handle (top) to create a connection
-5. **Auto-Link**: Toggle "Auto-Link" button to automatically connect similar nodes via AI embeddings when creating/editing nodes
-6. **Search**: Use the search bar to find and highlight matching nodes
-7. **Layout**: Click "Layout" button to run the force-directed layout algorithm and reorganize nodes
-8. **Navigate**: Use the back arrow to return to the workspace list
+### Quick Start
+1. **Create a Workspace**: Sign up, go to Dashboard, and click "New Workspace"
+2. **Create Nodes**: **Double-click** anywhere on the canvas to open the FloatingToolbar and select a node type
+3. **Edit Nodes**: Click a node to open the editor panel on the right with rich text editing
+4. **Keyboard Shortcuts**: 
+   - `Ctrl/Cmd+N` - Create new node
+   - `Ctrl/Cmd+F` - Focus search
+   - `Delete/Backspace` - Delete selected node
+   - `Escape` - Close panels/deselect
+5. **Search**: Use the search bar (top-left) to find and zoom to nodes
+6. **Auto-Organize**: Click "Auto-Organize" button or press `Ctrl+O` to reorganize layout
+7. **Layouts**: Switch between Force, Radial, Hierarchical, and Semantic cluster views
+
+### Node Creation
+- **Double-click canvas** → FloatingToolbar appears → Select node type (Text, Note, Link, Image, Box, Circle)
+- **Keyboard**: Press `Ctrl/Cmd+N` → Toolbar appears at viewport center
+- **Navigation**: Use arrow keys in toolbar, Enter to select, Escape to close
 
 ## Tech Stack
 
@@ -62,22 +75,32 @@ npm run dev
 
 ```
 MeshFlow/
-├── app/                    # Next.js app directory
-│   ├── api/               # API routes
-│   ├── workspace/         # Workspace pages
-│   └── page.tsx           # Home page
-├── components/            # React components
-│   ├── Canvas.tsx         # Main canvas component
-│   ├── NodeEditor.tsx     # Node editing UI
-│   ├── SearchBar.tsx      # Search functionality
-│   └── WorkspaceList.tsx  # Workspace list
-├── lib/                   # Utilities
-│   ├── db.ts             # Prisma database client
-│   ├── auth.ts           # NextAuth configuration
-│   ├── embeddings.ts     # AI/embeddings
-│   └── layoutEngine.ts   # Layout algorithms
-├── prisma/               # Prisma schema
-└── types/                # TypeScript types
+├── app/                          # Next.js app directory
+│   ├── api/                     # API routes (nodes, workspaces, search)
+│   ├── workspace/               # Workspace pages
+│   ├── dashboard/               # Dashboard page
+│   └── auth/                    # Authentication pages
+├── components/                  # React components
+│   ├── CanvasContainer.tsx      # Main canvas with React Flow
+│   ├── CanvasPageClient.tsx     # Canvas page orchestrator
+│   ├── FloatingToolbar.tsx      # Node type selection toolbar
+│   ├── NodeEditorPanel.tsx      # Rich text editor panel
+│   ├── FloatingFormatToolbar.tsx # Text formatting toolbar
+│   ├── SlashCommandMenu.tsx     # Notion-style slash commands
+│   ├── EmptyState.tsx           # Onboarding empty state
+│   ├── KeyboardShortcuts.tsx    # Shortcuts modal
+│   └── WorkspaceTopNav.tsx      # Top navigation bar
+├── lib/                         # Utilities
+│   ├── db.ts                   # Prisma database client
+│   ├── auth.ts                 # NextAuth configuration
+│   ├── embeddings.ts           # AI/embeddings
+│   ├── layoutEngine.ts         # Layout algorithms
+│   └── useAutoOrganize.ts      # Auto-organize hook
+├── state/                       # Zustand stores
+│   ├── canvasStore.ts          # Canvas state
+│   └── workspaceStore.ts       # Workspace state
+├── prisma/                     # Prisma schema
+└── types/                      # TypeScript types
 ```
 
 ## Roadmap
