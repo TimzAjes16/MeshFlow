@@ -2,13 +2,17 @@
 
 ## 🚀 MVP (2–3 weeks) - ✅ COMPLETED
 
-- ✅ Create/edit nodes
-- ✅ Infinite canvas
-- ✅ Basic force-directed layout
-- ✅ Auto-linking via embeddings
-- ✅ Search → highlight node
-- ✅ Workspace creation
-- ✅ Basic sharing (database structure ready)
+- ✅ Create/edit nodes (double-click canvas, FloatingToolbar, 6 node types)
+- ✅ Infinite canvas (React Flow with zoom, pan, drag)
+- ✅ Basic force-directed layout (D3.js with auto-organize animation)
+- ✅ Auto-linking via embeddings (OpenAI integration, similarity thresholds)
+- ✅ Search → highlight node (fuzzy search with zoom-to-node)
+- ✅ Workspace creation (full CRUD with member management)
+- ✅ Rich text editor (TipTap with formatting toolbar, slash commands)
+- ✅ Empty state onboarding (guided introduction)
+- ✅ Keyboard shortcuts (comprehensive shortcut system)
+- ✅ Node editor panel (title, content, tags, AI actions stubs)
+- ✅ Multiple node types (Text, Note, Link, Image, Box, Circle)
 
 ## 💎 V1 (1–2 months) - ✅ MOSTLY COMPLETED
 
