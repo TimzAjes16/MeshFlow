@@ -176,10 +176,7 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     });
 
     // Update both canvas store and React Flow state
-    setCanvasNodes(reactFlowNodes);
-    setCanvasEdges(reactFlowEdges);
-    // Update both canvas store and React Flow state
-    // Note: We use direct assignment, not functional update, to avoid stale closure issues
+    // Note: We use direct assignment to avoid stale closure issues
     setCanvasNodes(reactFlowNodes);
     setCanvasEdges(reactFlowEdges);
     setNodes(reactFlowNodes);
@@ -213,15 +210,22 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
       
       // Convert screen coordinates to flow position for node creation
       try {
+        // Get the wrapper bounds for proper coordinate conversion
+        const wrapper = reactFlowInstance.getViewport();
         const flowPos = reactFlowInstance.screenToFlowPosition({
           x: event.clientX,
           y: event.clientY,
         });
         
-        console.log('[CanvasContainer] Converted flow position:', flowPos);
+        console.log('[CanvasContainer] Converted flow position:', flowPos, 'from screen:', { x: event.clientX, y: event.clientY });
         
         // Store flow position for CanvasPageClient to access when creating node
+        // Store both screen and flow positions
         (window as any).lastFlowPosition = flowPos;
+        (window as any).lastScreenPosition = {
+          x: event.clientX,
+          y: event.clientY,
+        };
         
         // Use screen coordinates for toolbar placement (relative to viewport)
         const screenPos = {

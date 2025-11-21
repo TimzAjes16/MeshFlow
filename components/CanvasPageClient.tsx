@@ -125,34 +125,36 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           // This will trigger CanvasContainer's sync effect to update React Flow
           addNode(data.node);
           
-          // Don't clear selectedNodeType yet - keep settings panel visible briefly
+          // Clear stored flow position since we've used it
+          (window as any).lastFlowPosition = null;
+          (window as any).lastScreenPosition = null;
           
-          // Wait a bit for the node to appear on canvas, then refresh from API
-          // Use a longer delay to ensure the node appears first and refresh doesn't overwrite it
+          // Trigger workspace refresh to sync with backend (updates ListView and ClustersView)
+          // Use a small delay to ensure immediate store update happens first
           setTimeout(() => {
-            // Trigger workspace refresh to sync with backend (updates ListView and ClustersView)
             window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+          }, 100);
+          
+          // Select the new node immediately so it appears selected on canvas
+          setTimeout(() => {
+            selectNode(data.node.id);
             
-            // Select the new node after refresh completes
+            // Clear toolbar selection after node is selected
+            setSelectedNodeType(null);
+            
+            // Trigger empty state dismissal if needed
+            const dismissEvent = new CustomEvent('dismiss-empty-state');
+            window.dispatchEvent(dismissEvent);
+            
+            // Focus title field after a brief delay to ensure editor is rendered
             setTimeout(() => {
-              selectNode(data.node.id);
-              // Clear toolbar selection after node is selected
-              setSelectedNodeType(null);
-              
-              // Trigger empty state dismissal if needed
-              const dismissEvent = new CustomEvent('dismiss-empty-state');
-              window.dispatchEvent(dismissEvent);
-              
-              // Focus title field
-              setTimeout(() => {
-                const titleInput = document.querySelector('input[placeholder="Node title..."]') as HTMLInputElement;
-                if (titleInput) {
-                  titleInput.focus();
-                  titleInput.select();
-                }
-              }, 50);
-            }, 300); // Wait for refresh to complete
-          }, 500); // Give enough time for node to appear before refreshing
+              const titleInput = document.querySelector('input[placeholder="Node title..."]') as HTMLInputElement;
+              if (titleInput) {
+                titleInput.focus();
+                titleInput.select();
+              }
+            }, 100);
+          }, 150); // Small delay to ensure node is in React Flow state
         }
       } catch (error) {
         console.error('Error creating node:', error);
@@ -286,15 +288,20 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                 setSelectedNodeType(null);
               }}
               onCreateNode={async (type, pos) => {
-                console.log('[CanvasPageClient] FloatingToolbar onCreateNode called with type:', type, 'pos:', pos);
+                console.log('[CanvasPageClient] FloatingToolbar onCreateNode called with type:', type, 'screen pos:', pos);
                 try {
+                  // Close toolbar immediately so user sees action happening
+                  handleHideToolbar();
+                  
                   // Show settings panel for this node type BEFORE creating
                   setSelectedNodeType(type);
-                  // Actually create the node (settings panel will stay visible until node is selected)
+                  
+                  // Create the node - this will use the flow position stored during double-click
                   await handleCreateNode(type, pos);
                 } catch (error) {
                   console.error('[CanvasPageClient] Error in onCreateNode:', error);
                   setSelectedNodeType(null);
+                  setIsCreating(false);
                 }
               }}
               />
