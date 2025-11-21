@@ -4,20 +4,25 @@ Visual knowledge mapping with AI-powered auto-linking and intelligent node organ
 
 ## Features
 
-- ✅ **Infinite Canvas** - Zoom, pan, and explore your knowledge map
+- ✅ **Infinite Canvas** - Zoom, pan, and explore your knowledge map with smooth interactions
 - ✅ **Dashboard Graph View** - 2D force-directed graph visualization of all workspaces (Obsidian-style)
-- ✅ **Interactive Minimap** - Real-time minimap that syncs with zoom/pan operations
+- ✅ **Interactive Minimap** - Real-time minimap that syncs with zoom/pan operations (accurate positioning)
 - ✅ **Zoom Controls** - Zoom in (+), zoom out (-), and fit view ([]) buttons with minimap sync
-- ✅ **Double-Click Node Creation** - Create nodes instantly with FloatingToolbar
-- ✅ **Multiple Node Types** - Text, Note, Link, Image, Box, Circle
-- ✅ **Rich Text Editor** - TipTap-powered editor with formatting toolbar and slash commands
-- ✅ **Auto-Linking** - AI-powered semantic connections between related nodes
-- ✅ **Smart Layouts** - Force-directed, Radial, Hierarchical, and Semantic clustering
-- ✅ **Keyboard Shortcuts** - Power user shortcuts for fast navigation
-- ✅ **Search & Zoom** - Find and navigate to nodes instantly
-- ✅ **Workspace Management** - Create and organize multiple workspaces
-- ✅ **Real-time Collaboration** - Share workspaces with team members
+- ✅ **Double-Click Node Creation** - Create nodes instantly with FloatingToolbar (Miro-style)
+- ✅ **Multiple Node Types** - Text, Note, Link, Image, Box, Circle, Charts (Bar, Line, Pie, Area), Emoji, Arrow
+- ✅ **Rich Text Editor** - TipTap-powered editor with formatting toolbar and slash commands (Notion-style)
+- ✅ **Floating Formatting Toolbar** - Appears on text selection with formatting options
+- ✅ **Slash Commands** - Notion-style quick actions menu (/)
+- ✅ **Auto-Linking** - AI-powered semantic connections between related nodes (OpenAI embeddings)
+- ✅ **Smart Layouts** - Force-directed, Radial, Hierarchical, and Semantic clustering with auto-organize
+- ✅ **Keyboard Shortcuts** - Comprehensive shortcuts (Ctrl/Cmd+N, Ctrl/Cmd+F, Delete, Escape, Layer controls)
+- ✅ **Node Resizing & Rotation** - Interactive resize handles and rotation controls for all node types
+- ✅ **Layering Controls** - Bring to front, send to back, move forward/backward (Ctrl+]/[)
+- ✅ **Search & Zoom** - Find and navigate to nodes instantly with fuzzy search
+- ✅ **Workspace Management** - Create and organize multiple workspaces with sharing
+- ✅ **Real-time Collaboration** - Share workspaces with team members, comments, activity feed
 - ✅ **Empty State Onboarding** - Guided introduction for new users
+- ✅ **Floating Node Editor** - Horizontal toolbar at bottom for node editing (Miro-style)
 
 ## Getting Started
 
@@ -58,14 +63,26 @@ npm run dev
    - `Ctrl/Cmd+F` - Focus search
    - `Delete/Backspace` - Delete selected node
    - `Escape` - Close panels/deselect
+   - `Ctrl/Cmd+]` - Bring node to front
+   - `Ctrl/Cmd+[` - Send node to back
+   - `Ctrl/Cmd+↑` - Move node forward
+   - `Ctrl/Cmd+↓` - Move node backward
+   - `Ctrl/Cmd+/` - Show all shortcuts
 8. **Search**: Use the search bar (top-left) to find and zoom to nodes
 9. **Auto-Organize**: Click "Auto-Organize" button or press `Ctrl+O` to reorganize layout
 10. **Layouts**: Switch between Force, Radial, Hierarchical, and Semantic cluster views
 
 ### Node Creation
-- **Double-click canvas** → FloatingToolbar appears → Select node type (Text, Note, Link, Image, Box, Circle)
+- **Double-click canvas** → FloatingToolbar appears → Select node type (Text, Note, Link, Image, Box, Circle, Charts, Emoji, Arrow)
 - **Keyboard**: Press `Ctrl/Cmd+N` → Toolbar appears at viewport center
 - **Navigation**: Use arrow keys in toolbar, Enter to select, Escape to close
+
+### Node Editing
+- **Click a node** → Floating horizontal editor bar appears at bottom
+- **Resize nodes**: Drag resize handles on selected nodes (corners and edges)
+- **Rotate nodes**: Drag the rotation handle above selected nodes
+- **Layer nodes**: Use keyboard shortcuts or layer dropdown in editor bar
+- **Text formatting**: Select text → Floating toolbar appears → Format or type `/` for commands
 
 ## Tech Stack
 

@@ -3,8 +3,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
-import { Search, User, ArrowLeft, Edit2, Check, X, CreditCard, LogOut, Tag } from 'lucide-react';
+import { Search, User, Edit2, Check, X, CreditCard, LogOut, Tag } from 'lucide-react';
 import { useCanvasStore } from '@/state/canvasStore';
+import MeshFlowLogo from '@/components/MeshFlowLogo';
+import Link from 'next/link';
 
 interface WorkspaceTopNavProps {
   workspaceId: string;
@@ -181,14 +183,11 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
 
   return (
     <div className="w-full h-full flex items-center justify-between px-4">
-      {/* Left: Workspace name and search */}
+      {/* Left: Logo, workspace name and search */}
       <div className="flex items-center gap-4 flex-1">
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-colors -ml-2"
-        >
-          <ArrowLeft className="w-4 h-4 text-gray-600" />
-        </button>
+        <Link href="/dashboard" className="hidden sm:block">
+          <MeshFlowLogo variant="dark" size="sm" />
+        </Link>
         
         {/* Editable workspace name */}
         {isEditingName ? (

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { Search, Settings, User } from 'lucide-react';
 import Link from 'next/link';
-import { Sparkles } from 'lucide-react';
+import MeshFlowLogo from '@/components/MeshFlowLogo';
 
 export default function DashboardTopNav() {
   const router = useRouter();
@@ -15,10 +15,7 @@ export default function DashboardTopNav() {
   return (
     <div className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4">
       {/* Left: Logo */}
-      <Link href="/dashboard" className="flex items-center gap-2">
-        <Sparkles className="w-6 h-6 text-blue-600" />
-        <span className="text-lg font-bold text-gray-900">MeshFlow</span>
-      </Link>
+      <MeshFlowLogo variant="dark" size="sm" href="/dashboard" />
 
       {/* Right: Profile Menu */}
       <div className="flex items-center gap-2">

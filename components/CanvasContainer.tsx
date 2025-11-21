@@ -149,6 +149,12 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         position = existingNode.position;
       }
       
+      // Get zIndex from nodeMetadata
+      const nodeMetadata = node.content && typeof node.content === 'object' && 'nodeMetadata' in node.content
+        ? (node.content as any).nodeMetadata
+        : {};
+      const zIndex = nodeMetadata.zIndex || 0;
+
       return {
         id: node.id,
         type: 'custom',
@@ -162,6 +168,8 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
           width: 400,
           height: 300,
         }),
+        // Apply zIndex for layering
+        zIndex,
       };
     });
 
@@ -390,11 +398,37 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         }
       }
 
+      // Persist node position to database
+      try {
+        const response = await fetch('/api/nodes/update', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nodeId: node.id,
+            x: node.position.x,
+            y: node.position.y,
+          }),
+        });
+
+        if (response.ok) {
+          // Update workspace store with new position
+          const { updateNode } = useWorkspaceStore.getState();
+          updateNode(node.id, {
+            x: node.position.x,
+            y: node.position.y,
+          });
+        } else {
+          console.error('[CanvasContainer] Failed to update node position:', response.statusText);
+        }
+      } catch (error) {
+        console.error('[CanvasContainer] Error updating node position:', error);
+      }
+
       // Reset drag state
       setDraggedNodeId(null);
       dragStartPosition.current = null;
     },
-    [draggedNodeId, nodes, edges, onConnect, reactFlowInstance]
+    [draggedNodeId, nodes, edges, onConnect, reactFlowInstance, workspaceNodes]
   );
 
   // Handle double-click to create node
@@ -454,7 +488,18 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
       
       const node = nodes.find((n) => n.id === nodeId);
       if (node && node.position) {
-        reactFlowInstance.setCenter(node.position.x, node.position.y, { zoom: 1.2, duration: 400 });
+        const currentZoom = viewport?.zoom || 1;
+        reactFlowInstance.setCenter(node.position.x, node.position.y, { 
+          zoom: Math.min(currentZoom, 1.5), // Don't force zoom, use current or max 1.5x
+          duration: 300 
+        });
+        // Update viewport after navigation
+        setTimeout(() => {
+          if (reactFlowInstance) {
+            const newViewport = reactFlowInstance.getViewport();
+            setViewport(newViewport);
+          }
+        }, 350);
       }
     };
 
@@ -462,20 +507,28 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     return () => window.removeEventListener('scrollToNode', handleScrollToNode as EventListener);
   }, [nodes, reactFlowInstance]);
 
-  // Zoom to selected node
+  // Zoom to selected node - only when explicitly selecting, not on every change
+  const lastSelectedNodeId = useRef<string | null>(null);
+  
   useEffect(() => {
-    if (selectedNodeId && nodes.length > 0) {
+    if (selectedNodeId && selectedNodeId !== lastSelectedNodeId.current && nodes.length > 0) {
       const selectedNode = nodes.find((n) => n.id === selectedNodeId);
-      if (selectedNode && selectedNode.position) {
+      if (selectedNode && selectedNode.position && reactFlowInstance) {
+        lastSelectedNodeId.current = selectedNodeId;
         // Zoom to node using React Flow instance
         setTimeout(() => {
-          reactFlowInstance.fitView({
-            nodes: [{ id: selectedNodeId }],
-            padding: 0.2,
-            duration: 500,
-          });
-        }, 100);
+          if (reactFlowInstance) {
+            reactFlowInstance.fitView({
+              nodes: [{ id: selectedNodeId }],
+              padding: 0.3,
+              duration: 400,
+              maxZoom: 1.5, // Don't zoom in too much
+            });
+          }
+        }, 150);
       }
+    } else if (!selectedNodeId) {
+      lastSelectedNodeId.current = null;
     }
   }, [selectedNodeId, nodes, reactFlowInstance]);
 
@@ -483,17 +536,20 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   useEffect(() => {
     const handleZoomToNode = (event: CustomEvent) => {
       const { nodeId } = event.detail;
-      if (nodeId && nodes.length > 0) {
+      if (nodeId && nodes.length > 0 && reactFlowInstance) {
         const node = nodes.find((n) => n.id === nodeId);
-        if (node) {
+        if (node && node.position) {
           selectNode(nodeId);
           setTimeout(() => {
-            reactFlowInstance.fitView({
-              nodes: [{ id: nodeId }],
-              padding: 0.2,
-              duration: 500,
-            });
-          }, 100);
+            if (reactFlowInstance) {
+              reactFlowInstance.fitView({
+                nodes: [{ id: nodeId }],
+                padding: 0.3,
+                duration: 400,
+                maxZoom: 1.5, // Don't zoom in too much
+              });
+            }
+          }, 150);
         }
       }
     };
@@ -519,68 +575,100 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     selectNode(null);
   }, [selectNode]);
 
+  const hasFittedView = useRef(false);
+  
   const onInit = useCallback(
     (instance: ReactFlowInstance) => {
-      // Store instance for Controls to use
-      // Zoom out for global map view - show entire graph
-      setTimeout(() => {
-        instance.fitView({ 
-          padding: 0.1, 
-          duration: 500,
-          minZoom: 0.1,
-          maxZoom: 1,
-        });
-        // Update viewport after fitView
-        const viewport = instance.getViewport();
-        setViewport(viewport);
-      }, 100);
+      // Only fit view once on initial load when there are nodes
+      // Don't force zoom if user has already interacted with canvas
+      if (!hasFittedView.current && workspaceNodes.length > 0) {
+        hasFittedView.current = true;
+        setTimeout(() => {
+          if (instance) {
+            instance.fitView({ 
+              padding: 0.1, 
+              duration: 400,
+              maxZoom: 1, // Don't zoom in too much initially
+            });
+            // Update viewport after fitView
+            setTimeout(() => {
+              if (instance) {
+                const currentViewport = instance.getViewport();
+                setViewport(currentViewport);
+              }
+            }, 450);
+          }
+        }, 200);
+      } else if (viewport && hasFittedView.current) {
+        // Restore previous viewport if available (on workspace switch)
+        instance.setViewport(viewport, { duration: 0 });
+      }
     },
-    [setViewport]
+    [setViewport, workspaceNodes.length, viewport]
   );
+  
+  // Reset fit view flag when workspace changes
+  useEffect(() => {
+    hasFittedView.current = false;
+  }, [workspaceId]);
 
+  // Throttle viewport updates during movement to prevent excessive re-renders
+  const viewportUpdateTimer = useRef<NodeJS.Timeout | null>(null);
+  const lastViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(null);
+  
   const onMove = useCallback(
-    (_event: any, viewport: { x: number; y: number; zoom: number }) => {
-      // Update viewport state in real-time for minimap sync
-      setViewport(viewport);
+    (_event: any, newViewport: { x: number; y: number; zoom: number }) => {
+      // Skip if viewport hasn't changed significantly
+      if (lastViewportRef.current) {
+        const dx = Math.abs(newViewport.x - lastViewportRef.current.x);
+        const dy = Math.abs(newViewport.y - lastViewportRef.current.y);
+        const dz = Math.abs(newViewport.zoom - lastViewportRef.current.zoom);
+        
+        // Only update if moved more than threshold
+        if (dx < 1 && dy < 1 && dz < 0.01) {
+          return;
+        }
+      }
+      
+      lastViewportRef.current = newViewport;
+      
+      // Throttle updates to prevent excessive re-renders during pan/zoom
+      if (viewportUpdateTimer.current) {
+        clearTimeout(viewportUpdateTimer.current);
+      }
+      
+      viewportUpdateTimer.current = setTimeout(() => {
+        setViewport(newViewport);
+      }, 50); // Update every 50ms max during move for smooth minimap sync
     },
     [setViewport]
   );
 
   const onMoveEnd = useCallback(
-    (_event: any, viewport: { x: number; y: number; zoom: number }) => {
-      setViewport(viewport);
+    (_event: any, newViewport: { x: number; y: number; zoom: number }) => {
+      // Clear any pending throttled update
+      if (viewportUpdateTimer.current) {
+        clearTimeout(viewportUpdateTimer.current);
+        viewportUpdateTimer.current = null;
+      }
+      // Immediately update on move end for accurate final position
+      lastViewportRef.current = newViewport;
+      setViewport(newViewport);
     },
     [setViewport]
   );
-
-  // Listen for viewport changes from Controls (zoom in/out/fit view)
-  // This ensures minimap updates when Controls buttons are clicked
+  
+  // Cleanup timer on unmount
   useEffect(() => {
-    if (!reactFlowInstance) return;
-
-    // Use a more frequent check to catch Controls button clicks
-    // Controls buttons might not always trigger onMove immediately
-    const interval = setInterval(() => {
-      try {
-        const currentViewport = reactFlowInstance.getViewport();
-        const storedViewport = viewport;
-        
-        // Check if viewport has changed (with small threshold to avoid unnecessary updates)
-        if (
-          !storedViewport ||
-          Math.abs(currentViewport.x - storedViewport.x) > 0.01 ||
-          Math.abs(currentViewport.y - storedViewport.y) > 0.01 ||
-          Math.abs(currentViewport.zoom - storedViewport.zoom) > 0.001
-        ) {
-          setViewport(currentViewport);
-        }
-      } catch (error) {
-        // Ignore errors if instance is not ready
+    return () => {
+      if (viewportUpdateTimer.current) {
+        clearTimeout(viewportUpdateTimer.current);
       }
-    }, 50); // Check every 50ms for responsive updates
+    };
+  }, []);
 
-    return () => clearInterval(interval);
-  }, [reactFlowInstance, viewport, setViewport]);
+  // Viewport sync is handled efficiently by onMove and onMoveEnd callbacks
+  // No need for polling interval which can cause performance issues and zoom conflicts
 
   // Note: Removed sync from React Flow nodes back to canvas store
   // This was causing a circular update loop. The sync effect above (line 118) 
@@ -684,12 +772,12 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         zoomOnPinch={true}
         zoomOnDoubleClick={false}
         connectionLineStyle={{ stroke: '#3b82f6', strokeWidth: 2 }}
-        fitView
+        fitView={false}
         attributionPosition="bottom-left"
         className="bg-white"
-        minZoom={0.05}
-        maxZoom={2}
-        defaultViewport={{ x: 0, y: 0, zoom: 0.25 }}
+        minZoom={0.1}
+        maxZoom={4}
+        defaultViewport={viewport || undefined}
         proOptions={{ hideAttribution: true }}
       >
             {/* Infinite canvas - premium subtle grid */}
@@ -712,32 +800,43 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
               }}
             />
         
-            {/* Minimap - premium styling with accurate positioning and real-time updates */}
+            {/* Minimap - reflects everything on canvas with golden-yellow glow aesthetic */}
+            {/* ReactFlow MiniMap automatically updates when nodes/edges change */}
             <MiniMap
-              key={`minimap-${nodes.length}-${edges.length}-${Math.round((viewport?.zoom || 1) * 1000)}`}
               nodeColor={(node) => {
+                // Use golden-yellow for all nodes to match canvas aesthetic
                 const nodeData = node.data as any;
                 if (nodeData?.node) {
                   const color = getNodeColor(nodeData.node);
-                  return color.primary;
+                  // Use golden-yellow glow color for selected nodes, otherwise use node color
+                  if (node.id === selectedNodeId) {
+                    return 'rgba(250, 204, 21, 0.9)';
+                  }
+                  return color.primary || 'rgba(250, 204, 21, 0.7)';
                 }
-                return 'rgba(59, 130, 246, 0.5)';
+                return 'rgba(250, 204, 21, 0.7)';
               }}
-              nodeStrokeWidth={2}
-              nodeBorderRadius={10}
-              nodeStrokeColor="#fff"
-              maskColor="rgba(0, 0, 0, 0.1)"
-              maskStrokeColor="rgba(0, 0, 0, 0.2)"
-              maskStrokeWidth={1}
-              className="bg-white/95 backdrop-blur-sm rounded-lg border border-gray-200 shadow-lg"
+              nodeStrokeWidth={1.5}
+              nodeBorderRadius={4}
+              nodeStrokeColor={(node) => {
+                // Highlight selected node with stronger glow
+                if (node.id === selectedNodeId) {
+                  return 'rgba(250, 204, 21, 1)';
+                }
+                return 'rgba(250, 204, 21, 0.8)';
+              }}
+              maskColor="rgba(0, 0, 0, 0.3)"
+              maskStrokeColor="rgba(250, 204, 21, 0.5)"
+              maskStrokeWidth={2}
+              className="bg-black/60 backdrop-blur-sm rounded-lg border border-yellow-400/30 shadow-lg"
               style={{
-                width: '140px',
-                height: '140px',
-                opacity: 0.9,
+                width: '180px',
+                height: '180px',
+                opacity: 0.95,
               }}
               pannable={true}
               zoomable={true}
-              ariaLabel="Minimap"
+              ariaLabel="Minimap - shows all nodes and edges on canvas"
               position="bottom-right"
               offsetScale={5}
             />

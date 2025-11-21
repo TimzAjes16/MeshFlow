@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import Link from 'next/link';
+import MeshFlowLogo from '@/components/MeshFlowLogo';
 
 export default function SignupPage() {
   const [email, setEmail] = useState('');
@@ -75,8 +76,8 @@ export default function SignupPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="max-w-md w-full space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold text-center text-gray-900">MeshFlow</h1>
+        <div className="flex flex-col items-center">
+          <MeshFlowLogo variant="dark" size="lg" />
           <h2 className="mt-6 text-center text-2xl font-semibold text-gray-900">
             Create your account
           </h2>

@@ -13,6 +13,7 @@ import ChartEditorPanel from './ChartEditorPanel';
 import ImageSettingsPanel from './ImageSettingsPanel';
 import TextSettingsPanel from './TextSettingsPanel';
 import ShapeSettingsPanel from './ShapeSettingsPanel';
+import NodeTransformPanel from './NodeTransformPanel';
 import type { Node } from '@/types/Node';
 import type { Edge } from '@/types/Edge';
 
@@ -32,10 +33,21 @@ function isBoxOrCircleNode(node: Node): boolean {
   return node.tags.includes('box') || node.tags.includes('circle');
 }
 
+function isArrowNode(node: Node): boolean {
+  if (!node.tags || node.tags.length === 0) return false;
+  return node.tags.includes('arrow');
+}
+
+function isEmojiNode(node: Node): boolean {
+  if (!node.tags || node.tags.length === 0) return false;
+  return node.tags.includes('emoji');
+}
+
 export default function NodeEditorPanel() {
   const { selectedNodeId } = useCanvasStore();
   const { nodes, edges, updateNode } = useWorkspaceStore();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspace?.id);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
   const [title, setTitle] = useState('');
@@ -104,8 +116,8 @@ export default function NodeEditorPanel() {
         placeholder: 'Start typing your thoughts...',
       }),
     ],
-    // Only initialize with content if it's not a chart node
-    content: selectedNode && !isChartNode(selectedNode)
+    // Only initialize with content if it's not a chart, emoji, or arrow node
+    content: selectedNode && !isChartNode(selectedNode) && !isEmojiNode(selectedNode) && !isArrowNode(selectedNode)
       ? (typeof selectedNode.content === 'string' 
           ? selectedNode.content 
           : (selectedNode.content && typeof selectedNode.content === 'object' && selectedNode.content.type === 'doc'
@@ -113,16 +125,16 @@ export default function NodeEditorPanel() {
               : ''))
       : '',
     onUpdate: ({ editor }) => {
-      if (selectedNode && !isChartNode(selectedNode)) {
-        // Only update content for non-chart nodes
-        // Chart nodes use ChartEditorPanel which updates content directly
+      if (selectedNode && !isChartNode(selectedNode) && !isEmojiNode(selectedNode) && !isArrowNode(selectedNode)) {
+        // Only update content for non-chart, non-emoji, and non-arrow nodes
+        // Chart nodes use ChartEditorPanel, emoji nodes use emoji input, arrow nodes use arrow settings
         debouncedApiUpdate(selectedNode.id, {
           content: editor.getJSON(),
         });
       }
     },
-    // Disable editor for chart nodes to prevent errors
-    editable: !selectedNode || !isChartNode(selectedNode),
+    // Disable editor for chart, emoji, and arrow nodes to prevent errors
+    editable: !selectedNode || (!isChartNode(selectedNode) && !isEmojiNode(selectedNode) && !isArrowNode(selectedNode)),
   });
 
   // Fetch linked nodes when selected node changes
@@ -179,8 +191,8 @@ export default function NodeEditorPanel() {
         }
       }
       
-      // Only set editor content for non-chart and non-image nodes
-      if (editor && !isChartNode(selectedNode) && !isImageNode(selectedNode)) {
+      // Only set editor content for non-chart, non-image, non-emoji, and non-arrow nodes
+      if (editor && !isChartNode(selectedNode) && !isImageNode(selectedNode) && !isEmojiNode(selectedNode) && !isArrowNode(selectedNode)) {
         // Get current editor content to avoid unnecessary updates
         const currentContent = editor.getJSON();
         const nodeContent = selectedNode.content;
@@ -704,6 +716,296 @@ export default function NodeEditorPanel() {
                   </div>
                 </div>
               </div>
+            ) : isEmojiNode(selectedNode) ? (
+              <div className="space-y-6">
+                {/* Emoji Info */}
+                <div className="border-t border-gray-200 pt-4">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Emoji</h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-center p-8 bg-gray-50 rounded-lg border-2 border-gray-200">
+                      <div className="text-6xl flex items-center justify-center gap-2 flex-wrap">
+                        {(() => {
+                          let emojis: string[] = [];
+                          if (selectedNode.content && typeof selectedNode.content === 'object' && 'emoji' in selectedNode.content) {
+                            const emojiData = (selectedNode.content as any).emoji;
+                            if (Array.isArray(emojiData)) {
+                              emojis = emojiData;
+                            } else if (typeof emojiData === 'string') {
+                              emojis = [emojiData];
+                            }
+                          }
+                          if (emojis.length === 0 && selectedNode.title) {
+                            emojis = Array.from(selectedNode.title).filter((char) => {
+                              const codePoint = char.codePointAt(0);
+                              return codePoint && (
+                                (codePoint >= 0x1F300 && codePoint <= 0x1F9FF) ||
+                                (codePoint >= 0x1F600 && codePoint <= 0x1F64F) ||
+                                (codePoint >= 0x1F680 && codePoint <= 0x1F6FF) ||
+                                (codePoint >= 0x2600 && codePoint <= 0x26FF) ||
+                                (codePoint >= 0x2700 && codePoint <= 0x27BF)
+                              );
+                            });
+                          }
+                          if (emojis.length === 0) {
+                            emojis = ['😀'];
+                          }
+                          return emojis.map((emoji, idx) => <span key={idx}>{emoji}</span>);
+                        })()}
+                      </div>
+                    </div>
+                    <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-sm text-blue-900 font-medium mb-1">
+                        Click the emoji node on the canvas
+                      </p>
+                      <p className="text-xs text-blue-700">
+                        to open the emoji picker and add multiple emojis
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : isArrowNode(selectedNode) ? (
+              <div className="space-y-6">
+                {/* Arrow Settings Panel */}
+                <div className="border-t border-gray-200 pt-4">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Arrow Settings</h3>
+                  <div className="space-y-4">
+                    {/* Arrow Type */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Arrow Type
+                      </label>
+                      <div className="grid grid-cols-4 gap-2 max-h-96 overflow-y-auto">
+                        {[
+                          { id: 'right', label: '→', name: 'Right' },
+                          { id: 'left', label: '←', name: 'Left' },
+                          { id: 'up', label: '↑', name: 'Up' },
+                          { id: 'down', label: '↓', name: 'Down' },
+                          { id: 'up-right', label: '↗', name: 'Up Right' },
+                          { id: 'down-right', label: '↘', name: 'Down Right' },
+                          { id: 'down-left', label: '↙', name: 'Down Left' },
+                          { id: 'up-left', label: '↖', name: 'Up Left' },
+                          { id: 'double-horizontal', label: '↔', name: 'Double Horizontal' },
+                          { id: 'double-vertical', label: '↕', name: 'Double Vertical' },
+                          { id: 'curved-right', label: '↷', name: 'Curved Right' },
+                          { id: 'curved-left', label: '↶', name: 'Curved Left' },
+                        ].map((arrow) => {
+                          const dir = arrow.id;
+                          const arrowSettings = selectedNode.content && typeof selectedNode.content === 'object' && 'arrow' in selectedNode.content
+                            ? (selectedNode.content as any).arrow
+                            : { direction: 'right' };
+                          const isSelected = (arrowSettings?.direction || 'right') === dir;
+                          return (
+                            <button
+                              key={dir}
+                              onClick={async () => {
+                                const currentArrow = selectedNode.content && typeof selectedNode.content === 'object' && 'arrow' in selectedNode.content
+                                  ? (selectedNode.content as any).arrow
+                                  : { direction: 'right', color: '#1f2937', thickness: 4 };
+                                
+                                const newArrow = { ...currentArrow, direction: dir };
+                                const currentContent = selectedNode.content && typeof selectedNode.content === 'object'
+                                  ? { ...selectedNode.content, arrow: newArrow }
+                                  : { arrow: newArrow };
+                                
+                                updateNode(selectedNode.id, {
+                                  content: currentContent,
+                                });
+                                
+                                if (workspaceId) {
+                                  try {
+                                    setIsUpdating(true);
+                                    const response = await fetch('/api/nodes/update', {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        nodeId: selectedNode.id,
+                                        content: currentContent,
+                                      }),
+                                    });
+                                    
+                                    if (response.ok) {
+                                      const data = await response.json();
+                                      if (data.node) {
+                                        updateNode(selectedNode.id, data.node);
+                                      }
+                                    }
+                                  } catch (error) {
+                                    console.error('Error updating arrow direction:', error);
+                                  } finally {
+                                    setIsUpdating(false);
+                                  }
+                                }
+                              }}
+                              className={`p-3 border-2 rounded-lg transition-colors flex flex-col items-center justify-center ${
+                                isSelected
+                                  ? 'border-blue-500 bg-blue-50'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                              title={arrow.name}
+                            >
+                              <div className="text-2xl mb-1">{arrow.label}</div>
+                              <div className="text-xs text-gray-500 text-center leading-tight">{arrow.name}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    
+                    {/* Thickness */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Width
+                      </label>
+                      <div className="space-y-2">
+                        <input
+                          type="range"
+                          min="2"
+                          max="20"
+                          value={(() => {
+                            const arrowSettings = selectedNode.content && typeof selectedNode.content === 'object' && 'arrow' in selectedNode.content
+                              ? (selectedNode.content as any).arrow
+                              : { direction: 'right', color: '#1f2937', thickness: 4 };
+                            return arrowSettings?.thickness || 4;
+                          })()}
+                          onChange={async (e) => {
+                            const thickness = parseInt(e.target.value);
+                            const currentArrow = selectedNode.content && typeof selectedNode.content === 'object' && 'arrow' in selectedNode.content
+                              ? (selectedNode.content as any).arrow
+                              : { direction: 'right', color: '#1f2937', thickness: 4 };
+                            
+                            const newArrow = { ...currentArrow, thickness };
+                            const currentContent = selectedNode.content && typeof selectedNode.content === 'object'
+                              ? { ...selectedNode.content, arrow: newArrow }
+                              : { arrow: newArrow };
+                            
+                            updateNode(selectedNode.id, {
+                              content: currentContent,
+                            });
+                            
+                            if (workspaceId) {
+                              try {
+                                setIsUpdating(true);
+                                const response = await fetch('/api/nodes/update', {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    nodeId: selectedNode.id,
+                                    content: currentContent,
+                                  }),
+                                });
+                                
+                                if (response.ok) {
+                                  const data = await response.json();
+                                  if (data.node) {
+                                    updateNode(selectedNode.id, data.node);
+                                  }
+                                }
+                              } catch (error) {
+                                console.error('Error updating arrow thickness:', error);
+                              } finally {
+                                setIsUpdating(false);
+                              }
+                            }
+                          }}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                        <p className="text-right text-xs text-gray-500">
+                          {(() => {
+                            const arrowSettings = selectedNode.content && typeof selectedNode.content === 'object' && 'arrow' in selectedNode.content
+                              ? (selectedNode.content as any).arrow
+                              : { direction: 'right', color: '#1f2937', thickness: 4 };
+                            return `${arrowSettings?.thickness || 4}px`;
+                          })()}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Color Wall */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Color
+                      </label>
+                      <div className="grid grid-cols-8 gap-1.5">
+                        {[
+                          // Grays and blacks
+                          '#000000', '#1f2937', '#374151', '#4b5563', '#6b7280', '#9ca3af', '#d1d5db', '#e5e7eb',
+                          // Blues
+                          '#1e3a8a', '#1e40af', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#dbeafe', '#eff6ff',
+                          // Purples
+                          '#581c87', '#6b21a8', '#7c3aed', '#8b5cf6', '#a78bfa', '#c4b5fd', '#e9d5ff', '#f3e8ff',
+                          // Greens
+                          '#14532d', '#166534', '#16a34a', '#22c55e', '#4ade80', '#86efac', '#bbf7d0', '#dcfce7',
+                          // Yellows/Oranges
+                          '#78350f', '#92400e', '#d97706', '#f59e0b', '#fbbf24', '#fcd34d', '#fde68a', '#fef3c7',
+                          // Reds/Pinks
+                          '#7f1d1d', '#991b1b', '#dc2626', '#ef4444', '#f87171', '#fca5a5', '#fecaca', '#fee2e2',
+                          // Teals/Cyans
+                          '#134e4a', '#155e75', '#0d9488', '#14b8a6', '#2dd4bf', '#5eead4', '#99f6e4', '#ccfbf1',
+                          // Indigos
+                          '#312e81', '#3730a3', '#4338ca', '#6366f1', '#818cf8', '#a5b4fc', '#c7d2fe', '#e0e7ff',
+                        ].map((color) => {
+                          const arrowSettings = selectedNode.content && typeof selectedNode.content === 'object' && 'arrow' in selectedNode.content
+                            ? (selectedNode.content as any).arrow
+                            : { direction: 'right', color: '#1f2937', thickness: 4 };
+                          const isSelected = (arrowSettings?.color || '#1f2937') === color;
+                          return (
+                            <button
+                              key={color}
+                              onClick={async () => {
+                                const currentArrow = selectedNode.content && typeof selectedNode.content === 'object' && 'arrow' in selectedNode.content
+                                  ? (selectedNode.content as any).arrow
+                                  : { direction: 'right', color: '#1f2937', thickness: 4 };
+                                
+                                const newArrow = { ...currentArrow, color };
+                                const currentContent = selectedNode.content && typeof selectedNode.content === 'object'
+                                  ? { ...selectedNode.content, arrow: newArrow }
+                                  : { arrow: newArrow };
+                                
+                                updateNode(selectedNode.id, {
+                                  content: currentContent,
+                                });
+                                
+                                if (workspaceId) {
+                                  try {
+                                    setIsUpdating(true);
+                                    const response = await fetch('/api/nodes/update', {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        nodeId: selectedNode.id,
+                                        content: currentContent,
+                                      }),
+                                    });
+                                    
+                                    if (response.ok) {
+                                      const data = await response.json();
+                                      if (data.node) {
+                                        updateNode(selectedNode.id, data.node);
+                                      }
+                                    }
+                                  } catch (error) {
+                                    console.error('Error updating arrow color:', error);
+                                  } finally {
+                                    setIsUpdating(false);
+                                  }
+                                }
+                              }}
+                              className={`w-8 h-8 rounded border-2 transition-all hover:scale-110 ${
+                                isSelected
+                                  ? 'border-blue-500 ring-2 ring-blue-200 scale-110'
+                                  : 'border-gray-300 hover:border-gray-400'
+                              }`}
+                              style={{ backgroundColor: color }}
+                              title={color}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             ) : isBoxOrCircleNode(selectedNode) ? (
               <div className="space-y-6">
                 {/* Shape Settings Panel */}
@@ -824,6 +1126,41 @@ export default function NodeEditorPanel() {
                 </div>
               </div>
             )}
+
+        {/* Transform Controls - Expand and Rotate - Available on ALL node types */}
+        <NodeTransformPanel
+          node={selectedNode}
+          onUpdate={async (updates) => {
+            // Update store immediately
+            updateNode(selectedNode.id, updates);
+            
+            // Sync to API
+            if (workspaceId) {
+              try {
+                setIsUpdating(true);
+                const response = await fetch('/api/nodes/update', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    nodeId: selectedNode.id,
+                    ...updates,
+                  }),
+                });
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  if (data.node) {
+                    updateNode(selectedNode.id, data.node);
+                  }
+                }
+              } catch (error) {
+                console.error('Error updating node transform:', error);
+              } finally {
+                setIsUpdating(false);
+              }
+            }
+          }}
+        />
 
         {/* Tags */}
         <div>

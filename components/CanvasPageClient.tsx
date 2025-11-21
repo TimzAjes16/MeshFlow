@@ -8,19 +8,32 @@ import KeyboardShortcuts from './KeyboardShortcuts';
 import CanvasSidebar from './CanvasSidebar';
 import ToolbarSettingsPanel from './ToolbarSettingsPanel';
 import NodeEditorPanel from './NodeEditorPanel';
+import EmojiPickerPopup from './EmojiPickerPopup';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
+import type { Node } from '@/types/Node';
 
 interface CanvasPageClientProps {
   workspaceId: string;
 }
 
 export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps) {
-  const { nodes, addNode } = useWorkspaceStore();
+  const { nodes, addNode, updateNode } = useWorkspaceStore();
   const { selectNode, selectedNodeId } = useCanvasStore();
   const [isCreating, setIsCreating] = useState(false);
   const [toolbarPosition, setToolbarPosition] = useState<{ x: number; y: number } | null>(null);
   const [selectedNodeType, setSelectedNodeType] = useState<string | null>(null);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [emojiPickerNode, setEmojiPickerNode] = useState<Node | null>(null);
+  const [emojiPickerPosition, setEmojiPickerPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Clear selectedNodeType when node is deselected
+  useEffect(() => {
+    if (!selectedNodeId) {
+      setSelectedNodeType(null);
+      setToolbarPosition(null); // Also clear toolbar position when deselected
+    }
+  }, [selectedNodeId]);
 
   const handleCreateNode = useCallback(
     async (type: string = 'note', screenPosition: { x: number; y: number }) => {
@@ -41,8 +54,10 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           note: 'New Note',
           link: 'New Link',
           image: 'New Image',
+          emoji: '😀',
           box: 'New Box',
           circle: 'New Circle',
+          arrow: 'Arrow',
           'bar-chart': 'Bar Chart',
           'line-chart': 'Line Chart',
           'pie-chart': 'Pie Chart',
@@ -98,7 +113,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
             title: titles[type] || 'New Node',
             content: type === 'text' 
               ? { type: 'doc', content: [{ type: 'paragraph' }] } 
-              : (type.includes('chart') ? getDefaultChartContent(type) : {}),
+              : (type.includes('chart') ? getDefaultChartContent(type) : (type === 'emoji' ? { emoji: '😀' } : (type === 'arrow' ? { arrow: { direction: 'right' } } : {}))),
             tags: [type],
             x: storedFlowPos.x,
             y: storedFlowPos.y,
@@ -233,7 +248,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
 
   // Handle keyboard shortcuts
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
       // Don't trigger shortcuts if user is typing in an input/textarea
       const target = e.target as HTMLElement;
       if (
@@ -260,6 +275,227 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           (window as any).lastFlowPosition = { x: 500, y: 400 };
         }
         return;
+      }
+
+      // Layer controls: Ctrl+] Bring to Front, Ctrl+[ Send to Back, Ctrl+↑ Move Forward, Ctrl+↓ Move Backward
+      if ((e.metaKey || e.ctrlKey) && selectedNodeId && nodes.length > 0) {
+        const selectedNode = nodes.find(n => n.id === selectedNodeId);
+        if (selectedNode) {
+          const nodeMetadata = selectedNode.content && typeof selectedNode.content === 'object' && 'nodeMetadata' in selectedNode.content
+            ? (selectedNode.content as any).nodeMetadata
+            : {};
+          const currentZIndex = nodeMetadata.zIndex || 0;
+
+          if (e.key === ']') {
+            e.preventDefault();
+            // Bring to Front
+            const sortedNodes = [...nodes].sort((a, b) => {
+              const aMeta = a.content && typeof a.content === 'object' && 'nodeMetadata' in a.content
+                ? (a.content as any).nodeMetadata
+                : {};
+              const bMeta = b.content && typeof b.content === 'object' && 'nodeMetadata' in b.content
+                ? (b.content as any).nodeMetadata
+                : {};
+              return (aMeta.zIndex || 0) - (bMeta.zIndex || 0);
+            });
+            const maxZIndex = Math.max(...sortedNodes.map(n => {
+              const meta = n.content && typeof n.content === 'object' && 'nodeMetadata' in n.content
+                ? (n.content as any).nodeMetadata
+                : {};
+              return meta.zIndex || 0;
+            }));
+            const newContent = {
+              ...selectedNode.content,
+              nodeMetadata: { ...nodeMetadata, zIndex: maxZIndex + 1 },
+            };
+            updateNode(selectedNodeId, { content: newContent });
+            fetch('/api/nodes/update', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nodeId: selectedNodeId,
+                content: newContent,
+              }),
+            }).then(() => window.dispatchEvent(new CustomEvent('refreshWorkspace')));
+            return;
+          } else if (e.key === '[') {
+            e.preventDefault();
+            // Send to Back
+            const sortedNodes = [...nodes].sort((a, b) => {
+              const aMeta = a.content && typeof a.content === 'object' && 'nodeMetadata' in a.content
+                ? (a.content as any).nodeMetadata
+                : {};
+              const bMeta = b.content && typeof b.content === 'object' && 'nodeMetadata' in b.content
+                ? (b.content as any).nodeMetadata
+                : {};
+              return (aMeta.zIndex || 0) - (bMeta.zIndex || 0);
+            });
+            const minZIndex = Math.min(...sortedNodes.map(n => {
+              const meta = n.content && typeof n.content === 'object' && 'nodeMetadata' in n.content
+                ? (n.content as any).nodeMetadata
+                : {};
+              return meta.zIndex || 0;
+            }));
+            const newContent = {
+              ...selectedNode.content,
+              nodeMetadata: { ...nodeMetadata, zIndex: minZIndex - 1 },
+            };
+            updateNode(selectedNodeId, { content: newContent });
+            fetch('/api/nodes/update', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nodeId: selectedNodeId,
+                content: newContent,
+              }),
+            }).then(() => window.dispatchEvent(new CustomEvent('refreshWorkspace')));
+            return;
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            // Move Forward
+            const sortedNodes = [...nodes].sort((a, b) => {
+              const aMeta = a.content && typeof a.content === 'object' && 'nodeMetadata' in a.content
+                ? (a.content as any).nodeMetadata
+                : {};
+              const bMeta = b.content && typeof b.content === 'object' && 'nodeMetadata' in b.content
+                ? (b.content as any).nodeMetadata
+                : {};
+              return (aMeta.zIndex || 0) - (bMeta.zIndex || 0);
+            });
+            const nextNode = sortedNodes.find(n => {
+              if (n.id === selectedNodeId) return false;
+              const meta = n.content && typeof n.content === 'object' && 'nodeMetadata' in n.content
+                ? (n.content as any).nodeMetadata
+                : {};
+              return (meta.zIndex || 0) > currentZIndex;
+            });
+            if (nextNode) {
+              const nextMeta = nextNode.content && typeof nextNode.content === 'object' && 'nodeMetadata' in nextNode.content
+                ? (nextNode.content as any).nodeMetadata
+                : {};
+              const nextZIndex = nextMeta.zIndex || 0;
+              updateNode(selectedNodeId, {
+                content: {
+                  ...selectedNode.content,
+                  nodeMetadata: { ...nodeMetadata, zIndex: nextZIndex },
+                },
+              });
+              updateNode(nextNode.id, {
+                content: {
+                  ...nextNode.content,
+                  nodeMetadata: { ...nextMeta, zIndex: currentZIndex },
+                },
+              });
+              Promise.all([
+                fetch('/api/nodes/update', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    nodeId: selectedNodeId,
+                    content: { ...selectedNode.content, nodeMetadata: { ...nodeMetadata, zIndex: nextZIndex } },
+                  }),
+                }),
+                fetch('/api/nodes/update', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    nodeId: nextNode.id,
+                    content: { ...nextNode.content, nodeMetadata: { ...nextMeta, zIndex: currentZIndex } },
+                  }),
+                }),
+              ]).then(() => {
+                window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+              });
+            } else {
+              const newContent = {
+                ...selectedNode.content,
+                nodeMetadata: { ...nodeMetadata, zIndex: currentZIndex + 1 },
+              };
+              updateNode(selectedNodeId, { content: newContent });
+              fetch('/api/nodes/update', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  nodeId: selectedNodeId,
+                  content: newContent,
+                }),
+              }).then(() => window.dispatchEvent(new CustomEvent('refreshWorkspace')));
+            }
+            return;
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            // Move Backward
+            const sortedNodes = [...nodes].sort((a, b) => {
+              const aMeta = a.content && typeof a.content === 'object' && 'nodeMetadata' in a.content
+                ? (a.content as any).nodeMetadata
+                : {};
+              const bMeta = b.content && typeof b.content === 'object' && 'nodeMetadata' in b.content
+                ? (b.content as any).nodeMetadata
+                : {};
+              return (aMeta.zIndex || 0) - (bMeta.zIndex || 0);
+            });
+            const prevNode = [...sortedNodes].reverse().find(n => {
+              if (n.id === selectedNodeId) return false;
+              const meta = n.content && typeof n.content === 'object' && 'nodeMetadata' in n.content
+                ? (n.content as any).nodeMetadata
+                : {};
+              return (meta.zIndex || 0) < currentZIndex;
+            });
+            if (prevNode) {
+              const prevMeta = prevNode.content && typeof prevNode.content === 'object' && 'nodeMetadata' in prevNode.content
+                ? (prevNode.content as any).nodeMetadata
+                : {};
+              const prevZIndex = prevMeta.zIndex || 0;
+              updateNode(selectedNodeId, {
+                content: {
+                  ...selectedNode.content,
+                  nodeMetadata: { ...nodeMetadata, zIndex: prevZIndex },
+                },
+              });
+              updateNode(prevNode.id, {
+                content: {
+                  ...prevNode.content,
+                  nodeMetadata: { ...prevMeta, zIndex: currentZIndex },
+                },
+              });
+              Promise.all([
+                fetch('/api/nodes/update', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    nodeId: selectedNodeId,
+                    content: { ...selectedNode.content, nodeMetadata: { ...nodeMetadata, zIndex: prevZIndex } },
+                  }),
+                }),
+                fetch('/api/nodes/update', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    nodeId: prevNode.id,
+                    content: { ...prevNode.content, nodeMetadata: { ...prevMeta, zIndex: currentZIndex } },
+                  }),
+                }),
+              ]).then(() => {
+                window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+              });
+            } else {
+              const newContent = {
+                ...selectedNode.content,
+                nodeMetadata: { ...nodeMetadata, zIndex: currentZIndex - 1 },
+              };
+              updateNode(selectedNodeId, { content: newContent });
+              fetch('/api/nodes/update', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  nodeId: selectedNodeId,
+                  content: newContent,
+                }),
+              }).then(() => window.dispatchEvent(new CustomEvent('refreshWorkspace')));
+            }
+            return;
+          }
+        }
       }
 
       // Ctrl/Cmd + N: Show horizontal bar for creating node
@@ -291,7 +527,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectNode, selectedNodeId, handleShowToolbar]);
+  }, [selectNode, selectedNodeId]);
 
   // Listen for delete node event
   useEffect(() => {
@@ -317,6 +553,70 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     window.addEventListener('deleteSelectedNode', handleDeleteNode as EventListener);
     return () => window.removeEventListener('deleteSelectedNode', handleDeleteNode as EventListener);
   }, [selectNode]);
+
+  // Listen for emoji picker open event
+  useEffect(() => {
+    const handleOpenEmojiPicker = (event: CustomEvent) => {
+      const { nodeId, position } = event.detail;
+      const node = nodes.find(n => n.id === nodeId);
+      if (node) {
+        setEmojiPickerNode(node);
+        // Center the popup on screen
+        setEmojiPickerPosition({
+          x: window.innerWidth / 2,
+          y: window.innerHeight / 2,
+        });
+        setEmojiPickerOpen(true);
+        selectNode(nodeId); // Select the node
+      }
+    };
+
+    window.addEventListener('openEmojiPicker', handleOpenEmojiPicker as EventListener);
+    return () => window.removeEventListener('openEmojiPicker', handleOpenEmojiPicker as EventListener);
+  }, [nodes, selectNode]);
+
+  // Handle emoji selection
+  const handleEmojiSelect = useCallback(async (emojiString: string) => {
+    if (!emojiPickerNode || !workspaceId) return;
+
+    // Parse emoji string into array (handle both single and multiple emojis)
+    const emojis = Array.from(emojiString);
+    
+    const currentContent = emojiPickerNode.content && typeof emojiPickerNode.content === 'object'
+      ? { ...emojiPickerNode.content, emoji: emojis }
+      : { emoji: emojis };
+
+    // Use first emoji as title, or combine if multiple
+    const title = emojis.length > 0 ? (emojis.length === 1 ? emojis[0] : emojis.join('')) : '😀';
+
+    // Update node optimistically
+    updateNode(emojiPickerNode.id, {
+      title: title,
+      content: currentContent,
+    });
+
+    // Persist to API
+    try {
+      const response = await fetch('/api/nodes/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId: emojiPickerNode.id,
+          title: title,
+          content: currentContent,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.node) {
+          updateNode(emojiPickerNode.id, data.node);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating emoji:', error);
+    }
+  }, [emojiPickerNode, workspaceId, updateNode]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-white">
@@ -347,18 +647,30 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           />
         </div>
         
-        {/* Right Panel - Node Editor or Toolbar Settings */}
-        <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
-          {selectedNodeType && !selectedNodeId ? (
-            <ToolbarSettingsPanel 
-              selectedNodeType={selectedNodeType}
-              onClose={() => setSelectedNodeType(null)}
-            />
-          ) : (
-            <NodeEditorPanel />
-          )}
-        </aside>
+        {/* Right Panel - Node Editor or Toolbar Settings - Only show when node is selected or creating */}
+        {selectedNodeId || selectedNodeType ? (
+          <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
+            {selectedNodeType && !selectedNodeId ? (
+              <ToolbarSettingsPanel 
+                selectedNodeType={selectedNodeType}
+                onClose={() => setSelectedNodeType(null)}
+              />
+            ) : selectedNodeId ? (
+              <NodeEditorPanel />
+            ) : null}
+          </aside>
+        ) : null}
       </div>
+      
+      {/* Emoji Picker Popup */}
+      {emojiPickerOpen && emojiPickerNode && (
+        <EmojiPickerPopup
+          node={emojiPickerNode}
+          position={emojiPickerPosition}
+          onClose={() => setEmojiPickerOpen(false)}
+          onSelect={handleEmojiSelect}
+        />
+      )}
       
       {/* Keyboard Shortcuts */}
       <KeyboardShortcuts />

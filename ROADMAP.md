@@ -84,4 +84,14 @@
 - ✅ Multiple layout modes (Force, Radial, Hierarchical, Semantic Clusters, List)
 - ✅ Collaboration features (sharing, comments, activity feed)
 - ✅ Export/Import functionality (JSON, Markdown)
+- ✅ Node resizing and rotation handles (interactive resize/rotate controls)
+- ✅ Layering controls (bring to front, send to back, move forward/backward)
+- ✅ Chart node types (Bar, Line, Pie, Area charts with data editing)
+- ✅ Image node support (upload, display, resize)
+- ✅ Text node styling (font size, family, alignment, line height)
+- ✅ Emoji node with fill/no-fill options
+- ✅ Floating horizontal node editor bar (Miro-style bottom toolbar)
+- ✅ UI improvements (removed duplicate back button, fixed React Hook errors)
+- ✅ Minimap improvements (better accuracy, real-time sync)
+- ✅ Zoom improvements (smoother zoom, fixed viewport issues)
 

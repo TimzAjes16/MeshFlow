@@ -44,3 +44,36 @@ body {
   stroke: #3b82f6;
   stroke-width: 3;
 }
+
+/* Minimap styles - ensure all elements are visible */
+.react-flow__minimap {
+  /* Ensure minimap background is visible */
+  background-color: rgba(10, 10, 10, 0.6) !important;
+}
+
+.react-flow__minimap-mask {
+  /* Ensure mask is visible */
+  fill: rgba(0, 0, 0, 0.3) !important;
+  stroke: rgba(250, 204, 21, 0.5) !important;
+  stroke-width: 2px !important;
+}
+
+/* Minimap nodes - ensure they're visible */
+.react-flow__minimap svg .react-flow__node {
+  /* Nodes should be visible with golden-yellow glow */
+  filter: drop-shadow(0 0 2px rgba(250, 204, 21, 0.6));
+}
+
+/* Minimap edges - ensure they're visible with golden-yellow glow */
+.react-flow__minimap svg .react-flow__edge-path {
+  stroke: rgba(250, 204, 21, 0.6) !important;
+  stroke-width: 1.5px !important;
+  filter: drop-shadow(0 0 1px rgba(250, 204, 21, 0.4));
+}
+
+/* Selected node in minimap */
+.react-flow__minimap svg .react-flow__node.selected {
+  filter: drop-shadow(0 0 3px rgba(250, 204, 21, 0.9));
+  stroke: rgba(250, 204, 21, 1) !important;
+  stroke-width: 2px !important;
+}

@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
-import { ArrowLeft, Save, User, Mail, Key, Trash2, LogOut, Sparkles, CreditCard } from 'lucide-react';
+import { ArrowLeft, Save, User, Mail, Key, Trash2, LogOut, CreditCard } from 'lucide-react';
 import Link from 'next/link';
+import MeshFlowLogo from '@/components/MeshFlowLogo';
 
 interface SettingsPageClientProps {
   user: {
@@ -147,10 +148,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
       {/* Top Nav */}
       <div className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4">
         {/* Left: Logo */}
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <Sparkles className="w-6 h-6 text-blue-600" />
-          <span className="text-lg font-bold text-gray-900">MeshFlow</span>
-        </Link>
+        <MeshFlowLogo variant="dark" size="sm" href="/dashboard" />
 
         {/* Right: Profile Menu */}
         <div className="flex items-center gap-2">

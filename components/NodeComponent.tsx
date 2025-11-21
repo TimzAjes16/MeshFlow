@@ -1,13 +1,32 @@
 'use client';
 
-import { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { memo, useEffect, useCallback } from 'react';
+import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
 import { motion } from 'framer-motion';
 import type { Node as NodeType } from '@/types/Node';
 import { getNodeColor } from '@/lib/nodeColors';
 import { BarChartNode, LineChartNode, PieChartNode, AreaChartNode } from './charts';
 import { useCanvasStore } from '@/state/canvasStore';
+import { useWorkspaceStore } from '@/state/workspaceStore';
 import { Image as ImageIcon } from 'lucide-react';
+import ResizeHandle from './ResizeHandle';
+import RotateHandle from './RotateHandle';
+
+// Load Google Fonts dynamically
+const loadGoogleFont = (fontName: string) => {
+  if (typeof window === 'undefined') return;
+  
+  // Check if font is already loaded
+  const linkId = `google-font-${fontName.replace(/\s+/g, '-').toLowerCase()}`;
+  if (document.getElementById(linkId)) return;
+  
+  // Create link element
+  const link = document.createElement('link');
+  link.id = linkId;
+  link.rel = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontName)}:wght@400;500;600;700&display=swap`;
+  document.head.appendChild(link);
+};
 
 interface NodeData {
   label: string;
@@ -56,6 +75,16 @@ function isTextNode(node: NodeType): boolean {
   return node.tags.includes('text');
 }
 
+function isEmojiNode(node: NodeType): boolean {
+  if (!node.tags || node.tags.length === 0) return false;
+  return node.tags.includes('emoji');
+}
+
+function isArrowNode(node: NodeType): boolean {
+  if (!node.tags || node.tags.length === 0) return false;
+  return node.tags.includes('arrow');
+}
+
 // Extract text from TipTap JSON content
 function extractTextFromContent(content: any): string {
   if (typeof content === 'string') return content;
@@ -77,9 +106,11 @@ function extractTextFromTipTap(node: any): string {
   return '';
 }
 
-export default memo(function NodeComponent({ data, selected }: NodeProps<NodeData>) {
+export default memo(function NodeComponent({ data, selected, id }: NodeProps<NodeData>) {
   const { label, node } = data;
   const showTags = useCanvasStore((state) => state.showTags);
+  const { updateNode } = useWorkspaceStore();
+  const workspaceId = useWorkspaceStore((state) => state.currentWorkspace?.id);
   const color = getNodeColor(node);
   const chartType = getChartType(node);
   const isChart = isChartNode(node);
@@ -87,10 +118,136 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
   // Use node.title directly for real-time updates (fallback to label if title not available)
   const displayLabel = node.title || label || 'Untitled';
   
+  // Get node dimensions and rotation from content metadata
+  const nodeMetadata = node.content && typeof node.content === 'object' && 'nodeMetadata' in node.content
+    ? (node.content as any).nodeMetadata
+    : {};
+  const nodeWidth = nodeMetadata.width || 200;
+  const nodeHeight = nodeMetadata.height || 100;
+  const nodeRotation = nodeMetadata.rotation || 0;
+
+  // Extract text settings early (before any conditional returns) for Google Font loading
+  const textSettings = node.content && typeof node.content === 'object' && 'textSettings' in node.content
+    ? (node.content as any).textSettings
+    : null;
+  const googleFont = textSettings?.googleFont || '';
+
+  // Load Google Font when component mounts if needed (must be called unconditionally)
+  useEffect(() => {
+    if (googleFont) {
+      loadGoogleFont(googleFont);
+    }
+  }, [googleFont]);
+
+  // Handle resize
+  const handleResize = useCallback(async (nodeId: string, width: number, height: number) => {
+    const currentContent = node.content || {};
+    const newContent = {
+      ...currentContent,
+      nodeMetadata: {
+        ...nodeMetadata,
+        width: Math.round(width),
+        height: Math.round(height),
+      },
+    };
+    
+    updateNode(nodeId, { content: newContent });
+    
+    // Persist to database
+    if (workspaceId) {
+      try {
+        await fetch('/api/nodes/update', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nodeId,
+            content: newContent,
+          }),
+        });
+        window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+      } catch (error) {
+        console.error('Error updating node dimensions:', error);
+      }
+    }
+  }, [node, nodeMetadata, updateNode, workspaceId]);
+
+  // Handle rotate
+  const handleRotate = useCallback(async (nodeId: string, rotation: number) => {
+    const currentContent = node.content || {};
+    const newContent = {
+      ...currentContent,
+      nodeMetadata: {
+        ...nodeMetadata,
+        rotation: Math.round(rotation),
+      },
+    };
+    
+    updateNode(nodeId, { content: newContent });
+    
+    // Persist to database
+    if (workspaceId) {
+      try {
+        await fetch('/api/nodes/update', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nodeId,
+            content: newContent,
+          }),
+        });
+        window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+      } catch (error) {
+        console.error('Error updating node rotation:', error);
+      }
+    }
+  }, [node, nodeMetadata, updateNode, workspaceId]);
+
   // Get chart config from node content
   const chartConfig = node.content && typeof node.content === 'object' && 'chart' in node.content
     ? (node.content as any).chart
     : null;
+
+  // Helper component to wrap nodes with resize/rotate handles
+  const NodeWrapper = ({ children, defaultWidth = 200, defaultHeight = 100, style = {} }: { 
+    children: React.ReactNode;
+    defaultWidth?: number;
+    defaultHeight?: number;
+    style?: React.CSSProperties;
+  }) => {
+    const width = nodeWidth || defaultWidth;
+    const height = nodeHeight || defaultHeight;
+    const rotation = nodeRotation || 0;
+
+  return (
+    <motion.div
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.3, ease: 'easeOut' }}
+        className="relative"
+        style={{
+          transform: `rotate(${rotation}deg)`,
+          transformOrigin: 'center center',
+        }}
+      >
+        {selected && (
+          <>
+            <RotateHandle nodeId={id} rotation={rotation} onRotate={handleRotate} />
+            <ResizeHandle nodeId={id} position="top-left" currentWidth={width} currentHeight={height} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="top-right" currentWidth={width} currentHeight={height} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="bottom-left" currentWidth={width} currentHeight={height} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="bottom-right" currentWidth={width} currentHeight={height} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="top" currentWidth={width} currentHeight={height} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="bottom" currentWidth={width} currentHeight={height} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="left" currentWidth={width} currentHeight={height} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="right" currentWidth={width} currentHeight={height} onResize={handleResize} />
+          </>
+        )}
+        <div style={{ width: `${width}px`, height: `${height}px`, ...style }}>
+          {children}
+        </div>
+      </motion.div>
+    );
+  };
 
   // Render chart node
   if (isChart && chartType) {
@@ -105,19 +262,14 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
     };
 
     return (
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="relative"
-      >
+      <NodeWrapper defaultWidth={400} defaultHeight={300}>
         <motion.div
           className={`relative bg-white border-2 rounded-lg shadow-lg cursor-pointer transition-all duration-300 ${
             selected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'
           }`}
           style={{
-            width: '400px',
-            height: '300px',
+            width: '100%',
+            height: '100%',
           }}
         >
           {/* Chart Title */}
@@ -155,7 +307,7 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
             title="Drag to connect to another node"
           />
         </motion.div>
-      </motion.div>
+      </NodeWrapper>
     );
   }
 
@@ -184,19 +336,14 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
     };
 
   return (
-    <motion.div
-      initial={{ scale: 0.8, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="relative"
-    >
+    <NodeWrapper defaultWidth={250} defaultHeight={200}>
       <motion.div
           className={`relative bg-white border-2 rounded-lg shadow-lg cursor-pointer transition-all duration-300 p-4 ${
             selected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'
           }`}
           style={{
-            minWidth: '200px',
-            minHeight: '150px',
+            width: '100%',
+            height: '100%',
           }}
         >
           {imageUrl ? (
@@ -226,9 +373,9 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
           )}
 
           {/* Connection handles */}
-          <Handle
-            type="target"
-            position={Position.Top}
+      <Handle
+        type="target"
+        position={Position.Top}
             className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair"
             style={{
               boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)',
@@ -245,7 +392,7 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
             title="Drag to connect to another node"
           />
         </motion.div>
-      </motion.div>
+      </NodeWrapper>
     );
   }
 
@@ -262,19 +409,14 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
     const borderWidth = shapeSettings.borderWidth || 4;
     
     return (
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="relative"
-      >
+      <NodeWrapper defaultWidth={250} defaultHeight={150}>
         <motion.div
           className={`relative shadow-lg cursor-pointer transition-all duration-300 p-4 ${
             selected ? 'ring-2 ring-blue-200' : ''
           }`}
           style={{
-            width: '250px',
-            minHeight: '150px',
+            width: '100%',
+            height: '100%',
             borderRadius: '0', // Sharp corners for rectangle
             backgroundColor: fill ? fillColor : 'transparent',
             border: `${borderWidth}px solid ${borderColor}`,
@@ -291,7 +433,7 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
           <Handle type="target" position={Position.Top} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Connect to this node" />
           <Handle type="source" position={Position.Bottom} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Drag to connect to another node" />
         </motion.div>
-      </motion.div>
+      </NodeWrapper>
     );
   }
 
@@ -308,19 +450,14 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
     const borderWidth = shapeSettings.borderWidth || 4;
     
     return (
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="relative"
-      >
+      <NodeWrapper defaultWidth={200} defaultHeight={200}>
         <motion.div
           className={`relative shadow-lg cursor-pointer transition-all duration-300 p-6 flex flex-col items-center justify-center ${
             selected ? 'ring-2 ring-blue-200' : ''
           }`}
           style={{
-            width: '200px',
-            height: '200px',
+            width: '100%',
+            height: '100%',
             borderRadius: '50%', // Perfect circle
             backgroundColor: fill ? fillColor : 'transparent',
             border: `${borderWidth}px solid ${borderColor}`,
@@ -337,29 +474,53 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
           <Handle type="target" position={Position.Top} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Connect to this node" />
           <Handle type="source" position={Position.Bottom} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Drag to connect to another node" />
         </motion.div>
-      </motion.div>
+      </NodeWrapper>
     );
   }
 
   // Render note node - sticky note shape with folded corner
   if (isNoteNode(node)) {
     const textContent = extractTextFromContent(node.content);
+    // For note nodes, we combine the default -1deg rotation with the user's rotation
+    // Store the base rotation (-1deg) in metadata, user rotation is additive
+    const baseRotation = -1;
+    const userRotation = nodeRotation || 0;
+    const combinedRotation = baseRotation + userRotation;
+    
     return (
       <motion.div
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
         className="relative"
+        style={{
+          transform: `rotate(${combinedRotation}deg)`,
+          transformOrigin: 'center center',
+        }}
       >
+        {selected && (
+          <>
+            <RotateHandle nodeId={id} rotation={userRotation} onRotate={handleRotate} />
+            <ResizeHandle nodeId={id} position="top-left" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="top-right" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="bottom-left" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="bottom-right" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="top" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="bottom" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="left" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
+            <ResizeHandle nodeId={id} position="right" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
+          </>
+        )}
         <motion.div
           className={`relative bg-yellow-50 border-2 shadow-lg cursor-pointer transition-all duration-300 p-4 ${
             selected ? 'ring-2 ring-blue-200' : ''
           }`}
           style={{
+            width: `${nodeWidth || 250}px`,
+            height: `${nodeHeight || 180}px`,
             minWidth: '220px',
             minHeight: '180px',
             maxWidth: '280px',
-            transform: 'rotate(-1deg)',
             boxShadow: '2px 2px 8px rgba(0,0,0,0.15), -2px -2px 8px rgba(0,0,0,0.05)',
           }}
         >
@@ -400,17 +561,14 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
     const textContent = extractTextFromContent(node.content);
     const linkUrl = typeof node.content === 'string' ? node.content : textContent;
     return (
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="relative"
-      >
+      <NodeWrapper defaultWidth={250} defaultHeight={100}>
         <motion.div
           className={`relative bg-blue-50 border-2 border-blue-300 shadow-lg cursor-pointer transition-all duration-300 p-3 ${
             selected ? 'ring-2 ring-blue-200' : ''
           }`}
           style={{
+            width: '100%',
+            height: '100%',
             minWidth: '200px',
             minHeight: '80px',
             maxWidth: '300px',
@@ -437,22 +595,280 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
           <Handle type="target" position={Position.Top} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Connect to this node" />
           <Handle type="source" position={Position.Bottom} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Drag to connect to another node" />
         </motion.div>
-      </motion.div>
+      </NodeWrapper>
+    );
+  }
+
+  // Render emoji node - large emoji display
+  if (isEmojiNode(node)) {
+    // Get emojis from content (array) or fallback to title
+    let emojis: string[] = [];
+    if (node.content && typeof node.content === 'object' && 'emoji' in node.content) {
+      const emojiData = (node.content as any).emoji;
+      if (Array.isArray(emojiData)) {
+        emojis = emojiData;
+      } else if (typeof emojiData === 'string') {
+        emojis = [emojiData];
+      }
+    }
+    if (emojis.length === 0 && node.title) {
+      // Parse title into emojis (handle both single and multiple)
+      emojis = Array.from(node.title).filter((char) => {
+        // Check if character is an emoji (rough check)
+        const codePoint = char.codePointAt(0);
+        return codePoint && (
+          (codePoint >= 0x1F300 && codePoint <= 0x1F9FF) || // Misc Symbols and Pictographs
+          (codePoint >= 0x1F600 && codePoint <= 0x1F64F) || // Emoticons
+          (codePoint >= 0x1F680 && codePoint <= 0x1F6FF) || // Transport and Map
+          (codePoint >= 0x2600 && codePoint <= 0x26FF) ||   // Misc symbols
+          (codePoint >= 0x2700 && codePoint <= 0x27BF)      // Dingbats
+        );
+      });
+      if (emojis.length === 0) {
+        emojis = ['😀'];
+      }
+    }
+    if (emojis.length === 0) {
+      emojis = ['😀'];
+    }
+    
+    // Get emoji settings (fill, fillColor, borderColor, borderWidth)
+    const emojiSettings = node.content && typeof node.content === 'object' && 'emojiSettings' in node.content
+      ? (node.content as any).emojiSettings
+      : { fill: true, fillColor: '#ffffff', borderColor: '#d1d5db', borderWidth: 2 };
+    
+    const fill = emojiSettings.fill !== false;
+    const fillColor = emojiSettings.fillColor || '#ffffff';
+    const borderColor = emojiSettings.borderColor || '#d1d5db';
+    const borderWidth = emojiSettings.borderWidth || 2;
+    
+    // Calculate size based on number of emojis
+    const emojiCount = emojis.length;
+    const baseSize = 150;
+    const minSize = 120;
+    const maxSize = 300;
+    const defaultSize = Math.min(maxSize, Math.max(minSize, baseSize + (emojiCount - 1) * 30));
+    const size = nodeWidth || defaultSize;
+    const fontSize = emojiCount === 1 ? 'text-6xl' : emojiCount === 2 ? 'text-5xl' : emojiCount === 3 ? 'text-4xl' : 'text-3xl';
+    
+    return (
+      <NodeWrapper defaultWidth={size} defaultHeight={size}>
+        <motion.div
+          className={`relative shadow-lg cursor-pointer transition-all duration-300 p-6 flex items-center justify-center ${
+            selected ? 'ring-2 ring-blue-200' : ''
+          }`}
+          style={{
+            width: '100%',
+            height: '100%',
+            borderRadius: '16px',
+            minWidth: `${minSize}px`,
+            minHeight: `${minSize}px`,
+            backgroundColor: fill ? fillColor : 'transparent',
+            border: `${borderWidth}px solid ${borderColor}`,
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            // Dispatch event to open emoji picker
+            window.dispatchEvent(new CustomEvent('openEmojiPicker', {
+              detail: { nodeId: node.id, position: { x: e.clientX, y: e.clientY } }
+            }));
+          }}
+        >
+          <div className={`${fontSize} select-none flex items-center justify-center gap-1 flex-wrap`}>
+            {emojis.map((emoji, idx) => (
+              <span key={idx}>{emoji}</span>
+            ))}
+          </div>
+          <Handle type="target" position={Position.Top} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Connect to this node" />
+          <Handle type="source" position={Position.Bottom} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Drag to connect to another node" />
+        </motion.div>
+      </NodeWrapper>
+    );
+  }
+
+  // Render arrow node - arrow shape with hand-drawn aesthetic
+  if (isArrowNode(node)) {
+    const arrowSettings = node.content && typeof node.content === 'object' && 'arrow' in node.content
+      ? (node.content as any).arrow
+      : { direction: 'right', color: '#1f2937', thickness: 4 };
+    
+    const direction = arrowSettings.direction || 'right';
+    const color = arrowSettings.color || '#1f2937';
+    const thickness = arrowSettings.thickness || 4;
+    
+    // Arrow directions mapping - basic directions use '-->' style (line with arrowhead)
+    const arrowPaths: Record<string, { path: string; isLine?: boolean }> = {
+      // Basic directions: '-->' style (line with arrowhead)
+      right: { 
+        path: 'M 10 40 L 60 40 M 50 30 L 60 40 L 50 50',
+        isLine: true 
+      },
+      left: { 
+        path: 'M 70 40 L 20 40 M 30 30 L 20 40 L 30 50',
+        isLine: true 
+      },
+      up: { 
+        path: 'M 40 70 L 40 20 M 30 30 L 40 20 L 50 30',
+        isLine: true 
+      },
+      down: { 
+        path: 'M 40 10 L 40 60 M 30 50 L 40 60 L 50 50',
+        isLine: true 
+      },
+      // Diagonal arrows: '-->' style (line with arrowhead)
+      'up-right': { 
+        path: 'M 15 65 L 55 25 M 45 20 L 55 25 L 50 15',
+        isLine: true 
+      },
+      'down-right': { 
+        path: 'M 15 15 L 55 55 M 45 60 L 55 55 L 50 65',
+        isLine: true 
+      },
+      'down-left': { 
+        path: 'M 65 15 L 25 55 M 35 60 L 25 55 L 30 65',
+        isLine: true 
+      },
+      'up-left': { 
+        path: 'M 65 65 L 25 25 M 35 20 L 25 25 L 30 15',
+        isLine: true 
+      },
+      // Double arrows: filled style
+      'double-horizontal': { 
+        path: 'M 10 40 L 20 20 L 20 30 L 60 30 L 60 20 L 70 40 L 60 60 L 60 50 L 20 50 L 20 60 Z'
+      },
+      'double-vertical': { 
+        path: 'M 40 10 L 20 20 L 30 20 L 30 60 L 20 60 L 40 70 L 60 60 L 50 60 L 50 20 L 60 20 Z'
+      },
+      // Curved arrows: line style with proper curves (curving from bottom-left to top-right, and vice versa)
+      'curved-right': { 
+        path: 'M 20 60 Q 25 45, 35 35 Q 45 25, 55 20 M 50 18 L 55 20 L 52 12',
+        isLine: true 
+      },
+      'curved-left': { 
+        path: 'M 60 20 Q 55 35, 45 45 Q 35 55, 25 60 M 30 62 L 25 60 L 28 68',
+        isLine: true 
+      },
+    };
+    
+    return (
+      <NodeWrapper defaultWidth={120} defaultHeight={120}>
+        <motion.div
+          className={`relative shadow-lg cursor-pointer transition-all duration-300 flex items-center justify-center ${
+            selected ? 'ring-2 ring-blue-200' : ''
+          }`}
+          style={{
+            width: '100%',
+            height: '100%',
+          }}
+        >
+          <svg
+            width="100%"
+            height="100%"
+            viewBox="0 0 80 80"
+            className="transform"
+            preserveAspectRatio="xMidYMid meet"
+            style={{
+              transform: 
+                direction === 'up' ? 'rotate(0deg)' :
+                direction === 'down' ? 'rotate(180deg)' :
+                direction === 'left' ? 'rotate(90deg)' :
+                direction === 'right' ? 'rotate(-90deg)' :
+                direction === 'up-right' ? 'rotate(0deg)' :
+                direction === 'down-right' ? 'rotate(0deg)' :
+                direction === 'down-left' ? 'rotate(0deg)' :
+                direction === 'up-left' ? 'rotate(0deg)' :
+                direction === 'double-horizontal' ? 'rotate(0deg)' :
+                direction === 'double-vertical' ? 'rotate(0deg)' :
+                direction === 'curved-right' ? 'rotate(0deg)' :
+                direction === 'curved-left' ? 'rotate(0deg)' :
+                'rotate(0deg)',
+            }}
+          >
+            {(() => {
+              const arrowDef = arrowPaths[direction] || arrowPaths.right;
+              const isLine = arrowDef.isLine || false;
+              
+              // Hand-drawn effect using filter
+              const handDrawnFilter = `url(#hand-drawn-${node.id})`;
+              
+              if (isLine) {
+                // Line style arrows (--> style) with hand-drawn aesthetic
+                return (
+                  <>
+                    <defs>
+                      <filter id={`hand-drawn-${node.id}`} x="-50%" y="-50%" width="200%" height="200%">
+                        <feTurbulence baseFrequency="0.04" numOctaves="3" result="noise" />
+                        <feDisplacementMap in="SourceGraphic" in2="noise" scale={thickness * 0.3} />
+                      </filter>
+                    </defs>
+                    <path
+                      d={arrowDef.path}
+                      fill="none"
+                      stroke={color}
+                      strokeWidth={thickness}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      filter={handDrawnFilter}
+                      style={{
+                        filter: `url(#hand-drawn-${node.id})`,
+                        strokeDasharray: 'none',
+                      }}
+                    />
+                  </>
+                );
+              } else {
+                // Filled style arrows with hand-drawn aesthetic
+                return (
+                  <>
+                    <defs>
+                      <filter id={`hand-drawn-${node.id}`} x="-50%" y="-50%" width="200%" height="200%">
+                        <feTurbulence baseFrequency="0.03" numOctaves="2" result="noise" />
+                        <feDisplacementMap in="SourceGraphic" in2="noise" scale={thickness * 0.2} />
+                      </filter>
+                    </defs>
+                    <path
+                      d={arrowDef.path}
+                      fill={color}
+                      stroke={color}
+                      strokeWidth={Math.max(1, thickness * 0.1)}
+                      filter={handDrawnFilter}
+                      style={{
+                        filter: `url(#hand-drawn-${node.id})`,
+                      }}
+                    />
+                  </>
+                );
+              }
+            })()}
+          </svg>
+          <Handle type="target" position={Position.Top} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Connect to this node" />
+          <Handle type="source" position={Position.Bottom} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Drag to connect to another node" />
+        </motion.div>
+      </NodeWrapper>
     );
   }
 
   // Render text node - markdown-style text display
   if (isTextNode(node)) {
     const textContent = extractTextFromContent(node.content);
-    const textSettings = node.content && typeof node.content === 'object' && 'textSettings' in node.content
-      ? (node.content as any).textSettings
-      : null;
+    // textSettings is already extracted above for Google Font loading
 
     const fontSizeMap = {
-      small: '14px',
-      medium: '16px',
-      large: '18px',
-      xlarge: '20px',
+      xs: '12px',
+      sm: '14px',
+      base: '16px',
+      lg: '18px',
+      xl: '20px',
+      '2xl': '24px',
+      '3xl': '30px',
+      '4xl': '36px',
+      '5xl': '48px',
+    };
+
+    const fontStyleMap = {
+      normal: 'normal',
+      italic: 'italic',
+      oblique: 'oblique',
     };
 
     const fontFamilyMap = {
@@ -461,11 +877,22 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
       mono: 'Monaco, monospace',
     };
 
-    const fontSize = textSettings?.fontSize || 'medium';
-    const fontFamily = textSettings?.fontFamily || 'sans';
+    const fontSize = textSettings?.fontSize || 'base';
+    const fontFamilySetting = textSettings?.fontFamily || 'sans';
+    // googleFont is already extracted above for useEffect
+    const fontStyle = textSettings?.fontStyle || 'normal';
     const textAlign = textSettings?.alignment || 'left';
     const lineHeight = textSettings?.lineHeight || 1.6;
     const letterSpacing = textSettings?.letterSpacing || 0;
+
+    // Get the actual font family string - prefer Google Font if set
+    const getFontFamily = () => {
+      if (googleFont) {
+        // Return Google Font format (font is already loaded by useEffect above)
+        return `'${googleFont}', ${fontFamilySetting === 'serif' ? 'serif' : 'sans-serif'}`;
+      }
+      return fontFamilyMap[fontFamilySetting as keyof typeof fontFamilyMap] || fontFamilyMap.sans;
+    };
 
     // Parse markdown-like formatting
     const renderMarkdownText = (text: string) => {
@@ -505,17 +932,14 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
     };
 
     return (
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="relative"
-      >
+      <NodeWrapper defaultWidth={400} defaultHeight={150}>
         <motion.div
           className={`relative bg-white border border-gray-300 shadow-md cursor-pointer transition-all duration-300 p-4 ${
             selected ? 'border-blue-500 ring-2 ring-blue-200' : ''
           }`}
           style={{
+            width: '100%',
+            height: '100%',
             minWidth: '300px',
             maxWidth: '500px',
             minHeight: '100px',
@@ -525,8 +949,9 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
           <div
             className="prose prose-sm max-w-none text-gray-800"
             style={{
-              fontSize: fontSizeMap[fontSize],
-              fontFamily: fontFamilyMap[fontFamily],
+              fontSize: fontSizeMap[fontSize] || fontSizeMap.base,
+              fontFamily: getFontFamily(),
+              fontStyle: fontStyleMap[fontStyle] || 'normal',
               textAlign: textAlign,
               lineHeight: lineHeight,
               letterSpacing: `${letterSpacing}px`,
@@ -540,21 +965,24 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
           <Handle type="target" position={Position.Top} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Connect to this node" />
           <Handle type="source" position={Position.Bottom} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Drag to connect to another node" />
         </motion.div>
-      </motion.div>
+      </NodeWrapper>
     );
   }
 
   // Default: Render as regular text/note node
   const textContent = extractTextFromContent(node.content);
-  const textSettings = node.content && typeof node.content === 'object' && 'textSettings' in node.content
-    ? (node.content as any).textSettings
-    : null;
+  // textSettings is already extracted above for Google Font loading
 
   const fontSizeMap = {
-    small: '14px',
-    medium: '16px',
-    large: '18px',
-    xlarge: '20px',
+    xs: '12px',
+    sm: '14px',
+    base: '16px',
+    lg: '18px',
+    xl: '20px',
+    '2xl': '24px',
+    '3xl': '30px',
+    '4xl': '36px',
+    '5xl': '48px',
   };
 
   const fontFamilyMap = {
@@ -563,24 +991,38 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
     mono: 'Monaco, monospace',
   };
 
-  const fontSize = textSettings?.fontSize || 'medium';
-  const fontFamily = textSettings?.fontFamily || 'sans';
+  const fontStyleMap = {
+    normal: 'normal',
+    italic: 'italic',
+    oblique: 'oblique',
+  };
+
+  const fontSize = textSettings?.fontSize || 'base';
+  const fontFamilySetting = textSettings?.fontFamily || 'sans';
+  // googleFont is already extracted above for useEffect
+  const fontStyle = textSettings?.fontStyle || 'normal';
   const textAlign = textSettings?.alignment || 'left';
   const lineHeight = textSettings?.lineHeight || 1.6;
   const letterSpacing = textSettings?.letterSpacing || 0;
 
+  // Get the actual font family string - prefer Google Font if set
+  const getFontFamily = () => {
+    if (googleFont) {
+      // Return Google Font format (font is already loaded by useEffect above)
+      return `'${googleFont}', ${fontFamilySetting === 'serif' ? 'serif' : 'sans-serif'}`;
+    }
+    return fontFamilyMap[fontFamilySetting as keyof typeof fontFamilyMap] || fontFamilyMap.sans;
+  };
+
   return (
-    <motion.div
-      initial={{ scale: 0.8, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="relative"
-    >
+    <NodeWrapper defaultWidth={300} defaultHeight={150}>
       <motion.div
         className={`relative bg-white border-2 rounded-lg shadow-lg cursor-pointer transition-all duration-300 p-4 ${
           selected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'
         }`}
         style={{
+          width: '100%',
+          height: '100%',
           minWidth: '200px',
           maxWidth: '400px',
           minHeight: '100px',
@@ -597,8 +1039,9 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
         <div
           className="text-gray-700 whitespace-pre-wrap break-words"
           style={{
-            fontSize: fontSizeMap[fontSize],
-            fontFamily: fontFamilyMap[fontFamily],
+            fontSize: fontSizeMap[fontSize] || fontSizeMap.base,
+            fontFamily: getFontFamily(),
+            fontStyle: fontStyleMap[fontStyle] || 'normal',
             textAlign: textAlign,
             lineHeight: lineHeight,
             letterSpacing: `${letterSpacing}px`,
@@ -607,26 +1050,26 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
           {textContent || (
             <span className="text-gray-400 italic">Start typing...</span>
           )}
-        </div>
-
+      </div>
+      
         {/* Tags - shown if showTags is true */}
         {showTags && node.tags && node.tags.length > 0 && (
           <div className="mt-3 pt-2 border-t border-gray-100 flex flex-wrap gap-1">
             {node.tags.slice(0, 3).map((tag, idx) => (
-              <span
-                key={idx}
+            <span
+              key={idx}
                 className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs"
-              >
-                {tag}
-              </span>
-            ))}
+            >
+              {tag}
+            </span>
+          ))}
             {node.tags.length > 3 && (
               <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
                 +{node.tags.length - 3}
               </span>
             )}
-          </div>
-        )}
+        </div>
+      )}
 
         {/* Connection handles */}
       <Handle
@@ -648,7 +1091,7 @@ export default memo(function NodeComponent({ data, selected }: NodeProps<NodeDat
           title="Drag to connect to another node"
       />
       </motion.div>
-    </motion.div>
+    </NodeWrapper>
   );
 }, (prevProps, nextProps) => {
   // Custom comparison: re-render if node title, tags, content, or selection changes

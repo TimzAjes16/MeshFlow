@@ -6,10 +6,10 @@ import { prisma } from '@/lib/db';
 // Used by WorkspaceProvider instead of direct Supabase queries
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const workspaceId = params.id;
+    const { id: workspaceId } = await params;
     const { user, role } = await requireWorkspaceAccess(workspaceId, false);
 
     // Fetch workspace
@@ -54,11 +54,11 @@ export async function GET(
       nodes: nodes.map((node) => ({
         id: node.id,
         workspaceId: node.workspaceId,
-        title: node.title,
-        content: node.content,
-        tags: node.tags,
-        x: node.x,
-        y: node.y,
+        title: node.title || '',
+        content: node.content || {},
+        tags: node.tags || [],
+        x: node.x ?? 0,
+        y: node.y ?? 0,
         createdAt: node.createdAt.toISOString(),
         updatedAt: node.updatedAt.toISOString(),
       })),
@@ -67,20 +67,28 @@ export async function GET(
         workspaceId: edge.workspaceId,
         source: edge.source,
         target: edge.target,
-        label: edge.label,
-        similarity: edge.similarity,
+        label: edge.label || null,
+        similarity: edge.similarity ?? null,
         createdAt: edge.createdAt.toISOString(),
       })),
     });
   } catch (error: any) {
-    console.error('Error fetching workspace data:', error);
+    console.error('[API] Error fetching workspace data:', {
+      message: error?.message,
+      stack: error?.stack,
+      code: error?.code,
+      meta: error?.meta,
+    });
     
     if (error.message === 'Unauthorized' || error.message.includes('Forbidden')) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
     
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch workspace data' },
+      { 
+        error: error.message || 'Failed to fetch workspace data',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      },
       { status: 500 }
     );
   }

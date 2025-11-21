@@ -10,7 +10,9 @@ import {
   X, Tag, Sparkles, ArrowRight, Link2, 
   Image as ImageIcon, Upload, Copy, 
   ChevronDown, Type, AlignLeft, Settings,
-  Type as FontSizeIcon, Palette as PaletteIcon
+  Type as FontSizeIcon, Palette as PaletteIcon,
+  Square, Layers, ArrowUp, ArrowDown, 
+  BringToFront, SendToBack, BringForward, SendBackward
 } from 'lucide-react';
 import FloatingFormatToolbar from './FloatingFormatToolbar';
 import SlashCommandMenu from './SlashCommandMenu';
@@ -29,6 +31,11 @@ function isChartNode(node: Node): boolean {
 function isImageNode(node: Node): boolean {
   if (!node.tags || node.tags.length === 0) return false;
   return node.tags.includes('image');
+}
+
+function isEmojiNode(node: Node): boolean {
+  if (!node.tags || node.tags.length === 0) return false;
+  return node.tags.includes('emoji');
 }
 
 export default function FloatingNodeEditor() {
@@ -249,6 +256,187 @@ export default function FloatingNodeEditor() {
   const toggleDropdown = (dropdown: string) => {
     setOpenDropdown(openDropdown === dropdown ? null : dropdown);
   };
+
+  // Layering functions
+  const handleLayerAction = useCallback(async (action: 'bringToFront' | 'moveToBack' | 'moveForward' | 'moveBackward') => {
+    if (!selectedNode || !workspaceId || !nodes) return;
+
+    // Get current zIndex from nodeMetadata
+    const nodeMetadata = selectedNode.content && typeof selectedNode.content === 'object' && 'nodeMetadata' in selectedNode.content
+      ? (selectedNode.content as any).nodeMetadata
+      : {};
+    const currentZIndex = nodeMetadata.zIndex || 0;
+
+    // Get all nodes sorted by current zIndex
+    const allNodes = [...nodes];
+    const sortedNodes = allNodes.sort((a, b) => {
+      const aMetadata = a.content && typeof a.content === 'object' && 'nodeMetadata' in a.content
+        ? (a.content as any).nodeMetadata
+        : {};
+      const bMetadata = b.content && typeof b.content === 'object' && 'nodeMetadata' in b.content
+        ? (b.content as any).nodeMetadata
+        : {};
+      return (aMetadata.zIndex || 0) - (bMetadata.zIndex || 0);
+    });
+
+    let newZIndex = currentZIndex;
+
+    switch (action) {
+      case 'bringToFront':
+        // Set to highest zIndex + 1
+        const maxZIndex = Math.max(...sortedNodes.map(n => {
+          const meta = n.content && typeof n.content === 'object' && 'nodeMetadata' in n.content
+            ? (n.content as any).nodeMetadata
+            : {};
+          return meta.zIndex || 0;
+        }));
+        newZIndex = maxZIndex + 1;
+        break;
+      case 'moveToBack':
+        // Set to lowest zIndex - 1
+        const minZIndex = Math.min(...sortedNodes.map(n => {
+          const meta = n.content && typeof n.content === 'object' && 'nodeMetadata' in n.content
+            ? (n.content as any).nodeMetadata
+            : {};
+          return meta.zIndex || 0;
+        }));
+        newZIndex = minZIndex - 1;
+        break;
+      case 'moveForward':
+        // Find the node with the next highest zIndex and swap
+        const nextNode = sortedNodes.find(n => {
+          if (n.id === selectedNode.id) return false;
+          const meta = n.content && typeof n.content === 'object' && 'nodeMetadata' in n.content
+            ? (n.content as any).nodeMetadata
+            : {};
+          return (meta.zIndex || 0) > currentZIndex;
+        });
+        if (nextNode) {
+          const nextMeta = nextNode.content && typeof nextNode.content === 'object' && 'nodeMetadata' in nextNode.content
+            ? (nextNode.content as any).nodeMetadata
+            : {};
+          const nextZIndex = nextMeta.zIndex || 0;
+          // Swap zIndices
+          const currentContent = selectedNode.content || {};
+          const nextContent = nextNode.content || {};
+          updateNode(selectedNode.id, {
+            content: {
+              ...currentContent,
+              nodeMetadata: { ...nodeMetadata, zIndex: nextZIndex },
+            },
+          });
+          updateNode(nextNode.id, {
+            content: {
+              ...nextContent,
+              nodeMetadata: { ...nextMeta, zIndex: currentZIndex },
+            },
+          });
+          // Update both in database
+          await Promise.all([
+            fetch('/api/nodes/update', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nodeId: selectedNode.id,
+                content: { ...currentContent, nodeMetadata: { ...nodeMetadata, zIndex: nextZIndex } },
+              }),
+            }),
+            fetch('/api/nodes/update', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nodeId: nextNode.id,
+                content: { ...nextContent, nodeMetadata: { ...nextMeta, zIndex: currentZIndex } },
+              }),
+            }),
+          ]);
+          window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+          return;
+        }
+        newZIndex = currentZIndex + 1;
+        break;
+      case 'moveBackward':
+        // Find the node with the next lowest zIndex and swap
+        const prevNode = [...sortedNodes].reverse().find(n => {
+          if (n.id === selectedNode.id) return false;
+          const meta = n.content && typeof n.content === 'object' && 'nodeMetadata' in n.content
+            ? (n.content as any).nodeMetadata
+            : {};
+          return (meta.zIndex || 0) < currentZIndex;
+        });
+        if (prevNode) {
+          const prevMeta = prevNode.content && typeof prevNode.content === 'object' && 'nodeMetadata' in prevNode.content
+            ? (prevNode.content as any).nodeMetadata
+            : {};
+          const prevZIndex = prevMeta.zIndex || 0;
+          // Swap zIndices
+          const currentContent = selectedNode.content || {};
+          const prevContent = prevNode.content || {};
+          updateNode(selectedNode.id, {
+            content: {
+              ...currentContent,
+              nodeMetadata: { ...nodeMetadata, zIndex: prevZIndex },
+            },
+          });
+          updateNode(prevNode.id, {
+            content: {
+              ...prevContent,
+              nodeMetadata: { ...prevMeta, zIndex: currentZIndex },
+            },
+          });
+          // Update both in database
+          await Promise.all([
+            fetch('/api/nodes/update', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nodeId: selectedNode.id,
+                content: { ...currentContent, nodeMetadata: { ...nodeMetadata, zIndex: prevZIndex } },
+              }),
+            }),
+            fetch('/api/nodes/update', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nodeId: prevNode.id,
+                content: { ...prevContent, nodeMetadata: { ...prevMeta, zIndex: currentZIndex } },
+              }),
+            }),
+          ]);
+          window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+          return;
+        }
+        newZIndex = currentZIndex - 1;
+        break;
+    }
+
+    // Update zIndex
+    const currentContent = selectedNode.content || {};
+    const newContent = {
+      ...currentContent,
+      nodeMetadata: {
+        ...nodeMetadata,
+        zIndex: newZIndex,
+      },
+    };
+    updateNode(selectedNode.id, { content: newContent });
+    
+    if (workspaceId) {
+      try {
+        await fetch('/api/nodes/update', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nodeId: selectedNode.id,
+            content: newContent,
+          }),
+        });
+        window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+      } catch (error) {
+        console.error('Error updating layer:', error);
+      }
+    }
+  }, [selectedNode, workspaceId, nodes, updateNode]);
 
   if (!selectedNode) {
     return null;
@@ -592,6 +780,208 @@ export default function FloatingNodeEditor() {
             )}
           </div>
         )}
+
+        {/* Fill Dropdown - for emoji nodes */}
+        {isEmojiNode(selectedNode) && (
+          <div className="relative" ref={(el) => (dropdownRefs.current['fill'] = el)}>
+            <button
+              onClick={() => toggleDropdown('fill')}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
+            >
+              <Square className="w-4 h-4" />
+              <span>Fill</span>
+              <ChevronDown className={`w-4 h-4 transition-transform ${openDropdown === 'fill' ? 'rotate-180' : ''}`} />
+            </button>
+            
+            {openDropdown === 'fill' && (
+              <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 p-4 min-w-[250px] z-50">
+                <div className="space-y-3">
+                  {/* Fill Toggle */}
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">Fill Background</label>
+                    <button
+                      onClick={() => {
+                        const currentContent = selectedNode.content || {};
+                        const emojiData = currentContent && typeof currentContent === 'object' && 'emoji' in currentContent
+                          ? (currentContent as any).emoji
+                          : (selectedNode.title || '😀');
+                        const emojiSettings = currentContent && typeof currentContent === 'object' && 'emojiSettings' in currentContent
+                          ? (currentContent as any).emojiSettings
+                          : { fill: true, fillColor: '#ffffff', borderColor: '#d1d5db', borderWidth: 2 };
+                        const newFill = !emojiSettings.fill;
+                        const newContent = {
+                          ...currentContent,
+                          emoji: emojiData,
+                          emojiSettings: { ...emojiSettings, fill: newFill },
+                        };
+                        updateNode(selectedNode.id, { content: newContent });
+                        if (workspaceId) {
+                          fetch('/api/nodes/update', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              nodeId: selectedNode.id,
+                              content: newContent,
+                            }),
+                          }).then(() => {
+                            window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+                            setOpenDropdown(null);
+                          });
+                        } else {
+                          setOpenDropdown(null);
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        (selectedNode.content && typeof selectedNode.content === 'object' && 'emojiSettings' in selectedNode.content
+                          ? (selectedNode.content as any).emojiSettings?.fill !== false
+                          : true)
+                          ? 'bg-blue-500'
+                          : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          (selectedNode.content && typeof selectedNode.content === 'object' && 'emojiSettings' in selectedNode.content
+                            ? (selectedNode.content as any).emojiSettings?.fill !== false
+                            : true)
+                            ? 'translate-x-6'
+                            : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Fill Color Picker */}
+                  {(selectedNode.content && typeof selectedNode.content === 'object' && 'emojiSettings' in selectedNode.content
+                    ? (selectedNode.content as any).emojiSettings?.fill !== false
+                    : true) && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">Fill Color</label>
+                      <div className="flex gap-2">
+                        {[
+                          { value: '#ffffff', label: 'White', color: '#ffffff' },
+                          { value: '#f3f4f6', label: 'Light Gray', color: '#f3f4f6' },
+                          { value: '#fef3c7', label: 'Yellow', color: '#fef3c7' },
+                          { value: '#dbeafe', label: 'Blue', color: '#dbeafe' },
+                          { value: '#fce7f3', label: 'Pink', color: '#fce7f3' },
+                          { value: '#d1fae5', label: 'Green', color: '#d1fae5' },
+                        ].map((option) => {
+                          const currentFillColor = (selectedNode.content && typeof selectedNode.content === 'object' && 'emojiSettings' in selectedNode.content
+                            ? (selectedNode.content as any).emojiSettings?.fillColor
+                            : '#ffffff') || '#ffffff';
+                          const isSelected = currentFillColor === option.value;
+
+                          return (
+                            <button
+                              key={option.value}
+                              onClick={() => {
+                                const currentContent = selectedNode.content || {};
+                                const emojiData = currentContent && typeof currentContent === 'object' && 'emoji' in currentContent
+                                  ? (currentContent as any).emoji
+                                  : (selectedNode.title || '😀');
+                                const emojiSettings = currentContent && typeof currentContent === 'object' && 'emojiSettings' in currentContent
+                                  ? (currentContent as any).emojiSettings
+                                  : { fill: true, fillColor: '#ffffff', borderColor: '#d1d5db', borderWidth: 2 };
+                                const newContent = {
+                                  ...currentContent,
+                                  emoji: emojiData,
+                                  emojiSettings: { ...emojiSettings, fillColor: option.value },
+                                };
+                                updateNode(selectedNode.id, { content: newContent });
+                                if (workspaceId) {
+                                  fetch('/api/nodes/update', {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      nodeId: selectedNode.id,
+                                      content: newContent,
+                                    }),
+                                  }).then(() => {
+                                    window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+                                  });
+                                }
+                              }}
+                              className={`w-8 h-8 rounded border-2 transition-all ${
+                                isSelected
+                                  ? 'border-blue-500 ring-2 ring-blue-200'
+                                  : 'border-gray-300 hover:border-gray-400'
+                              }`}
+                              style={{ backgroundColor: option.color }}
+                              title={option.label}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Layer/Layering Dropdown */}
+        <div className="relative" ref={(el) => (dropdownRefs.current['layer'] = el)}>
+          <button
+            onClick={() => toggleDropdown('layer')}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
+          >
+            <Layers className="w-4 h-4" />
+            <span>Layer</span>
+            <ChevronDown className={`w-4 h-4 transition-transform ${openDropdown === 'layer' ? 'rotate-180' : ''}`} />
+          </button>
+          
+          {openDropdown === 'layer' && (
+            <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[200px] z-50">
+              <div className="space-y-1">
+                <button
+                  onClick={() => {
+                    handleLayerAction('bringToFront');
+                    setOpenDropdown(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                >
+                  <BringToFront className="w-4 h-4" />
+                  <span>Bring to Front</span>
+                  <span className="ml-auto text-xs text-gray-400">Ctrl+]</span>
+                </button>
+                <button
+                  onClick={() => {
+                    handleLayerAction('moveForward');
+                    setOpenDropdown(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                >
+                  <ArrowUp className="w-4 h-4" />
+                  <span>Move Forward</span>
+                  <span className="ml-auto text-xs text-gray-400">Ctrl+↑</span>
+                </button>
+                <button
+                  onClick={() => {
+                    handleLayerAction('moveBackward');
+                    setOpenDropdown(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                >
+                  <ArrowDown className="w-4 h-4" />
+                  <span>Move Backward</span>
+                  <span className="ml-auto text-xs text-gray-400">Ctrl+↓</span>
+                </button>
+                <button
+                  onClick={() => {
+                    handleLayerAction('moveToBack');
+                    setOpenDropdown(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                >
+                  <SendToBack className="w-4 h-4" />
+                  <span>Send to Back</span>
+                  <span className="ml-auto text-xs text-gray-400">Ctrl+[</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Tags Dropdown */}
         <div className="relative" ref={(el) => (dropdownRefs.current['tags'] = el)}>

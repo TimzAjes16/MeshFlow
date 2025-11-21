@@ -33,6 +33,10 @@ export default function KeyboardShortcuts() {
     { keys: ['Delete'], description: 'Delete selected node' },
     { keys: ['Backspace'], description: 'Delete selected node' },
     { keys: ['Escape'], description: 'Deselect / Close' },
+    { keys: ['Ctrl', ']'], description: 'Bring to front (Cmd+] on Mac)' },
+    { keys: ['Ctrl', '['], description: 'Send to back (Cmd+[ on Mac)' },
+    { keys: ['Ctrl', '↑'], description: 'Move forward (Cmd+↑ on Mac)' },
+    { keys: ['Ctrl', '↓'], description: 'Move backward (Cmd+↓ on Mac)' },
   ];
 
   return (
