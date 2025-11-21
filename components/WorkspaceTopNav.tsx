@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { signOut } from 'next-auth/react';
-import { Search, Settings, User, ArrowLeft, Edit2, Check, X } from 'lucide-react';
+import { signOut, useSession } from 'next-auth/react';
+import { Search, User, ArrowLeft, Edit2, Check, X, CreditCard, LogOut, Tag } from 'lucide-react';
 import { useCanvasStore } from '@/state/canvasStore';
 
 interface WorkspaceTopNavProps {
@@ -13,6 +13,9 @@ interface WorkspaceTopNavProps {
 
 export default function WorkspaceTopNav({ workspaceId, workspaceName }: WorkspaceTopNavProps) {
   const router = useRouter();
+  const { data: session } = useSession();
+  const showTags = useCanvasStore((state) => state.showTags);
+  const toggleTags = useCanvasStore((state) => state.toggleTags);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -290,15 +293,6 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
 
       {/* Right: Actions and profile */}
       <div className="flex items-center gap-2">
-        {/* Settings Button */}
-        <button 
-          type="button"
-          onClick={() => router.push(`/workspace/${workspaceId}/settings`)}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-colors pointer-events-auto"
-        >
-          <Settings className="w-5 h-5 text-gray-600" />
-        </button>
-
         {/* Profile Menu */}
         <div className="relative">
           <button
@@ -309,37 +303,48 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
             <User className="w-5 h-5 text-gray-600" />
           </button>
           {showProfileMenu && (
-            <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-[100]">
-              <button
-                type="button"
-                onClick={() => {
-                  router.push('/dashboard');
-                  setShowProfileMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-t-lg"
-              >
-                Dashboard
-              </button>
+            <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-[100]">
+              <div className="px-4 py-3 border-b border-gray-200">
+                <p className="text-sm font-medium text-gray-900">
+                  Hi, {session?.user?.name || 'User'}
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">Manage your account</p>
+              </div>
               <button
                 type="button"
                 onClick={() => {
                   router.push('/settings');
                   setShowProfileMenu(false);
                 }}
-                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
               >
-                Settings
+                <User className="w-4 h-4 text-gray-500" />
+                <span>Account Settings</span>
               </button>
               <button
                 type="button"
-                onClick={async () => {
+                onClick={() => {
+                  router.push('/settings?tab=subscription');
                   setShowProfileMenu(false);
-                  await signOut({ callbackUrl: '/auth/login' });
                 }}
-                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-b-lg border-t border-gray-200"
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
               >
-                Logout
+                <CreditCard className="w-4 h-4 text-gray-500" />
+                <span>Manage Subscription</span>
               </button>
+              <div className="border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setShowProfileMenu(false);
+                    await signOut({ callbackUrl: '/auth/login' });
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 rounded-b-lg"
+                >
+                  <LogOut className="w-4 h-4 text-red-500" />
+                  <span>Logout</span>
+                </button>
+              </div>
             </div>
           )}
         </div>

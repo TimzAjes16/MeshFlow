@@ -57,6 +57,7 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     nodes: workspaceNodes,
     edges: workspaceEdges,
     layout,
+    addEdge: addWorkspaceEdge,
   } = useWorkspaceStore();
 
   const [nodes, setNodes, onNodesChange] = useNodesState(canvasNodes);
@@ -200,12 +201,91 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   }, [workspaceNodes, workspaceEdges, setCanvasNodes, setCanvasEdges, setNodes, setEdges]);
 
   const onConnect = useCallback(
-    (params: Connection) => {
-      const newEdges = addEdge(params, edges);
+    async (params: Connection) => {
+      if (!params.source || !params.target || params.source === params.target) {
+        return;
+      }
+
+      // Check if edge already exists
+      const existingEdge = edges.find(
+        (e) => e.source === params.source && e.target === params.target
+      );
+      if (existingEdge) {
+        console.log('[CanvasContainer] Edge already exists, skipping');
+        return;
+      }
+
+      // Optimistically add edge to UI
+      const tempEdge: Edge = {
+        id: `temp-${params.source}-${params.target}`,
+        source: params.source,
+        target: params.target,
+        type: 'custom',
+        data: {},
+      };
+      const newEdges = addEdge(tempEdge, edges);
       setEdges(newEdges);
       setCanvasEdges(newEdges);
+
+      // Save to API
+      try {
+        const response = await fetch('/api/edges', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspaceId,
+            source: params.source,
+            target: params.target,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const savedEdge = data.edge;
+          
+          // Update edge with real ID from API
+          const updatedEdges = newEdges.map((e) =>
+            e.id === tempEdge.id
+              ? {
+                  ...e,
+                  id: savedEdge.id,
+                  data: { edge: savedEdge },
+                }
+              : e
+          );
+          
+          setEdges(updatedEdges);
+          setCanvasEdges(updatedEdges);
+          
+          // Add to workspace store
+          addWorkspaceEdge({
+            id: savedEdge.id,
+            workspaceId: savedEdge.workspaceId || workspaceId,
+            source: savedEdge.source,
+            target: savedEdge.target,
+            label: savedEdge.label || null,
+            similarity: savedEdge.similarity || null,
+            createdAt: savedEdge.createdAt,
+          });
+          
+          // Trigger workspace refresh
+          window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+        } else {
+          // Remove failed edge
+          const failedEdges = edges.filter((e) => e.id !== tempEdge.id);
+          setEdges(failedEdges);
+          setCanvasEdges(failedEdges);
+          console.error('[CanvasContainer] Failed to create edge:', response.statusText);
+        }
+      } catch (error) {
+        // Remove failed edge
+        const failedEdges = edges.filter((e) => e.id !== tempEdge.id);
+        setEdges(failedEdges);
+        setCanvasEdges(failedEdges);
+        console.error('[CanvasContainer] Error creating edge:', error);
+      }
     },
-    [edges, setEdges, setCanvasEdges]
+    [edges, setEdges, setCanvasEdges, workspaceId, addWorkspaceEdge]
   );
 
   const onNodeClick = useCallback(
@@ -213,6 +293,108 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
       selectNode(node.id);
     },
     [selectNode]
+  );
+
+  // Track dragging state for drag-to-connect
+  const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
+  const dragStartPosition = useRef<{ x: number; y: number } | null>(null);
+
+  // Handle node drag start
+  const onNodeDragStart = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      setDraggedNodeId(node.id);
+      dragStartPosition.current = node.position;
+    },
+    []
+  );
+
+  // Handle node drag end - check if dropped on another node
+  const onNodeDragStop = useCallback(
+    async (_event: React.MouseEvent, node: Node) => {
+      if (!draggedNodeId || !reactFlowInstance) {
+        setDraggedNodeId(null);
+        dragStartPosition.current = null;
+        return;
+      }
+
+      // Get the dragged node's position in flow coordinates
+      const draggedNodePosition = node.position;
+      
+      // Get node dimensions from the DOM element (works at any zoom level)
+      const draggedNodeElement = document.querySelector(`[data-id="${node.id}"]`) as HTMLElement;
+      let draggedNodeWidth = 100; // Default size for regular nodes
+      let draggedNodeHeight = 100;
+      
+      if (draggedNodeElement) {
+        const rect = draggedNodeElement.getBoundingClientRect();
+        // Convert screen dimensions to flow dimensions using zoom level
+        const viewport = reactFlowInstance.getViewport();
+        draggedNodeWidth = rect.width / viewport.zoom;
+        draggedNodeHeight = rect.height / viewport.zoom;
+      }
+
+      // Check if this node overlaps with any other node using distance-based detection
+      // This works at any zoom level because we're using flow coordinates
+      const overlappingNode = nodes.find((n) => {
+        if (n.id === node.id) return false;
+        
+        const otherPosition = n.position;
+        
+        // Get other node's dimensions from DOM
+        const otherNodeElement = document.querySelector(`[data-id="${n.id}"]`) as HTMLElement;
+        let otherNodeWidth = 100;
+        let otherNodeHeight = 100;
+        
+        if (otherNodeElement) {
+          const rect = otherNodeElement.getBoundingClientRect();
+          const viewport = reactFlowInstance.getViewport();
+          otherNodeWidth = rect.width / viewport.zoom;
+          otherNodeHeight = rect.height / viewport.zoom;
+        }
+        
+        // Calculate centers
+        const draggedCenterX = draggedNodePosition.x + draggedNodeWidth / 2;
+        const draggedCenterY = draggedNodePosition.y + draggedNodeHeight / 2;
+        const otherCenterX = otherPosition.x + otherNodeWidth / 2;
+        const otherCenterY = otherPosition.y + otherNodeHeight / 2;
+        
+        // Calculate distance between centers
+        const distanceX = Math.abs(draggedCenterX - otherCenterX);
+        const distanceY = Math.abs(draggedCenterY - otherCenterY);
+        
+        // Check if nodes overlap (centers are within combined half-widths/heights)
+        const maxDistanceX = (draggedNodeWidth + otherNodeWidth) / 2;
+        const maxDistanceY = (draggedNodeHeight + otherNodeHeight) / 2;
+        
+        return distanceX < maxDistanceX && distanceY < maxDistanceY;
+      });
+
+      // If dropped on another node, create a connection
+      if (overlappingNode) {
+        const sourceId = draggedNodeId;
+        const targetId = overlappingNode.id;
+
+        // Check if edge already exists
+        const existingEdge = edges.find(
+          (e) => e.source === sourceId && e.target === targetId
+        );
+
+        if (!existingEdge && sourceId !== targetId) {
+          // Create connection
+          await onConnect({
+            source: sourceId,
+            target: targetId,
+            sourceHandle: null,
+            targetHandle: null,
+          });
+        }
+      }
+
+      // Reset drag state
+      setDraggedNodeId(null);
+      dragStartPosition.current = null;
+    },
+    [draggedNodeId, nodes, edges, onConnect, reactFlowInstance]
   );
 
   // Handle double-click to create node
@@ -437,8 +619,8 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
       return (
         <div 
           className="relative w-full h-full min-h-0 bg-white overflow-hidden"
-          onDoubleClick={(e) => {
-            // Handle double-click on canvas wrapper
+          onClick={(e) => {
+            // Handle single click on canvas wrapper to show horizontal bar
             // Only process if clicking on the canvas background, not on React Flow UI elements
             const target = e.target as HTMLElement;
             
@@ -451,17 +633,31 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
               target.closest('.react-flow__attribution') ||
               target.closest('.react-flow__handle') ||
               target.closest('button') ||
-              target.closest('[role="button"]')
+              target.closest('[role="button"]') ||
+              target.closest('.floating-horizontal-bar')
             ) {
               return;
             }
             
-            // Process double-click on canvas background
-            e.preventDefault();
-            e.stopPropagation();
-            
-            console.log('[CanvasContainer] Double-click detected on canvas background');
-            handlePaneDoubleClick(e);
+            // Process click on canvas background - show horizontal bar
+            if (onCreateNode) {
+              const screenPos = {
+                x: e.clientX,
+                y: e.clientY,
+              };
+              
+              // Convert to flow position
+              const flowPos = reactFlowInstance.screenToFlowPosition({
+                x: e.clientX,
+                y: e.clientY,
+              });
+              
+              // Store flow position for node creation
+              (window as any).lastFlowPosition = flowPos;
+              
+              // Dispatch event to show horizontal bar
+              window.dispatchEvent(new CustomEvent('show-create-toolbar', { detail: screenPos }));
+            }
           }}
         >
           {/* Canvas - always visible and rendered, empty state is just an overlay */}
@@ -472,6 +668,8 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeClick={onNodeClick}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDragStop={onNodeDragStop}
         onPaneClick={onPaneClick}
         onInit={onInit}
         onMove={onMove}
@@ -480,10 +678,12 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         edgeTypes={edgeTypes}
         nodesDraggable={true}
         nodesConnectable={true}
-        panOnDrag={true}
+        panOnDrag={true} // Pan with left mouse button on empty space
+        panOnScroll={true} // Also allow panning with scroll + modifier key
         zoomOnScroll={true}
         zoomOnPinch={true}
         zoomOnDoubleClick={false}
+        connectionLineStyle={{ stroke: '#3b82f6', strokeWidth: 2 }}
         fitView
         attributionPosition="bottom-left"
         className="bg-white"
@@ -512,8 +712,9 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
               }}
             />
         
-            {/* Minimap - premium styling with accurate positioning */}
+            {/* Minimap - premium styling with accurate positioning and real-time updates */}
             <MiniMap
+              key={`minimap-${nodes.length}-${edges.length}-${Math.round((viewport?.zoom || 1) * 1000)}`}
               nodeColor={(node) => {
                 const nodeData = node.data as any;
                 if (nodeData?.node) {
@@ -524,6 +725,7 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
               }}
               nodeStrokeWidth={2}
               nodeBorderRadius={10}
+              nodeStrokeColor="#fff"
               maskColor="rgba(0, 0, 0, 0.1)"
               maskStrokeColor="rgba(0, 0, 0, 0.2)"
               maskStrokeWidth={1}
@@ -538,25 +740,6 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
               ariaLabel="Minimap"
               position="bottom-right"
               offsetScale={5}
-              onClick={(event, position) => {
-                // Clicking on minimap should navigate to that position
-                if (reactFlowInstance) {
-                  reactFlowInstance.setCenter(position.x, position.y, { 
-                    zoom: viewport?.zoom || 1,
-                    duration: 400 
-                  });
-                }
-              }}
-              onNodeClick={(event, node) => {
-                // Clicking on a node in minimap should select it and navigate to it
-                if (reactFlowInstance && node.position) {
-                  selectNode(node.id);
-                  reactFlowInstance.setCenter(node.position.x, node.position.y, { 
-                    zoom: 1.2,
-                    duration: 400 
-                  });
-                }
-              }}
             />
           </ReactFlow>
 

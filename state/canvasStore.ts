@@ -8,6 +8,7 @@ interface CanvasStore {
   edges: ReactFlowEdge[];
   selectedNodeId: string | null;
   viewport: { x: number; y: number; zoom: number };
+  showTags: boolean; // Toggle for tag visibility on canvas
   
   // Actions
   setNodes: (nodes: ReactFlowNode[]) => void;
@@ -19,6 +20,7 @@ interface CanvasStore {
   deleteEdge: (id: string) => void;
   selectNode: (nodeId: string | null) => void;
   setViewport: (viewport: { x: number; y: number; zoom: number }) => void;
+  toggleTags: () => void;
   clearCanvas: () => void;
 }
 
@@ -27,6 +29,7 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
   edges: [],
   selectedNodeId: null,
   viewport: { x: 0, y: 0, zoom: 1 },
+  showTags: true, // Tags visible by default
 
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
@@ -76,10 +79,13 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
 
   setViewport: (viewport) => set({ viewport }),
 
+  toggleTags: () => set((state) => ({ showTags: !state.showTags })),
+
   clearCanvas: () => set({
     nodes: [],
     edges: [],
     selectedNodeId: null,
     viewport: { x: 0, y: 0, zoom: 1 },
+    showTags: true,
   }),
 }));

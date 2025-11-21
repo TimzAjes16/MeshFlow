@@ -1,0 +1,35 @@
+Fix: Resolve infinite refresh loop in Node Editor Panel
+
+Problem:
+- Every node update dispatched a refreshWorkspace event
+- This triggered WorkspaceProvider to reload workspace data
+- Store updates caused re-renders, creating an infinite loop
+- User edits would cause continuous refreshing
+
+Solution:
+- Removed all window.dispatchEvent(new CustomEvent('refreshWorkspace')) calls
+  from update operations in NodeEditorPanel.tsx
+- Leveraged existing optimistic update pattern for instant UI feedback
+- Relying on existing 5-second polling for cross-client sync
+
+Changes:
+- Removed 12 refreshWorkspace dispatches from:
+  * Title updates
+  * Content updates (debounced)
+  * Tag updates
+  * Image settings updates
+  * Chart settings updates
+  * Shape settings updates
+  * Text settings updates
+
+Benefits:
+- ✅ No more refresh loops
+- ✅ Real-time updates with optimistic UI feedback
+- ✅ Changes persist after 500ms debounce
+- ✅ Smooth editing experience
+- ✅ Cross-client sync still works via polling
+
+Files modified:
+- components/NodeEditorPanel.tsx
+- CHANGELOG.md (added comprehensive documentation)
+

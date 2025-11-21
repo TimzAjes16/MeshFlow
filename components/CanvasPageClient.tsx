@@ -2,11 +2,12 @@
 
 import { useCallback, useState, useEffect } from 'react';
 import CanvasContainer from './CanvasContainer';
-import NodeEditorPanel from './NodeEditorPanel';
-import FloatingToolbar from './FloatingToolbar';
+import FloatingNodeEditor from './FloatingNodeEditor';
+import FloatingHorizontalBar from './FloatingHorizontalBar';
 import KeyboardShortcuts from './KeyboardShortcuts';
-import NodesListView from './NodesListView';
+import CanvasSidebar from './CanvasSidebar';
 import ToolbarSettingsPanel from './ToolbarSettingsPanel';
+import NodeEditorPanel from './NodeEditorPanel';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
 
@@ -199,14 +200,36 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     [workspaceId, isCreating, addNode, selectNode]
   );
 
-  const handleShowToolbar = useCallback((position: { x: number; y: number }) => {
-    console.log('handleShowToolbar called with position:', position);
-    setToolbarPosition(position);
-  }, []);
+  const handleDuplicateNode = useCallback(async (nodeId: string) => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
 
-  const handleHideToolbar = useCallback(() => {
-    setToolbarPosition(null);
-  }, []);
+    try {
+      const response = await fetch('/api/nodes/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId,
+          title: `${node.title} (Copy)`,
+          content: node.content,
+          tags: node.tags,
+          x: node.x + 50,
+          y: node.y + 50,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.node) {
+          addNode(data.node);
+          selectNode(data.node.id);
+          window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+        }
+      }
+    } catch (error) {
+      console.error('Error duplicating node:', error);
+    }
+  }, [workspaceId, nodes, addNode, selectNode]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -227,27 +250,27 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         // Allow Ctrl/Cmd+N when typing
         if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
           e.preventDefault();
-          // Create node at center of viewport
+          // Dispatch event to show horizontal bar
           const viewportCenter = {
             x: window.innerWidth / 2,
             y: window.innerHeight / 2,
           };
-          handleShowToolbar(viewportCenter);
+          window.dispatchEvent(new CustomEvent('show-create-toolbar', { detail: viewportCenter }));
           // Store center position as flow position
           (window as any).lastFlowPosition = { x: 500, y: 400 };
         }
         return;
       }
 
-      // Ctrl/Cmd + N: Create new node
+      // Ctrl/Cmd + N: Show horizontal bar for creating node
       if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
         e.preventDefault();
-        // Create node at center of viewport
+        // Dispatch event to show horizontal bar
         const viewportCenter = {
           x: window.innerWidth / 2,
           y: window.innerHeight / 2,
         };
-        handleShowToolbar(viewportCenter);
+        window.dispatchEvent(new CustomEvent('show-create-toolbar', { detail: viewportCenter }));
         // Store center position as flow position
         (window as any).lastFlowPosition = { x: 500, y: 400 };
       }
@@ -259,10 +282,9 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         window.dispatchEvent(new CustomEvent('deleteSelectedNode', { detail: { nodeId: selectedNodeId } }));
       }
 
-      // Escape: Deselect node, close toolbar, and close settings panel
+      // Escape: Deselect node and close settings panel
       if (e.key === 'Escape') {
         selectNode(null);
-        setToolbarPosition(null);
         setSelectedNodeType(null);
       }
     };
@@ -300,52 +322,32 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     <div className="flex flex-col h-full overflow-hidden bg-white">
       {/* Main Canvas Area - must fill available space */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Left Sidebar - Nodes List (Collapsible) */}
+        <CanvasSidebar workspaceId={workspaceId} />
+        
+        {/* Canvas Area */}
         <div className="flex-1 min-w-0 min-h-0 relative">
           <CanvasContainer 
             workspaceId={workspaceId} 
-            onCreateNode={(pos) => handleShowToolbar(pos)}
+            onCreateNode={(pos) => {
+              // Store click position for horizontal bar
+              (window as any).lastClickPosition = pos;
+              // Dispatch event to show horizontal bar
+              window.dispatchEvent(new CustomEvent('show-create-toolbar', { detail: pos }));
+            }}
           />
-          {toolbarPosition && (
-            <>
-              <div 
-                className="fixed inset-0 z-[99998] bg-black/10"
-                onClick={() => {
-                  console.log('Backdrop clicked - closing toolbar');
-                  handleHideToolbar();
-                }}
-              />
-              <FloatingToolbar
-                position={toolbarPosition}
-              onClose={() => {
-                console.log('FloatingToolbar onClose called');
-                handleHideToolbar();
-                setSelectedNodeType(null);
-              }}
-              onCreateNode={async (type, pos) => {
-                console.log('[CanvasPageClient] FloatingToolbar onCreateNode called with type:', type, 'screen pos:', pos);
-                try {
-                  // Close toolbar immediately so user sees action happening
-                  handleHideToolbar();
-                  
-                  // DON'T show settings panel yet - wait until node is successfully created
-                  // This prevents settings panel from showing if API call fails
-                  
-                  // Create the node - this will use the flow position stored during double-click
-                  await handleCreateNode(type, pos);
-                  
-                  // Settings panel will be shown in handleCreateNode after successful API response
-                } catch (error) {
-                  console.error('[CanvasPageClient] Error in onCreateNode:', error);
-                  setSelectedNodeType(null);
-                  setIsCreating(false);
-                }
-              }}
-              />
-            </>
-          )}
+          
+          {/* Floating Horizontal Bar */}
+          <FloatingHorizontalBar
+            onCreateNode={handleCreateNode}
+            onDeleteNode={(nodeId) => {
+              window.dispatchEvent(new CustomEvent('deleteSelectedNode', { detail: { nodeId } }));
+            }}
+            onDuplicateNode={handleDuplicateNode}
+          />
         </div>
         
-        {/* Right Panel - Node Editor or Toolbar Settings - fixed width */}
+        {/* Right Panel - Node Editor or Toolbar Settings */}
         <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
           {selectedNodeType && !selectedNodeId ? (
             <ToolbarSettingsPanel 
@@ -357,13 +359,6 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           )}
         </aside>
       </div>
-      
-      {/* Nodes List View - below canvas - only show if nodes exist */}
-      {nodes.length > 0 && (
-        <div className="h-64 shrink-0 border-t border-gray-200 overflow-hidden">
-          <NodesListView workspaceId={workspaceId} />
-        </div>
-      )}
       
       {/* Keyboard Shortcuts */}
       <KeyboardShortcuts />

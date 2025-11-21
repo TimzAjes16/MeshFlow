@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Floating Horizontal Bar for Node Creation and Editing - 2024
+
+**Feature:**
+- Added floating horizontal bar at the bottom center of the canvas
+- Replaces double-click functionality for node creation
+- Shows node creation options (Text, Note, Link, Image, Box, Circle, Charts) when expanded
+- Automatically switches to node edit mode when a node is selected
+- Edit mode shows quick actions: Duplicate, Delete, Close
+- Collapsible/expandable design for better canvas space management
+
+**Implementation:**
+- Created `FloatingHorizontalBar.tsx` component
+- Single click on canvas background shows creation toolbar
+- Clicking a node switches bar to edit mode
+- Integrated with existing node creation and editing workflows
+
+#### Collapsible Left Sidebar for Nodes List - 2024
+
+**Feature:**
+- Moved "All Nodes" list from bottom panel to left sidebar
+- Collapsible sidebar with smooth animations
+- Shows nodes grouped by tags with "Recently Visited" section
+- Toggle button to expand/collapse (320px expanded, 48px collapsed)
+- Preserves all functionality: node selection, scrolling to nodes, tag filtering
+
+**Implementation:**
+- Created `CanvasSidebar.tsx` component
+- Updated `CanvasPageClient.tsx` layout structure
+- Sidebar → Canvas → Right Panel (Editor) layout
+
+#### Unique Node Shapes on Canvas - 2024
+
+**Feature:**
+- Box nodes render as actual rectangles with sharp corners
+- Circle nodes render as perfect circles
+- Note nodes render as sticky notes with folded corner effect
+- Link nodes render as bookmark shapes with clipped corner
+- Text nodes render with markdown-style formatting support
+- Image nodes show actual image previews
+- Chart nodes show actual charts (unchanged)
+
+**Implementation:**
+- Updated `NodeComponent.tsx` to render actual content instead of node representations
+- Each node type has unique visual identity while maintaining functionality
+- Content displays directly on canvas for better visibility
+
 ### Fixed
 
 #### Refresh Loop Issue in Node Editor - 2024
@@ -64,4 +112,49 @@ Removed all `window.dispatchEvent(new CustomEvent('refreshWorkspace'))` calls fr
 
 **Result:**
 The refresh loop is fixed, and changes persist in real-time without excessive refreshing. The node editor now provides a smooth, responsive editing experience with immediate visual feedback and reliable data persistence.
+
+#### Drag-to-Connect Functionality - 2024
+
+**Problem:**
+- Drag-to-connect didn't work when zoomed out
+- Fixed pixel-based overlap detection didn't account for zoom levels
+- Nodes out of viewport couldn't be connected
+
+**Solution:**
+- Updated `onNodeDragStop` to use DOM element dimensions and viewport zoom
+- Converts screen dimensions to flow coordinates for accurate overlap detection
+- Works at any zoom level by calculating actual node sizes in flow space
+
+**Files modified:**
+- `components/CanvasContainer.tsx` - Improved drag-to-connect detection logic
+
+#### Canvas Panning - 2024
+
+**Problem:**
+- Canvas dragging/panning was not working smoothly
+- Panning only worked with specific mouse buttons
+
+**Solution:**
+- Changed `panOnDrag` from `[1, 2]` to `true` for left mouse button panning
+- Added `panOnScroll={true}` for scroll wheel panning with modifier keys
+- Panning now works smoothly on empty canvas space
+
+**Files modified:**
+- `components/CanvasContainer.tsx` - Updated pan and drag configuration
+
+#### Node Edit Settings Buttons - 2024
+
+**Problem:**
+- Size and color buttons in settings panels sometimes didn't update nodes
+- Changes weren't being applied in real-time
+
+**Solution:**
+- Fixed `useEffect` dependencies in `ImageSettingsPanel.tsx`, `TextSettingsPanel.tsx`, and `ChartEditorPanel.tsx`
+- Ensured complete config objects are passed to `onUpdate` callbacks
+- Added proper state synchronization to prevent stale closures
+
+**Files modified:**
+- `components/ImageSettingsPanel.tsx` - Fixed size/alignment/borderRadius updates
+- `components/TextSettingsPanel.tsx` - Fixed fontSize/fontFamily/alignment updates
+- `components/ChartEditorPanel.tsx` - Fixed size/colorPreset updates
 
