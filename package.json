@@ -1,0 +1,52 @@
+{
+  "name": "meshflow",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "reactflow": "^11.11.0",
+    "d3": "^7.9.0",
+    "d3-force": "^3.0.0",
+    "better-sqlite3": "^11.0.0",
+    "zod": "^3.22.4",
+    "openai": "^4.47.0",
+    "uuid": "^9.0.1",
+    "date-fns": "^3.3.1",
+    "lucide-react": "^0.344.0",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.2.1",
+    "@supabase/supabase-js": "^2.39.0",
+    "@supabase/ssr": "^0.1.0",
+    "zustand": "^4.5.0",
+    "framer-motion": "^11.0.0",
+    "@tiptap/react": "^2.1.13",
+    "@tiptap/starter-kit": "^2.1.13",
+    "@tiptap/extension-placeholder": "^2.1.13",
+    "fuse.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.55",
+    "@types/react-dom": "^18.2.19",
+    "@types/uuid": "^9.0.7",
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/d3": "^7.4.3",
+    "typescript": "^5.3.3",
+    "tailwindcss": "^3.4.1",
+    "postcss": "^8.4.35",
+    "autoprefixer": "^10.4.17",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "^14.2.0",
+    "tsx": "^4.7.1"
+  }
+}

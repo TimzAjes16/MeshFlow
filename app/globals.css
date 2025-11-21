@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* React Flow styles */
+.react-flow__node {
+  cursor: pointer;
+}
+
+.react-flow__node.selected {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.react-flow__node.highlighted {
+  filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.8));
+}
+
+.react-flow__edge.selected {
+  stroke: #3b82f6;
+  stroke-width: 3;
+}
