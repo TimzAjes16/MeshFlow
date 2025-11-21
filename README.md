@@ -50,13 +50,14 @@ npm run dev
 
 ## Usage
 
-1. **Create a Workspace**: Click "New Workspace" on the home page
-2. **Add Nodes**: Right-click on the canvas to create a new node
-3. **Edit Nodes**: Click on a node to open the editor
-4. **Connect Nodes**: Drag from one node to another to create a connection
-5. **Auto-Link**: Enable "Auto-Link" to automatically connect similar nodes via AI embeddings
-6. **Search**: Use the search bar to find and highlight nodes
-7. **Layout**: Click "Layout" to run the force-directed layout algorithm
+1. **Create a Workspace**: Click "New Workspace" on the home page and enter a name
+2. **Add Nodes**: Right-click on the canvas to create a new node (enter a title when prompted)
+3. **Edit Nodes**: Click on a node to open the editor panel on the right
+4. **Connect Nodes**: Drag from one node's handle (bottom) to another node's handle (top) to create a connection
+5. **Auto-Link**: Toggle "Auto-Link" button to automatically connect similar nodes via AI embeddings when creating/editing nodes
+6. **Search**: Use the search bar to find and highlight matching nodes
+7. **Layout**: Click "Layout" button to run the force-directed layout algorithm and reorganize nodes
+8. **Navigate**: Use the back arrow to return to the workspace list
 
 ## Tech Stack
 
