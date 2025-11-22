@@ -1,3 +1,5 @@
+'use client';
+
 import { create } from 'zustand';
 import type { Node } from '@/types/Node';
 import type { Edge } from '@/types/Edge';

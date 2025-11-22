@@ -18,6 +18,7 @@ function ResizeHandle({ nodeId, position, currentWidth, currentHeight, onResize 
     (e: React.MouseEvent) => {
       e.stopPropagation();
       e.preventDefault();
+      e.nativeEvent.stopImmediatePropagation();
       
       // Get the node element to calculate scale correctly
       const nodeElement = (e.target as HTMLElement).closest('[data-id]') as HTMLElement;
@@ -35,6 +36,10 @@ function ResizeHandle({ nodeId, position, currentWidth, currentHeight, onResize 
 
       const handleMouseMove = (moveEvent: MouseEvent) => {
         if (!startPosRef.current) return;
+        
+        // Prevent default to stop any drag behavior
+        moveEvent.preventDefault();
+        moveEvent.stopPropagation();
 
         const deltaX = moveEvent.clientX - startPosRef.current.x;
         const deltaY = moveEvent.clientY - startPosRef.current.y;
@@ -127,9 +132,17 @@ function ResizeHandle({ nodeId, position, currentWidth, currentHeight, onResize 
       ref={nodeRef}
       className={`absolute w-3 h-3 bg-blue-500 border-2 border-white rounded-full shadow-lg z-50 ${getPositionClasses()}`}
       onMouseDown={handleMouseDown}
+      onDragStart={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }}
+      draggable={false}
       style={{
         transform: position === 'top' || position === 'bottom' ? 'translateX(-50%)' : 
                    position === 'left' || position === 'right' ? 'translateY(-50%)' : '',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
       }}
     />
   );

@@ -242,6 +242,13 @@ Switch between 4 different layouts in the top bar:
 - Press **Ctrl+C** (or **Cmd+C** on Mac) in the terminal running `npm run dev`
 - Or use `lsof -ti:3000 | xargs kill -9` to force kill if terminal is closed
 
+**Build errors (e.g., "Cannot find module './1682.js'")?**
+- This is typically a Next.js webpack chunk cache issue
+- Stop the dev server (press **Ctrl+C** or **Cmd+C**)
+- Remove the corrupted build cache: `rm -rf .next`
+- Start fresh: `npm run dev`
+- The expand and rotate functionality should now work on all node types after the rebuild completes
+
 ### Feature Issues
 
 **Auto-linking not working?**

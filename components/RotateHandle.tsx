@@ -50,6 +50,7 @@ function RotateHandle({ nodeId, rotation, onRotate }: RotateHandleProps) {
     (e: React.MouseEvent) => {
       e.stopPropagation();
       e.preventDefault();
+      e.nativeEvent.stopImmediatePropagation();
       setIsDragging(true);
 
       if (!containerRef.current) return;
@@ -80,6 +81,10 @@ function RotateHandle({ nodeId, rotation, onRotate }: RotateHandleProps) {
 
       const handleMouseMove = (moveEvent: MouseEvent) => {
         if (!startPosRef.current) return;
+        
+        // Prevent default to stop any drag behavior
+        moveEvent.preventDefault();
+        moveEvent.stopPropagation();
 
         // Use the stored center coordinates to calculate rotation around the center point
         const currentAngle = Math.atan2(
@@ -149,7 +154,17 @@ function RotateHandle({ nodeId, rotation, onRotate }: RotateHandleProps) {
       {/* Rotate handle with degree display */}
       <div
         onMouseDown={handleMouseDown}
+        onDragStart={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+        }}
+        draggable={false}
         className="relative cursor-grab active:cursor-grabbing"
+        style={{
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+        }}
       >
         <div className={`w-8 h-8 bg-blue-500 border-2 border-white rounded-full shadow-lg flex items-center justify-center hover:bg-blue-600 transition-colors ${isDragging ? 'ring-2 ring-blue-300' : ''}`}>
           <RotateCw className="w-4 h-4 text-white" />

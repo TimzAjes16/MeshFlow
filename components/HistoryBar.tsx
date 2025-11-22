@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Undo2, Redo2, History, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Undo2, Redo2, History, X, ChevronDown, ChevronUp, GripVertical, LayoutDashboard } from 'lucide-react';
 import { useHistoryStore } from '@/state/historyStore';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
@@ -19,11 +19,31 @@ export default function HistoryBar() {
   const [position, setPosition] = useState({ x: 50, y: 100 });
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isAttachedToSidebar, setIsAttachedToSidebar] = useState(false);
+  const [activeTab, setActiveTab] = useState<'nodes' | 'history'>('nodes');
   const barRef = useRef<HTMLDivElement>(null);
 
-  // Load saved position from localStorage
+  // Listen for detachment events from HistoryBarContent
+  useEffect(() => {
+    const handleDetachEvent = (event: CustomEvent) => {
+      if (event.detail?.attached === false) {
+        setIsAttachedToSidebar(false);
+        if (event.detail?.position) {
+          setPosition(event.detail.position);
+        }
+      }
+    };
+    
+    window.addEventListener('history-bar-attached', handleDetachEvent as EventListener);
+    return () => {
+      window.removeEventListener('history-bar-attached', handleDetachEvent as EventListener);
+    };
+  }, []);
+
+  // Load saved position and attachment state from localStorage
   useEffect(() => {
     const savedPosition = localStorage.getItem('historyBarPosition');
+    const savedAttachment = localStorage.getItem('historyBarAttached');
     if (savedPosition) {
       try {
         const { x, y } = JSON.parse(savedPosition);
@@ -32,12 +52,16 @@ export default function HistoryBar() {
         console.error('Failed to load history bar position:', e);
       }
     }
+    if (savedAttachment === 'true') {
+      setIsAttachedToSidebar(true);
+    }
   }, []);
 
-  // Save position to localStorage
+  // Save position and attachment state to localStorage
   useEffect(() => {
     localStorage.setItem('historyBarPosition', JSON.stringify(position));
-  }, [position]);
+    localStorage.setItem('historyBarAttached', String(isAttachedToSidebar));
+  }, [position, isAttachedToSidebar]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (barRef.current) {
@@ -50,13 +74,61 @@ export default function HistoryBar() {
     }
   };
 
+  // Get sidebar element for snapping
+  const getSidebarRect = () => {
+    const sidebar = document.querySelector('[class*="border-r"][class*="w-80"], [class*="border-r"][class*="w-12"]') as HTMLElement;
+    return sidebar?.getBoundingClientRect();
+  };
+
+  // Check if position is near sidebar for snapping
+  const checkSnapToSidebar = (x: number, y: number) => {
+    const sidebarRect = getSidebarRect();
+    if (!sidebarRect) return false;
+    
+    const snapThreshold = 80; // pixels - larger threshold for easier snapping
+    const barHeight = barRef.current?.getBoundingClientRect().height || 40;
+    
+    // Check if near right edge of sidebar and vertically aligned
+    const isNearSidebar = Math.abs(x - sidebarRect.right) < snapThreshold && 
+                          y >= sidebarRect.top - 30 && 
+                          y <= sidebarRect.bottom + 30;
+    
+    return isNearSidebar;
+  };
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (isDragging) {
-        setPosition({
-          x: e.clientX - dragOffset.x,
-          y: e.clientY - dragOffset.y,
-        });
+      if (isDragging && barRef.current) {
+        const newX = e.clientX - dragOffset.x;
+        const newY = e.clientY - dragOffset.y;
+        
+        // Check for snapping to sidebar
+        const sidebarRect = getSidebarRect();
+        const distanceFromSidebar = sidebarRect ? Math.abs(newX - sidebarRect.right) : Infinity;
+        const detachThreshold = 60; // Easy threshold for detachment - smaller means easier to detach
+        
+        if (sidebarRect && checkSnapToSidebar(newX, newY) && !isAttachedToSidebar && distanceFromSidebar < 50) {
+          // Snap to sidebar right edge (only if not already attached and close enough)
+          setIsAttachedToSidebar(true);
+          setPosition({
+            x: sidebarRect.right,
+            y: Math.max(sidebarRect.top + 10, Math.min(newY, sidebarRect.bottom - 50)),
+          });
+          // Dispatch event to switch sidebar to history tab
+          window.dispatchEvent(new CustomEvent('history-bar-attached', { detail: { attached: true } }));
+        } else {
+          // Normal drag - detach if was attached or moving away
+          if (isAttachedToSidebar && distanceFromSidebar > detachThreshold) {
+            // Detach from sidebar - easy threshold
+            setIsAttachedToSidebar(false);
+            window.dispatchEvent(new CustomEvent('history-bar-attached', { detail: { attached: false } }));
+          }
+          
+          setPosition({
+            x: newX,
+            y: newY,
+          });
+        }
       }
     };
 
@@ -72,7 +144,7 @@ export default function HistoryBar() {
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDragging, dragOffset]);
+  }, [isDragging, dragOffset, isAttachedToSidebar]);
 
   const handleUndo = async () => {
     const entry = undo();
@@ -309,6 +381,9 @@ export default function HistoryBar() {
   // Get the total history count (past + future)
   const totalHistoryCount = past.length + future.length;
 
+  // Always show floating bar - it will be hidden when attached via CSS or component unmount
+  // But we keep it in DOM so dragging works even when attached
+
   return (
     <div
       ref={barRef}
@@ -322,17 +397,13 @@ export default function HistoryBar() {
       }}
     >
       <div className="flex items-center gap-2 px-3 py-2">
-        {/* Drag handle */}
+        {/* Drag handle - hamburger icon */}
         <div
-          className="w-6 h-6 flex items-center justify-center cursor-move hover:bg-gray-100 rounded"
+          className="w-6 h-6 flex items-center justify-center cursor-grab active:cursor-grabbing hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
           onMouseDown={handleMouseDown}
-          title="Drag to move"
+          title="Drag to move or snap to sidebar"
         >
-          <div className="flex flex-col gap-0.5">
-            <div className="w-3 h-0.5 bg-gray-400 rounded"></div>
-            <div className="w-3 h-0.5 bg-gray-400 rounded"></div>
-            <div className="w-3 h-0.5 bg-gray-400 rounded"></div>
-          </div>
+          <GripVertical className="w-4 h-4" />
         </div>
 
         {/* Undo button */}

@@ -49,7 +49,7 @@ function isEmojiNode(node: Node): boolean {
   return node.tags.includes('emoji');
 }
 
-export default function FloatingNodeEditor() {
+function FloatingNodeEditor() {
   const { selectedNodeId } = useCanvasStore();
   const { nodes, edges, updateNode } = useWorkspaceStore();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspace?.id);
@@ -153,7 +153,7 @@ export default function FloatingNodeEditor() {
     } else if (!selectedNodeId) {
       setTitle('');
       setTags([]);
-    }
+      }
   }, [selectedNodeId, selectedNode]);
 
   // Fetch linked nodes
@@ -592,19 +592,19 @@ export default function FloatingNodeEditor() {
                             {option.category}
                           </div>
                         )}
-                        <button
+                      <button
                           onClick={async () => {
                             // Load Google Font if needed
                             if (option.googleFont) {
                               loadGoogleFont(option.googleFont);
                             }
                             
-                            const currentContent = selectedNode.content || {};
-                            const textSettings = currentContent && typeof currentContent === 'object' && 'textSettings' in currentContent
-                              ? (currentContent as any).textSettings
-                              : {};
-                            const newContent = {
-                              ...currentContent,
+                          const currentContent = selectedNode.content || {};
+                          const textSettings = currentContent && typeof currentContent === 'object' && 'textSettings' in currentContent
+                            ? (currentContent as any).textSettings
+                            : {};
+                          const newContent = {
+                            ...currentContent,
                               textSettings: { 
                                 ...textSettings, 
                                 fontFamily: option.value,
@@ -613,33 +613,33 @@ export default function FloatingNodeEditor() {
                             };
                             
                             // Update local store immediately for instant UI feedback
-                            updateNode(selectedNode.id, { content: newContent });
+                          updateNode(selectedNode.id, { content: newContent });
                             
-                            if (workspaceId) {
+                          if (workspaceId) {
                               // Fire-and-forget API call - don't await to prevent UI blocking
-                              fetch('/api/nodes/update', {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  nodeId: selectedNode.id,
-                                  content: newContent,
-                                }),
+                            fetch('/api/nodes/update', {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                nodeId: selectedNode.id,
+                                content: newContent,
+                              }),
                               }).catch((error) => {
                                 console.error('Error updating font family:', error);
-                              });
+                            });
                               // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
-                            }
-                            setOpenDropdown(null);
-                          }}
-                          style={{ fontFamily: option.font }}
-                          className={`w-full px-4 py-2.5 text-left border-2 rounded-lg transition-all mb-2 ${
-                            isSelected
-                              ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
-                              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                          }`}
-                        >
-                          {option.label}
-                        </button>
+                          }
+                          setOpenDropdown(null);
+                        }}
+                        style={{ fontFamily: option.font }}
+                        className={`w-full px-4 py-2.5 text-left border-2 rounded-lg transition-all mb-2 ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
+                            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
                       </div>
                     );
                   })}
@@ -820,7 +820,7 @@ export default function FloatingNodeEditor() {
             )}
           </div>
         )}
-
+          
         {/* Fill Dropdown - for emoji nodes */}
         {isEmojiNode(selectedNode) && (
             <div className="relative" ref={setDropdownRef('fill')}>
@@ -855,12 +855,12 @@ export default function FloatingNodeEditor() {
                           emojiSettings: { ...emojiSettings, fill: newFill },
                         };
                         updateNode(selectedNode.id, { content: newContent });
-                        if (workspaceId) {
+                    if (workspaceId) {
                           fetch('/api/nodes/update', {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              nodeId: selectedNode.id,
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            nodeId: selectedNode.id,
                               content: newContent,
                             }),
                           }).catch((error) => {
@@ -916,7 +916,7 @@ export default function FloatingNodeEditor() {
                             <button
                               key={option.value}
                               onClick={() => {
-                                const currentContent = selectedNode.content || {};
+                      const currentContent = selectedNode.content || {};
                                 const emojiData = currentContent && typeof currentContent === 'object' && 'emoji' in currentContent
                                   ? (currentContent as any).emoji
                                   : (selectedNode.title || '😀');
@@ -928,15 +928,15 @@ export default function FloatingNodeEditor() {
                                   emoji: emojiData,
                                   emojiSettings: { ...emojiSettings, fillColor: option.value },
                                 };
-                                updateNode(selectedNode.id, { content: newContent });
-                                if (workspaceId) {
+                      updateNode(selectedNode.id, { content: newContent });
+                      if (workspaceId) {
                                   fetch('/api/nodes/update', {
-                                    method: 'PUT',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                      nodeId: selectedNode.id,
-                                      content: newContent,
-                                    }),
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              nodeId: selectedNode.id,
+                              content: newContent,
+                            }),
                                   }).catch((error) => {
                                     console.error('Error updating emoji color:', error);
                                   });
@@ -955,12 +955,12 @@ export default function FloatingNodeEditor() {
                         })}
                       </div>
                     </div>
-                  )}
-                </div>
-              </div>
+                      )}
+                    </div>
+                  </div>
             )}
-          </div>
-        )}
+                </div>
+              )}
 
         {/* Layer/Layering Dropdown */}
             <div className="relative" ref={setDropdownRef('layer')}>
@@ -1128,7 +1128,7 @@ export default function FloatingNodeEditor() {
                             }),
                             }).catch((error) => {
                               console.error('Error updating tags:', error);
-                            });
+                          });
                             // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
                         }
                       }
@@ -1171,33 +1171,33 @@ export default function FloatingNodeEditor() {
                     
                     return (
                       <div
-                        key={linkedNode.id}
+                      key={linkedNode.id}
                         className="group relative w-full px-3 py-2 text-sm bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
                       >
                         <button
-                          onClick={() => {
-                            useCanvasStore.getState().selectNode(linkedNode.id);
-                            window.dispatchEvent(new CustomEvent('zoom-to-node', {
-                              detail: { nodeId: linkedNode.id }
-                            }));
-                            setOpenDropdown(null);
-                          }}
+                      onClick={() => {
+                        useCanvasStore.getState().selectNode(linkedNode.id);
+                        window.dispatchEvent(new CustomEvent('zoom-to-node', {
+                          detail: { nodeId: linkedNode.id }
+                        }));
+                        setOpenDropdown(null);
+                      }}
                           className="w-full text-left pr-8"
-                        >
-                          <div className="font-medium text-gray-900">{linkedNode.title || 'Untitled'}</div>
-                          {linkedNode.tags && linkedNode.tags.length > 0 && (
-                            <div className="flex gap-1 mt-1">
-                              {linkedNode.tags.slice(0, 3).map((tag, idx) => (
-                                <span
-                                  key={idx}
-                                  className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </button>
+                    >
+                      <div className="font-medium text-gray-900">{linkedNode.title || 'Untitled'}</div>
+                      {linkedNode.tags && linkedNode.tags.length > 0 && (
+                        <div className="flex gap-1 mt-1">
+                          {linkedNode.tags.slice(0, 3).map((tag, idx) => (
+                            <span
+                              key={idx}
+                              className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </button>
                         {connectingEdge && (
                           <button
                             onClick={async (e) => {
@@ -1280,3 +1280,4 @@ export default function FloatingNodeEditor() {
   );
 }
 
+export default FloatingNodeEditor;

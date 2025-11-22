@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       y: body.y,
     });
 
-    const { workspaceId, title, content, tags, x, y } = body;
+    const { workspaceId, title, content, tags, type, x, y } = body;
 
     if (!workspaceId || !title) {
       console.error('[API] Missing required fields:', { workspaceId: !!workspaceId, title: !!title });
@@ -60,11 +60,16 @@ export async function POST(request: NextRequest) {
       y: y || 0,
     });
     
+    // Ensure type is included in content if provided (following Miro/Notion pattern)
+    const nodeContent = typeof content === 'object' && content !== null
+      ? { ...content, ...(type ? { type } : {}) }
+      : content || (type ? { type } : {});
+
     const newNode = await prisma.node.create({
       data: {
         workspaceId,
         title,
-        content: content || {},
+        content: nodeContent,
         tags: tags || [],
         x: x || 0,
         y: y || 0,

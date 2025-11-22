@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import ReactFlow, {
   Background,
   Controls,
-  MiniMap,
   NodeTypes,
   EdgeTypes,
   useNodesState,
@@ -213,8 +212,11 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
           label: node.title || 'Untitled',
           node,
         },
-        // Set dimensions for chart nodes
-        ...(isChart && {
+        // Use node dimensions from store if available, otherwise use defaults
+        ...(node.width && { width: node.width }),
+        ...(node.height && { height: node.height }),
+        // Set default dimensions for chart nodes if not set
+        ...(isChart && !node.width && !node.height && {
           width: 400,
           height: 300,
         }),
@@ -413,7 +415,10 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   }, [setNodes]);
 
   const onNodeClick = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
+    (event: React.MouseEvent, node: Node) => {
+      // MIRO-LIKE: Always select node on single click
+      // This ensures FloatingNodeEditor appears immediately
+      // Inline editing will handle text input separately
       selectNode(node.id);
     },
     [selectNode]
@@ -944,10 +949,8 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
             {/* Infinite canvas - premium subtle grid */}
             <Background
               variant={BackgroundVariant.Dots}
-              gap={40}
-              size={0.6}
-              color="rgba(156, 163, 175, 0.15)"
-              style={{ opacity: 0.4 }}
+              gap={20}
+              size={1}
             />
         
             {/* Controls - premium rounded with shadow */}
@@ -959,49 +962,6 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
               style={{
                 opacity: 0.95,
               }}
-            />
-        
-            {/* Minimap - reflects everything on canvas with golden-yellow glow aesthetic */}
-            {/* ReactFlow MiniMap automatically updates when nodes/edges change */}
-            <MiniMap
-              nodeColor={(node) => {
-                // Use distinct colors for different node types
-                const nodeData = node.data as any;
-                if (nodeData?.node) {
-                  const color = getNodeColor(nodeData.node);
-                  // Use brighter color for selected nodes
-                  if (node.id === selectedNodeId) {
-                    return color.primary || '#3b82f6';
-                  }
-                  // Use node's actual color or default
-                  return color.primary || '#6366f1';
-                }
-                return '#6366f1';
-              }}
-              nodeStrokeWidth={2}
-              nodeBorderRadius={4}
-              nodeStrokeColor={(node) => {
-                // Highlight selected node with stronger border
-                if (node.id === selectedNodeId) {
-                  return '#3b82f6';
-                }
-                return '#1e40af';
-              }}
-              maskColor="rgba(0, 0, 0, 0.2)"
-              maskStrokeColor="rgba(59, 130, 246, 0.5)"
-              maskStrokeWidth={2}
-              className="bg-white/90 backdrop-blur-sm rounded-lg border border-gray-300 shadow-lg"
-              style={{
-                width: '200px',
-                height: '200px',
-                opacity: 0.95,
-              }}
-              pannable={true}
-              zoomable={true}
-              ariaLabel="Minimap - shows all nodes and edges on canvas"
-              position="bottom-right"
-              offsetScale={3}
-              nodeComponent={undefined}
             />
           </ReactFlow>
 

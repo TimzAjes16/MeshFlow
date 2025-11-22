@@ -9,6 +9,7 @@ import KeyboardShortcuts from './KeyboardShortcuts';
 import CanvasSidebar from './CanvasSidebar';
 import ToolbarSettingsPanel from './ToolbarSettingsPanel';
 import EmojiPickerPopup from './EmojiPickerPopup';
+import CaptureModal from './CaptureModal';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
 import { useHistoryStore } from '@/state/historyStore';
@@ -28,6 +29,8 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [emojiPickerNode, setEmojiPickerNode] = useState<Node | null>(null);
   const [emojiPickerPosition, setEmojiPickerPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [captureModalOpen, setCaptureModalOpen] = useState(false);
+  const [captureNodeId, setCaptureNodeId] = useState<string | null>(null); // For updating existing nodes
 
   // Clear selectedNodeType when node is deselected
   useEffect(() => {
@@ -37,9 +40,130 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     }
   }, [selectedNodeId]);
 
+  // Handle live-capture node creation
+  const handleCaptureComplete = useCallback(
+    async (imageUrl: string, cropArea: { x: number; y: number; width: number; height: number }) => {
+      if (captureNodeId) {
+        // Update existing capture node
+        const node = nodes.find(n => n.id === captureNodeId);
+        if (node) {
+          const currentContent = typeof node.content === 'object' && node.content?.type === 'live-capture'
+            ? node.content
+            : { type: 'live-capture', imageUrl: '', cropArea: { x: 0, y: 0, width: 0, height: 0 }, captureHistory: [] };
+          
+          const captureHistory = currentContent.captureHistory || [];
+          const newCapture = {
+            imageUrl,
+            timestamp: new Date().toISOString(),
+          };
+          
+          updateNode(captureNodeId, {
+            content: {
+              ...currentContent,
+              type: 'live-capture',
+              imageUrl,
+              cropArea,
+              captureHistory: [...captureHistory, newCapture],
+              timestamp: new Date().toISOString(),
+            },
+          });
+          
+          // Persist to API
+          try {
+            const response = await fetch('/api/nodes/update', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nodeId: captureNodeId,
+                content: {
+                  ...currentContent,
+                  type: 'live-capture',
+                  imageUrl,
+                  cropArea,
+                  captureHistory: [...captureHistory, newCapture],
+                  timestamp: new Date().toISOString(),
+                },
+              }),
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              if (data.node) {
+                updateNode(captureNodeId, data.node);
+              }
+            }
+          } catch (error) {
+            console.error('Error updating capture node:', error);
+          }
+        }
+        setCaptureNodeId(null);
+      } else {
+        // Create new capture node
+        const storedFlowPos = (window as any).lastFlowPosition || { x: 500, y: 400 };
+        
+        try {
+          const response = await fetch('/api/nodes/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              workspaceId,
+              title: 'Live Capture',
+              type: 'live-capture',
+              content: {
+                type: 'live-capture',
+                imageUrl,
+                cropArea,
+                captureHistory: [{
+                  imageUrl,
+                  timestamp: new Date().toISOString(),
+                }],
+                timestamp: new Date().toISOString(),
+              },
+              tags: ['live-capture'],
+              x: storedFlowPos.x,
+              y: storedFlowPos.y,
+            }),
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.node) {
+              addNode(data.node);
+              selectNode(data.node.id);
+              (window as any).lastFlowPosition = null;
+            }
+          }
+        } catch (error) {
+          console.error('Error creating capture node:', error);
+          alert('Failed to create capture node');
+        }
+      }
+    },
+    [captureNodeId, nodes, workspaceId, updateNode, addNode, selectNode]
+  );
+
+  // Listen for capture node updates
+  useEffect(() => {
+    const handleUpdateCaptureNode = (event: CustomEvent) => {
+      setCaptureNodeId(event.detail.nodeId);
+      setCaptureModalOpen(true);
+    };
+    
+    window.addEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
+    return () => window.removeEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
+  }, []);
+
   const handleCreateNode = useCallback(
     async (type: string = 'note', screenPosition: { x: number; y: number }) => {
       console.log('handleCreateNode called with type:', type, 'position:', screenPosition);
+      
+      // Handle live-capture type specially - show modal
+      if (type === 'live-capture') {
+        setCaptureNodeId(null); // New capture
+        setCaptureModalOpen(true);
+        return;
+      }
+      
       if (isCreating) {
         console.log('Already creating node, skipping');
         return;
@@ -110,13 +234,26 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
+            body: JSON.stringify({
             workspaceId,
             title: titles[type] || 'New Node',
+            type: type, // Explicit type (following Miro/Notion pattern)
             content: type === 'text' 
               ? { type: 'doc', content: [{ type: 'paragraph' }] } 
-              : (type.includes('chart') ? getDefaultChartContent(type) : (type === 'emoji' ? { emoji: '😀' } : (type === 'arrow' ? { arrow: { direction: 'right' } } : {}))),
-            tags: [type],
+              : type.includes('chart') 
+                ? { type, ...getDefaultChartContent(type).chart }
+                : type === 'image'
+                  ? { type: 'image', url: '', size: 'medium', alignment: 'center' }
+                  : type === 'box' || type === 'circle'
+                    ? { type, fill: true, fillColor: '#ffffff', borderColor: '#000000', borderWidth: 1 }
+                    : type === 'emoji' 
+                      ? { type: 'emoji', emoji: '😀' } 
+                      : type === 'arrow' 
+                        ? { type: 'arrow', direction: 'right' } 
+                        : type === 'link' 
+                          ? { type: 'link', url: '', preview: true } 
+                          : {},
+            tags: [type], // Keep for backwards compatibility
             x: storedFlowPos.x,
             y: storedFlowPos.y,
           }),
@@ -684,6 +821,9 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
               onDuplicateNode={handleDuplicateNode}
             />
           )}
+          
+          {/* Floating Node Editor - Shows when a node is selected (replaces FloatingHorizontalBar) */}
+          {selectedNodeId && <FloatingNodeEditor />}
         </div>
         
         {/* Right Panel - Toolbar Settings - Only show when creating a new node */}
@@ -697,9 +837,6 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         ) : null}
       </div>
       
-      {/* Floating Node Editor - Shows when a node is selected */}
-      {selectedNodeId && <FloatingNodeEditor />}
-      
       {/* History Bar - Undo/Redo with history log */}
       <HistoryBar />
       
@@ -712,6 +849,16 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           onSelect={handleEmojiSelect}
         />
       )}
+      
+      {/* Capture Modal */}
+      <CaptureModal
+        isOpen={captureModalOpen}
+        onClose={() => {
+          setCaptureModalOpen(false);
+          setCaptureNodeId(null);
+        }}
+        onCapture={handleCaptureComplete}
+      />
       
       {/* Keyboard Shortcuts */}
       <KeyboardShortcuts />

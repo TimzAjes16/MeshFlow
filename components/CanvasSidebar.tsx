@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { ChevronLeft, ChevronRight, List } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, List, History } from 'lucide-react';
 import NodesListView from './NodesListView';
+import HistoryBarContent from './HistoryBarContent';
 
 interface CanvasSidebarProps {
   workspaceId: string;
@@ -10,6 +11,32 @@ interface CanvasSidebarProps {
 
 export default function CanvasSidebar({ workspaceId }: CanvasSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState<'nodes' | 'history'>('nodes');
+  const [isHistoryAttached, setIsHistoryAttached] = useState(false);
+
+  // Listen for history bar attachment events
+  useEffect(() => {
+    const handleHistoryBarAttached = (event: CustomEvent) => {
+      const attached = event.detail?.attached === true;
+      setIsHistoryAttached(attached);
+      if (attached) {
+        setActiveTab('history');
+      }
+    };
+    
+    window.addEventListener('history-bar-attached', handleHistoryBarAttached as EventListener);
+    
+    // Also check localStorage on mount
+    const attached = localStorage.getItem('historyBarAttached') === 'true';
+    setIsHistoryAttached(attached);
+    if (attached) {
+      setActiveTab('history');
+    }
+    
+    return () => {
+      window.removeEventListener('history-bar-attached', handleHistoryBarAttached as EventListener);
+    };
+  }, []);
 
   return (
     <div
@@ -32,15 +59,41 @@ export default function CanvasSidebar({ workspaceId }: CanvasSidebarProps) {
 
       {!isCollapsed && (
         <>
-          {/* Header */}
-          <div className="px-4 py-3 border-b border-gray-200 bg-slate-50 flex items-center gap-2">
-            <List className="w-4 h-4 text-slate-600" />
-            <h2 className="text-sm font-semibold text-slate-900">Nodes</h2>
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200 bg-slate-50">
+            <button
+              onClick={() => setActiveTab('nodes')}
+              className={`flex-1 px-4 py-2 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                activeTab === 'nodes'
+                  ? 'text-slate-900 bg-white border-b-2 border-blue-500'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-gray-50'
+              }`}
+            >
+              <List className="w-4 h-4" />
+              <span>Nodes</span>
+            </button>
+            {isHistoryAttached && (
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                  activeTab === 'history'
+                    ? 'text-slate-900 bg-white border-b-2 border-blue-500'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-gray-50'
+                }`}
+              >
+                <History className="w-4 h-4" />
+                <span>History</span>
+              </button>
+            )}
           </div>
 
-          {/* Nodes List */}
+          {/* Content */}
           <div className="flex-1 overflow-hidden">
-            <NodesListView workspaceId={workspaceId} />
+            {activeTab === 'nodes' ? (
+              <NodesListView workspaceId={workspaceId} />
+            ) : (
+              <HistoryBarContent />
+            )}
           </div>
         </>
       )}

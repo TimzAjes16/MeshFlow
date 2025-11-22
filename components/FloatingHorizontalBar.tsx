@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Type, FileText, Image, Link2, Square, Circle, ArrowRight,
   BarChart3, LineChart, PieChart, TrendingUp, 
-  Edit, Trash2, Copy, X, Smile, Home, GripVertical
+  Edit, Trash2, Copy, X, Smile, Home, GripVertical, Camera
 } from 'lucide-react';
 import { useCanvasStore } from '@/state/canvasStore';
 import { useWorkspaceStore } from '@/state/workspaceStore';
@@ -20,6 +20,7 @@ const nodeTypes = [
   { id: 'note', label: 'Note', icon: FileText },
   { id: 'link', label: 'Link', icon: Link2 },
   { id: 'image', label: 'Image', icon: Image },
+  { id: 'live-capture', label: 'Live Capture', icon: Camera, category: 'media' },
   { id: 'emoji', label: 'Emoji', icon: Smile },
   { id: 'box', label: 'Box', icon: Square, category: 'shapes' },
   { id: 'circle', label: 'Circle', icon: Circle, category: 'shapes' },
@@ -160,8 +161,16 @@ export default function FloatingHorizontalBar({
   const handleCreateNode = async (type: string) => {
     const position = clickPosition || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
     
-    // Store flow position for node creation
-    (window as any).lastFlowPosition = { x: 500, y: 400 };
+    // Use stored flow position from canvas click, or default to center
+    // CanvasContainer stores this when canvas is clicked
+    const storedFlowPos = (window as any).lastFlowPosition;
+    if (storedFlowPos) {
+      // Flow position is already stored by CanvasContainer
+      // Just ensure it exists for CanvasPageClient to use
+    } else {
+      // Fallback: store default position if not set
+      (window as any).lastFlowPosition = { x: 500, y: 400 };
+    }
     
     await onCreateNode(type, position);
     setClickPosition(null);

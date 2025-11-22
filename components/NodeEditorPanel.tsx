@@ -6,41 +6,50 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useCanvasStore } from '@/state/canvasStore';
 import { useWorkspaceStore } from '@/state/workspaceStore';
-import { X, Tag, Sparkles, ArrowRight, Link2, Image as ImageIcon, Upload, Copy } from 'lucide-react';
+import { X, Tag, Sparkles, ArrowRight, Link2, Image as ImageIcon, Upload, Copy, Camera } from 'lucide-react';
 import FloatingFormatToolbar from './FloatingFormatToolbar';
 import SlashCommandMenu from './SlashCommandMenu';
 import ChartEditorPanel from './ChartEditorPanel';
 import ImageSettingsPanel from './ImageSettingsPanel';
 import TextSettingsPanel from './TextSettingsPanel';
 import ShapeSettingsPanel from './ShapeSettingsPanel';
+import LinkSettingsPanel from './LinkSettingsPanel';
 import NodeTransformPanel from './NodeTransformPanel';
 import type { Node } from '@/types/Node';
 import type { Edge } from '@/types/Edge';
+import { getNodeType, hasEditableText, isChartNode, isShapeNode, isMediaNode } from '@/lib/nodeTypes';
 
-function isChartNode(node: Node): boolean {
-  if (!node.tags || node.tags.length === 0) return false;
-  const chartTypes = ['bar-chart', 'line-chart', 'pie-chart', 'area-chart'];
-  return chartTypes.some(type => node.tags?.includes(type));
+// Type-based helper functions using the new registry
+function isChartNodeType(node: Node): boolean {
+  return isChartNode(node);
 }
 
-function isImageNode(node: Node): boolean {
-  if (!node.tags || node.tags.length === 0) return false;
-  return node.tags.includes('image');
+function isImageNodeType(node: Node): boolean {
+  return isMediaNode(node);
 }
 
-function isBoxOrCircleNode(node: Node): boolean {
-  if (!node.tags || node.tags.length === 0) return false;
-  return node.tags.includes('box') || node.tags.includes('circle');
+function isLiveCaptureNodeType(node: Node): boolean {
+  const type = getNodeType(node);
+  return type === 'live-capture';
 }
 
-function isArrowNode(node: Node): boolean {
-  if (!node.tags || node.tags.length === 0) return false;
-  return node.tags.includes('arrow');
+function isBoxOrCircleNodeType(node: Node): boolean {
+  return isShapeNode(node);
 }
 
-function isEmojiNode(node: Node): boolean {
-  if (!node.tags || node.tags.length === 0) return false;
-  return node.tags.includes('emoji');
+function isArrowNodeType(node: Node): boolean {
+  const type = getNodeType(node);
+  return type === 'arrow';
+}
+
+function isLinkNodeType(node: Node): boolean {
+  const type = getNodeType(node);
+  return type === 'link';
+}
+
+function isEmojiNodeType(node: Node): boolean {
+  const type = getNodeType(node);
+  return type === 'emoji';
 }
 
 export default function NodeEditorPanel() {
@@ -125,8 +134,8 @@ export default function NodeEditorPanel() {
         placeholder: 'Start typing your thoughts...',
       }),
     ],
-    // Only initialize with content if it's not a chart, emoji, or arrow node
-    content: selectedNode && !isChartNode(selectedNode) && !isEmojiNode(selectedNode) && !isArrowNode(selectedNode)
+    // Only initialize with content if node has editable text (using type-based check)
+    content: selectedNode && hasEditableText(selectedNode)
       ? (typeof selectedNode.content === 'string' 
           ? selectedNode.content 
           : (selectedNode.content && typeof selectedNode.content === 'object' && selectedNode.content.type === 'doc'
@@ -139,16 +148,29 @@ export default function NodeEditorPanel() {
         return;
       }
       
-      if (selectedNode && !isChartNode(selectedNode) && !isEmojiNode(selectedNode) && !isArrowNode(selectedNode)) {
-        // Only update content for non-chart, non-emoji, and non-arrow nodes
-        // Chart nodes use ChartEditorPanel, emoji nodes use emoji input, arrow nodes use arrow settings
-        debouncedApiUpdate(selectedNode.id, {
-          content: editor.getJSON(),
-        });
+      // Only update content for nodes with editable text (using type-based check)
+      if (selectedNode && hasEditableText(selectedNode)) {
+        // Measure editor content to calculate dimensions
+        const editorElement = editor.view.dom;
+        if (editorElement) {
+          const rect = editorElement.getBoundingClientRect();
+          const width = Math.max(200, Math.min(400, rect.width + 32)); // Add padding
+          const height = Math.max(60, rect.height + 32);
+          
+          debouncedApiUpdate(selectedNode.id, {
+            content: editor.getJSON(),
+            width,
+            height,
+          });
+        } else {
+          debouncedApiUpdate(selectedNode.id, {
+            content: editor.getJSON(),
+          });
+        }
       }
     },
-    // Disable editor for chart, emoji, and arrow nodes to prevent errors
-    editable: !selectedNode || (!isChartNode(selectedNode) && !isEmojiNode(selectedNode) && !isArrowNode(selectedNode)),
+    // Enable editor only for nodes with editable text (using type-based check)
+    editable: !selectedNode || hasEditableText(selectedNode),
   });
 
   // Fetch linked nodes when selected node changes
@@ -194,7 +216,7 @@ export default function NodeEditorPanel() {
       setTags(selectedNode.tags || []);
       
       // Load image data if it's an image node
-      if (isImageNode(selectedNode)) {
+      if (isImageNodeType(selectedNode)) {
         const imageData = selectedNode.content && typeof selectedNode.content === 'object' && 'image' in selectedNode.content
           ? (selectedNode.content as any).image
           : null;
@@ -207,8 +229,8 @@ export default function NodeEditorPanel() {
         }
       }
       
-      // Only set editor content for non-chart, non-image, non-emoji, and non-arrow nodes
-      if (editor && !isChartNode(selectedNode) && !isImageNode(selectedNode) && !isEmojiNode(selectedNode) && !isArrowNode(selectedNode)) {
+      // Only set editor content for nodes with editable text
+      if (editor && hasEditableText(selectedNode)) {
         // Get current editor content to avoid unnecessary updates
         const currentContent = editor.getJSON();
         const nodeContent = selectedNode.content;
@@ -541,13 +563,105 @@ export default function NodeEditorPanel() {
               />
             </div>
 
-            {/* Chart Editor, Image Editor, or Rich Text Editor */}
-            {isChartNode(selectedNode) ? (
+            {/* Chart Editor, Image Editor, Link Editor, or Rich Text Editor */}
+            {isChartNodeType(selectedNode) ? (
               <ChartEditorPanel
                 node={selectedNode}
                 onUpdate={handleChartUpdate}
               />
-            ) : isImageNode(selectedNode) ? (
+            ) : isLinkNodeType(selectedNode) ? (
+              <div className="space-y-6">
+                {/* Link Settings Panel */}
+                <LinkSettingsPanel
+                  node={selectedNode}
+                  onUpdate={async (config) => {
+                    updateNode(selectedNode.id, {
+                      content: { link: config },
+                    });
+                    
+                    if (workspaceId) {
+                      try {
+                        setIsUpdating(true);
+                        const response = await fetch('/api/nodes/update', {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            nodeId: selectedNode.id,
+                            content: { link: config },
+                          }),
+                        });
+                        
+                        if (response.ok) {
+                          const data = await response.json();
+                          if (data.node) {
+                            updateNode(selectedNode.id, data.node);
+                          }
+                          // Don't dispatch refreshWorkspace - optimistic updates handle UI, polling will sync
+                        }
+                      } catch (error) {
+                        console.error('Error updating link settings:', error);
+                      } finally {
+                        setIsUpdating(false);
+                      }
+                    }
+                  }}
+                />
+              </div>
+            ) : isLiveCaptureNodeType(selectedNode) ? (
+              <div className="space-y-6">
+                {/* Live Capture Panel */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Live Capture</h3>
+                  <p className="text-xs text-gray-500 mb-4">
+                    Track changes to a specific area over time. Update captures to build a history.
+                  </p>
+                  
+                  <button
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent('update-capture-node', { detail: { nodeId: selectedNode.id } }));
+                    }}
+                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium"
+                  >
+                    <Camera className="w-5 h-5" />
+                    Update Capture
+                  </button>
+                  
+                  {/* Capture History */}
+                  {selectedNode.content && typeof selectedNode.content === 'object' && 
+                   selectedNode.content.type === 'live-capture' &&
+                   (selectedNode.content as any).captureHistory &&
+                   (selectedNode.content as any).captureHistory.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <h4 className="text-xs font-semibold text-gray-700 mb-2">
+                        Capture History ({(selectedNode.content as any).captureHistory.length})
+                      </h4>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {[...(selectedNode.content as any).captureHistory].reverse().map((capture: any, index: number) => (
+                          <div
+                            key={index}
+                            className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200"
+                          >
+                            <img
+                              src={capture.imageUrl}
+                              alt={`Capture ${(selectedNode.content as any).captureHistory.length - index}`}
+                              className="w-16 h-16 object-cover rounded border border-gray-300"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-medium text-gray-900">
+                                Capture {(selectedNode.content as any).captureHistory.length - index}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {new Date(capture.timestamp).toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : isImageNodeType(selectedNode) ? (
               <div className="space-y-6">
                 {/* Image Settings Panel */}
                 <ImageSettingsPanel
@@ -778,7 +892,7 @@ export default function NodeEditorPanel() {
                   </div>
                 </div>
               </div>
-            ) : isEmojiNode(selectedNode) ? (
+            ) : isEmojiNodeType(selectedNode) ? (
               <div className="space-y-6">
                 {/* Emoji Info */}
                 <div className="border-t border-gray-200 pt-4">
@@ -826,7 +940,7 @@ export default function NodeEditorPanel() {
                   </div>
                 </div>
               </div>
-            ) : isArrowNode(selectedNode) ? (
+            ) : isArrowNodeType(selectedNode) ? (
               <div className="space-y-6">
                 {/* Arrow Settings Panel */}
                 <div className="border-t border-gray-200 pt-4">
@@ -1068,7 +1182,7 @@ export default function NodeEditorPanel() {
                   </div>
                 </div>
               </div>
-            ) : isBoxOrCircleNode(selectedNode) ? (
+            ) : isBoxOrCircleNodeType(selectedNode) ? (
               <div className="space-y-6">
                 {/* Shape Settings Panel */}
                 <ShapeSettingsPanel

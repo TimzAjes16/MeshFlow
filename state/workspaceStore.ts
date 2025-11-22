@@ -1,3 +1,5 @@
+'use client';
+
 import { create } from 'zustand';
 import type { Workspace } from '@/types/Workspace';
 import type { Node } from '@/types/Node';

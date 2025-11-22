@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { Upload, X } from 'lucide-react';
 import type { Node } from '@/types/Node';
 
 type ImageSize = 'small' | 'medium' | 'large' | 'full';
@@ -95,9 +96,124 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
   }, [size, alignment, borderRadius, imageConfig.url]);
 
   const imageUrl = imageConfig.url || '';
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size must be less than 5MB');
+      return;
+    }
+
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      onUpdate({
+        ...imageConfig,
+        url: base64,
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      for (const item of clipboardItems) {
+        if (item.types.includes('image/png') || item.types.includes('image/jpeg')) {
+          const blob = await item.getType('image/png') || await item.getType('image/jpeg');
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64 = reader.result as string;
+            onUpdate({
+              ...imageConfig,
+              url: base64,
+            });
+          };
+          reader.readAsDataURL(blob);
+          return;
+        }
+      }
+      alert('No image found in clipboard');
+    } catch (error) {
+      console.error('Error pasting from clipboard:', error);
+      alert('Failed to paste image from clipboard');
+    }
+  };
+
+  const handleUrlInput = (url: string) => {
+    onUpdate({
+      ...imageConfig,
+      url: url.trim(),
+    });
+  };
 
   return (
     <div className="space-y-6">
+      {/* Image Upload Section */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">Image Source</h3>
+        <div className="space-y-3">
+          {/* File Upload */}
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+            >
+              <Upload className="w-4 h-4 text-gray-600" />
+              <span className="text-sm font-medium text-gray-700">Upload Image</span>
+            </button>
+          </div>
+
+          {/* Paste from Clipboard */}
+          <button
+            onClick={handlePasteFromClipboard}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 text-sm text-gray-700"
+          >
+            Paste from Clipboard
+          </button>
+
+          {/* URL Input */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Or enter image URL</label>
+            <input
+              type="url"
+              value={imageUrl}
+              onChange={(e) => handleUrlInput(e.target.value)}
+              placeholder="https://example.com/image.jpg"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          {/* Remove Image */}
+          {imageUrl && (
+            <button
+              onClick={() => onUpdate({ ...imageConfig, url: '' })}
+              className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center gap-2"
+            >
+              <X className="w-4 h-4" />
+              Remove Image
+            </button>
+          )}
+        </div>
+      </div>
       {/* Image Preview */}
       <div>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Preview</h3>
