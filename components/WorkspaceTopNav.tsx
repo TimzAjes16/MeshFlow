@@ -6,6 +6,7 @@ import { signOut, useSession } from 'next-auth/react';
 import { Search, User, Edit2, Check, X, CreditCard, LogOut, Tag } from 'lucide-react';
 import { useCanvasStore } from '@/state/canvasStore';
 import MeshFlowLogo from '@/components/MeshFlowLogo';
+import ThemeToggle from '@/components/ThemeToggle';
 import Link from 'next/link';
 
 interface WorkspaceTopNavProps {
@@ -182,11 +183,16 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
   };
 
   return (
-    <div className="w-full h-full flex items-center justify-between px-4">
+    <div className="w-full h-full flex items-center justify-between min-h-[40px] bg-white dark:bg-gray-900" style={{
+      paddingLeft: 'max(78px, env(safe-area-inset-left, 0px) + 78px)',
+      paddingRight: 'max(12px, env(safe-area-inset-right, 0px) + 12px)',
+    }}>
       {/* Left: Logo, workspace name and search */}
       <div className="flex items-center gap-4 flex-1">
         <Link href="/dashboard" className="hidden sm:block">
-          <MeshFlowLogo variant="dark" size="sm" />
+          <div className="scale-75 origin-left">
+            <MeshFlowLogo variant="dark" size="sm" showText={false} />
+          </div>
         </Link>
         
         {/* Editable workspace name */}
@@ -206,7 +212,7 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
                 handleSaveName();
               }}
               disabled={isSaving}
-              className="text-lg font-semibold text-gray-900 px-2 py-1 border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[200px]"
+              className="text-sm font-semibold text-black dark:text-white px-2 py-0.5 border border-blue-500 dark:border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 min-w-[200px]"
             />
             <div className="name-edit-buttons flex items-center gap-1">
               <button
@@ -241,15 +247,15 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
             className="group flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
             title="Click to rename workspace"
           >
-            <h1 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+            <h1 className="text-sm font-semibold text-black dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
               {workspaceName}
             </h1>
-            <Edit2 className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <Edit2 className="w-4 h-4 text-black dark:text-white opacity-0 group-hover:opacity-100 transition-opacity" />
           </button>
         )}
         
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-black dark:text-gray-400" />
           <input
             ref={searchInputRef}
             type="text"
@@ -258,17 +264,17 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
             onFocus={() => searchResults.length > 0 && setShowResults(true)}
             onBlur={() => setTimeout(() => setShowResults(false), 200)}
             placeholder="Search nodes..."
-            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-8 pr-3 py-1 text-xs border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
           />
           {showResults && searchResults.length > 0 && (
-            <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+            <div className="absolute z-50 w-full mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-64 overflow-y-auto">
               {searchResults.map((result) => (
                 <button
                   key={result.node.id}
                   onClick={() => handleSelectResult(result.node.id)}
-                  className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                  className="w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-b-0 transition-colors"
                 >
-                  <div className="font-medium text-sm text-gray-900">
+                  <div className="font-medium text-sm text-black dark:text-white">
                     {result.node.title}
                   </div>
                   {result.node.tags && result.node.tags.length > 0 && (
@@ -291,23 +297,35 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
       </div>
 
       {/* Right: Actions and profile */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
+        {/* Settings Link */}
+        <Link
+          href={`/workspace/${workspaceId}/settings`}
+          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
+          title="Workspace Settings"
+        >
+          <Tag className="w-4 h-4 text-black dark:text-white" />
+        </Link>
+        
+        {/* Theme Toggle */}
+        <ThemeToggle />
+        
         {/* Profile Menu */}
         <div className="relative">
           <button
             type="button"
             onClick={() => setShowProfileMenu(!showProfileMenu)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors pointer-events-auto"
+            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors pointer-events-auto"
           >
-            <User className="w-5 h-5 text-gray-600" />
+            <User className="w-4 h-4 text-black dark:text-white" />
           </button>
           {showProfileMenu && (
-            <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-[100]">
-              <div className="px-4 py-3 border-b border-gray-200">
-                <p className="text-sm font-medium text-gray-900">
+            <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[100]">
+              <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                <p className="text-sm font-medium text-black dark:text-white">
                   Hi, {session?.user?.name || 'User'}
                 </p>
-                <p className="text-xs text-gray-500 mt-0.5">Manage your account</p>
+                <p className="text-xs text-black dark:text-gray-400 mt-0.5">Manage your account</p>
               </div>
               <button
                 type="button"
@@ -315,9 +333,9 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
                   router.push('/settings');
                   setShowProfileMenu(false);
                 }}
-                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                className="w-full px-4 py-2.5 text-left text-sm text-black dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
               >
-                <User className="w-4 h-4 text-gray-500" />
+                <User className="w-4 h-4 text-black dark:text-white" />
                 <span>Account Settings</span>
               </button>
               <button
@@ -326,21 +344,21 @@ export default function WorkspaceTopNav({ workspaceId, workspaceName }: Workspac
                   router.push('/settings?tab=subscription');
                   setShowProfileMenu(false);
                 }}
-                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                className="w-full px-4 py-2.5 text-left text-sm text-black dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
               >
-                <CreditCard className="w-4 h-4 text-gray-500" />
+                <CreditCard className="w-4 h-4 text-black dark:text-white" />
                 <span>Manage Subscription</span>
               </button>
-              <div className="border-t border-gray-200">
+              <div className="border-t border-gray-200 dark:border-gray-700">
                 <button
                   type="button"
                   onClick={async () => {
                     setShowProfileMenu(false);
                     await signOut({ callbackUrl: '/auth/login' });
                   }}
-                  className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 rounded-b-lg"
+                  className="w-full px-4 py-2.5 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 rounded-b-lg"
                 >
-                  <LogOut className="w-4 h-4 text-red-500" />
+                  <LogOut className="w-4 h-4 text-red-500 dark:text-red-400" />
                   <span>Logout</span>
                 </button>
               </div>

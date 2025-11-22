@@ -57,10 +57,10 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
   addEdge: (edge) => set((state) => {
     const edgeId = 'id' in edge ? edge.id : `${edge.source}-${edge.target}`;
     const newEdge: ReactFlowEdge = {
-      id: edgeId,
-      source: edge.source,
-      target: edge.target,
       ...edge,
+      id: edgeId,
+      source: edge.source || '',
+      target: edge.target || '',
     };
 
     // Check if edge already exists

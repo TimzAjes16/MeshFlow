@@ -51,7 +51,7 @@ export default function Sidebar() {
               animate={{ opacity: 1, width: 'auto' }}
               exit={{ opacity: 0, width: 0 }}
               transition={{ duration: 0.15 }}
-              className="text-xl font-bold text-gray-900 whitespace-nowrap overflow-hidden"
+              className="text-xl font-bold text-black whitespace-nowrap overflow-hidden"
             >
               MeshFlow
             </motion.h1>
@@ -77,9 +77,9 @@ export default function Sidebar() {
         aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {isCollapsed ? (
-          <ChevronRight className="w-4 h-4 text-gray-600" />
+          <ChevronRight className="w-4 h-4 text-black" />
         ) : (
-          <ChevronLeft className="w-4 h-4 text-gray-600" />
+          <ChevronLeft className="w-4 h-4 text-black" />
         )}
       </button>
 
@@ -96,7 +96,7 @@ export default function Sidebar() {
               className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors relative group/item ${
                 isActive
                   ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-700 hover:bg-gray-50'
+                  : 'text-black hover:bg-gray-50'
               } ${isCollapsed ? 'justify-center' : ''}`}
               title={isCollapsed ? item.label : undefined}
             >

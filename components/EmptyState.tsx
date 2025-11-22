@@ -23,7 +23,7 @@ export default function EmptyState({ onDismiss, visible }: EmptyStateProps) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
           transition={{ duration: 0.2 }}
-          className="absolute inset-0 flex items-center justify-center bg-white/30 backdrop-blur-[2px]"
+          className="absolute inset-0 flex items-center justify-center bg-white/30 dark:bg-gray-900/30 backdrop-blur-[2px]"
           style={{ pointerEvents: 'auto', zIndex: 30 }}
           onClick={(e) => {
             // Allow clicking on the backdrop to dismiss
@@ -36,7 +36,7 @@ export default function EmptyState({ onDismiss, visible }: EmptyStateProps) {
             initial={{ scale: 0.95 }}
             animate={{ scale: 1 }}
             exit={{ scale: 0.95 }}
-            className="bg-white/95 backdrop-blur-sm rounded-2xl border border-gray-200 shadow-xl p-8 max-w-md mx-4"
+            className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl p-8 max-w-md mx-4"
             onClick={(e) => e.stopPropagation()}
           >
         {/* Icon */}
@@ -47,36 +47,36 @@ export default function EmptyState({ onDismiss, visible }: EmptyStateProps) {
         </div>
 
         {/* Title */}
-        <h2 className="text-2xl font-bold text-gray-900 text-center mb-2">
+        <h2 className="text-2xl font-bold text-black text-center mb-2">
           Welcome to your mesh
         </h2>
 
         {/* Subtitle */}
-        <p className="text-gray-600 text-center mb-6">
+        <p className="text-black text-center mb-6">
           Double-click anywhere to create your first node
         </p>
 
         {/* Hints */}
         <div className="space-y-3 pt-4 border-t border-gray-200">
-          <div className="flex items-center gap-3 text-sm text-gray-600">
+          <div className="flex items-center gap-3 text-sm text-black">
             <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
               <MousePointer2 className="w-4 h-4 text-blue-600" />
             </div>
-            <span><strong className="text-gray-900">Double-click</strong> – create new node</span>
+            <span><strong className="text-black">Double-click</strong> – create new node</span>
           </div>
           
-          <div className="flex items-center gap-3 text-sm text-gray-600">
+          <div className="flex items-center gap-3 text-sm text-black">
             <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
               <ZoomIn className="w-4 h-4 text-blue-600" />
             </div>
-            <span><strong className="text-gray-900">Scroll</strong> – zoom in/out</span>
+            <span><strong className="text-black">Scroll</strong> – zoom in/out</span>
           </div>
           
-          <div className="flex items-center gap-3 text-sm text-gray-600">
+          <div className="flex items-center gap-3 text-sm text-black">
             <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
               <Move className="w-4 h-4 text-blue-600" />
             </div>
-            <span><strong className="text-gray-900">Drag</strong> – pan around</span>
+            <span><strong className="text-black">Drag</strong> – pan around</span>
           </div>
         </div>
 

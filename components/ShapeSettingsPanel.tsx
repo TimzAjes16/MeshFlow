@@ -91,7 +91,7 @@ export default function ShapeSettingsPanel({ node, onUpdate }: ShapeSettingsPane
     <div className="space-y-6">
       {/* Preview */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Preview</h3>
+        <h3 className="text-sm font-semibold text-black mb-3">Preview</h3>
         <div 
           className="w-full bg-gray-100 rounded-lg p-8 flex items-center justify-center"
           style={{ minHeight: '200px' }}
@@ -108,14 +108,14 @@ export default function ShapeSettingsPanel({ node, onUpdate }: ShapeSettingsPane
               justifyContent: 'center',
             }}
           >
-            <span className="text-xs text-gray-500 text-center px-2">Preview</span>
+            <span className="text-xs text-black text-center px-2">Preview</span>
           </div>
         </div>
       </div>
 
       {/* Fill Toggle */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Fill</h3>
+        <h3 className="text-sm font-semibold text-black mb-3">Fill</h3>
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
@@ -123,7 +123,7 @@ export default function ShapeSettingsPanel({ node, onUpdate }: ShapeSettingsPane
             onChange={(e) => setFill(e.target.checked)}
             className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
-          <span className="text-sm text-gray-700">
+          <span className="text-sm text-black">
             {fill ? 'Filled' : 'No Fill (Transparent)'}
           </span>
         </label>
@@ -132,7 +132,7 @@ export default function ShapeSettingsPanel({ node, onUpdate }: ShapeSettingsPane
       {/* Fill Color */}
       {fill && (
         <div>
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">Fill Color</h3>
+          <h3 className="text-sm font-semibold text-black mb-3">Fill Color</h3>
           <div className="space-y-2">
             <div className="flex items-center gap-3">
               <input
@@ -183,7 +183,7 @@ export default function ShapeSettingsPanel({ node, onUpdate }: ShapeSettingsPane
 
       {/* Border Color */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Border Color</h3>
+        <h3 className="text-sm font-semibold text-black mb-3">Border Color</h3>
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <input
@@ -230,7 +230,7 @@ export default function ShapeSettingsPanel({ node, onUpdate }: ShapeSettingsPane
 
       {/* Border Width */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Border Width</h3>
+        <h3 className="text-sm font-semibold text-black mb-3">Border Width</h3>
         <div className="space-y-2">
           <input
             type="range"
@@ -240,7 +240,7 @@ export default function ShapeSettingsPanel({ node, onUpdate }: ShapeSettingsPane
             onChange={(e) => setBorderWidth(parseInt(e.target.value))}
             className="w-full"
           />
-          <div className="flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center justify-between text-xs text-black">
             <span>0px</span>
             <span className="font-medium">{borderWidth}px</span>
             <span>12px</span>

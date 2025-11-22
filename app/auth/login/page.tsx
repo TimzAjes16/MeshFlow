@@ -46,11 +46,18 @@ export default function LoginPage() {
       <div className="max-w-md w-full space-y-8">
         <div className="flex flex-col items-center">
           <MeshFlowLogo variant="dark" size="lg" />
-          <h2 className="mt-6 text-center text-2xl font-semibold text-gray-900">
+          <h2 className="mt-6 text-center text-2xl font-semibold text-black">
             Sign in to your account
           </h2>
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+        <form 
+          className="mt-8 space-y-6" 
+          onSubmit={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleLogin(e);
+          }}
+        >
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               {error}
@@ -58,7 +65,7 @@ export default function LoginPage() {
           )}
           <div className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="email" className="block text-sm font-medium text-black">
                 Email address
               </label>
               <input
@@ -69,12 +76,21 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                onKeyDown={(e) => {
+                  // Prevent form submission on Enter in email field
+                  // User should press Enter in password field or click submit button
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    // Focus password field instead
+                    document.getElementById('password')?.focus();
+                  }
+                }}
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-black rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                 placeholder="Email address"
               />
             </div>
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="password" className="block text-sm font-medium text-black">
                 Password
               </label>
               <input
@@ -85,7 +101,20 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                onKeyDown={(e) => {
+                  // Allow Enter to submit form from password field (standard UX)
+                  // But prevent default to avoid page refresh, use form.requestSubmit instead
+                  if (e.key === 'Enter' && !loading) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Use requestSubmit to trigger form's onSubmit handler properly
+                    const form = e.currentTarget.closest('form');
+                    if (form) {
+                      form.requestSubmit();
+                    }
+                  }
+                }}
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-black rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                 placeholder="Password"
               />
             </div>
@@ -102,7 +131,7 @@ export default function LoginPage() {
           </div>
 
           <div className="text-center text-sm">
-            <span className="text-gray-600">Don't have an account? </span>
+            <span className="text-black">Don't have an account? </span>
             <Link href="/auth/signup" className="font-medium text-blue-600 hover:text-blue-500">
               Sign up
             </Link>

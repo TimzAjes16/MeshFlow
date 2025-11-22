@@ -27,7 +27,7 @@ export default function AreaChartNode({
 }: AreaChartNodeProps) {
   if (!data || data.length === 0) {
     return (
-      <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+      <div className="w-full h-full flex items-center justify-center text-black text-sm">
         No data available
       </div>
     );

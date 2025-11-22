@@ -78,11 +78,18 @@ export default function SignupPage() {
       <div className="max-w-md w-full space-y-8">
         <div className="flex flex-col items-center">
           <MeshFlowLogo variant="dark" size="lg" />
-          <h2 className="mt-6 text-center text-2xl font-semibold text-gray-900">
+          <h2 className="mt-6 text-center text-2xl font-semibold text-black">
             Create your account
           </h2>
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSignup}>
+        <form 
+          className="mt-8 space-y-6" 
+          onSubmit={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleSignup(e);
+          }}
+        >
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               {error}
@@ -90,7 +97,7 @@ export default function SignupPage() {
           )}
           <div className="space-y-4">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="name" className="block text-sm font-medium text-black">
                 Name
               </label>
               <input
@@ -100,12 +107,19 @@ export default function SignupPage() {
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                onKeyDown={(e) => {
+                  // Move to next field on Enter instead of submitting
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    document.getElementById('email')?.focus();
+                  }
+                }}
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-black rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                 placeholder="Your name"
               />
             </div>
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="email" className="block text-sm font-medium text-black">
                 Email address
               </label>
               <input
@@ -116,12 +130,19 @@ export default function SignupPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                onKeyDown={(e) => {
+                  // Move to password field on Enter
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    document.getElementById('password')?.focus();
+                  }
+                }}
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-black rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                 placeholder="Email address"
               />
             </div>
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="password" className="block text-sm font-medium text-black">
                 Password
               </label>
               <input
@@ -133,7 +154,18 @@ export default function SignupPage() {
                 minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                onKeyDown={(e) => {
+                  // Allow Enter to submit form from password field (standard UX)
+                  if (e.key === 'Enter' && !loading) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const form = e.currentTarget.closest('form');
+                    if (form) {
+                      form.requestSubmit();
+                    }
+                  }
+                }}
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-black rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                 placeholder="Password (min 6 characters)"
               />
             </div>
@@ -150,7 +182,7 @@ export default function SignupPage() {
           </div>
 
           <div className="text-center text-sm">
-            <span className="text-gray-600">Already have an account? </span>
+            <span className="text-black">Already have an account? </span>
             <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">
               Sign in
             </Link>

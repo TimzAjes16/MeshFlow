@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Upload, X } from 'lucide-react';
 import type { Node } from '@/types/Node';
 
@@ -16,7 +16,7 @@ interface ImageConfig {
 
 interface ImageSettingsPanelProps {
   node: Node;
-  onUpdate: (config: ImageConfig) => void;
+  onUpdate: (config: ImageConfig | { type: 'image'; url: string; size?: string; alignment?: string; borderRadius?: number }) => void;
 }
 
 const sizeOptions: { value: ImageSize; label: string; dimensions: string }[] = [
@@ -34,8 +34,20 @@ const alignmentOptions: { value: ImageAlignment; label: string }[] = [
 
 export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPanelProps) {
   const getImageConfig = (): ImageConfig => {
-    if (node.content && typeof node.content === 'object' && 'image' in node.content) {
-      return (node.content as any).image;
+    if (node.content && typeof node.content === 'object' && node.content !== null) {
+      // Handle new format: { type: 'image', url: ..., size: ..., alignment: ... }
+      if ((node.content as any).type === 'image') {
+        return {
+          url: (node.content as any).url || '',
+          size: (node.content as any).size || 'medium',
+          alignment: (node.content as any).alignment || 'center',
+          borderRadius: (node.content as any).borderRadius || 8,
+        };
+      }
+      // Handle old format: { image: { url: ..., size: ..., alignment: ... } }
+      if ('image' in node.content) {
+        return (node.content as any).image;
+      }
     }
     return { size: 'medium', alignment: 'center', borderRadius: 8 };
   };
@@ -52,6 +64,23 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
 
   useEffect(() => {
     onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
+
+  // Handle onUpdate callback - convert to correct format
+  const handleUpdate = useCallback((config: ImageConfig | { type: 'image'; url: string; size?: string; alignment?: string; borderRadius?: number }) => {
+    // If config already has type, use it directly, otherwise convert
+    if ('type' in config && config.type === 'image') {
+      onUpdate(config);
+    } else {
+      // Store in new format: { type: 'image', url: ..., size: ..., alignment: ... }
+      onUpdate({
+        type: 'image',
+        url: config.url || '',
+        size: config.size || 'medium',
+        alignment: config.alignment || 'center',
+        borderRadius: config.borderRadius || 8,
+      } as any);
+    }
   }, [onUpdate]);
 
   // Sync state when node changes
@@ -84,20 +113,22 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
     }
 
     // Always include the current image URL and all settings
-    const config: ImageConfig = {
-      url: imageConfig.url, // Preserve existing URL
+    const config = {
+      type: 'image' as const,
+      url: imageConfig.url || '', // Preserve existing URL
       size,
       alignment,
       borderRadius,
     };
     
     // Call onUpdate immediately when any setting changes
-    onUpdateRef.current(config);
-  }, [size, alignment, borderRadius, imageConfig.url]);
+    handleUpdate(config);
+  }, [size, alignment, borderRadius, imageConfig.url, handleUpdate]);
 
   const imageUrl = imageConfig.url || '';
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Remove duplicate handleUpdate definition
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -118,7 +149,7 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = reader.result as string;
-      onUpdate({
+      handleUpdate({
         ...imageConfig,
         url: base64,
       });
@@ -135,7 +166,7 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
           const reader = new FileReader();
           reader.onloadend = () => {
             const base64 = reader.result as string;
-            onUpdate({
+            handleUpdate({
               ...imageConfig,
               url: base64,
             });
@@ -152,7 +183,7 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
   };
 
   const handleUrlInput = (url: string) => {
-    onUpdate({
+    handleUpdate({
       ...imageConfig,
       url: url.trim(),
     });
@@ -162,7 +193,7 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
     <div className="space-y-6">
       {/* Image Upload Section */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Image Source</h3>
+        <h3 className="text-sm font-semibold text-black mb-3">Image Source</h3>
         <div className="space-y-3">
           {/* File Upload */}
           <div>
@@ -177,22 +208,22 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
               onClick={() => fileInputRef.current?.click()}
               className="w-full px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
             >
-              <Upload className="w-4 h-4 text-gray-600" />
-              <span className="text-sm font-medium text-gray-700">Upload Image</span>
+              <Upload className="w-4 h-4 text-black" />
+              <span className="text-sm font-medium text-black">Upload Image</span>
             </button>
           </div>
 
           {/* Paste from Clipboard */}
           <button
             onClick={handlePasteFromClipboard}
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 text-sm text-gray-700"
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 text-sm text-black"
           >
             Paste from Clipboard
           </button>
 
           {/* URL Input */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Or enter image URL</label>
+            <label className="block text-xs font-medium text-black mb-1.5">Or enter image URL</label>
             <input
               type="url"
               value={imageUrl}
@@ -205,7 +236,7 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
           {/* Remove Image */}
           {imageUrl && (
             <button
-              onClick={() => onUpdate({ ...imageConfig, url: '' })}
+              onClick={() => handleUpdate({ ...imageConfig, url: '' })}
               className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               <X className="w-4 h-4" />
@@ -216,7 +247,7 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
       </div>
       {/* Image Preview */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Preview</h3>
+        <h3 className="text-sm font-semibold text-black mb-3">Preview</h3>
         <div 
           className="w-full bg-gray-100 rounded-lg p-4 flex items-center justify-center"
           style={{ minHeight: '200px' }}
@@ -244,7 +275,7 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
               />
             </div>
           ) : (
-            <div className="text-center text-gray-400 text-sm py-8">
+            <div className="text-center text-black text-sm py-8">
               Preview will appear here based on your settings
             </div>
           )}
@@ -253,7 +284,7 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
 
       {/* Image Size */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Image Size</h3>
+        <h3 className="text-sm font-semibold text-black mb-3">Image Size</h3>
         <div className="space-y-2">
           {sizeOptions.map((option) => (
             <button
@@ -262,7 +293,7 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
               className={`w-full px-4 py-2.5 text-left border-2 rounded-lg transition-all ${
                 size === option.value
                   ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
-                  : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                  : 'border-gray-200 bg-white text-black hover:border-gray-300'
               }`}
             >
               {option.label} ({option.dimensions})
@@ -273,7 +304,7 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
 
       {/* Alignment */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Alignment</h3>
+        <h3 className="text-sm font-semibold text-black mb-3">Alignment</h3>
         <div className="space-y-2">
           {alignmentOptions.map((option) => (
             <button
@@ -282,7 +313,7 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
               className={`w-full px-4 py-2.5 text-left border-2 rounded-lg transition-all ${
                 alignment === option.value
                   ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
-                  : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                  : 'border-gray-200 bg-white text-black hover:border-gray-300'
               }`}
             >
               {option.label}
@@ -293,7 +324,7 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
 
       {/* Border Radius */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Border Radius</h3>
+        <h3 className="text-sm font-semibold text-black mb-3">Border Radius</h3>
         <div className="space-y-2">
           <input
             type="range"
@@ -303,7 +334,7 @@ export default function ImageSettingsPanel({ node, onUpdate }: ImageSettingsPane
             onChange={(e) => setBorderRadius(parseInt(e.target.value))}
             className="w-full"
           />
-          <div className="flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center justify-between text-xs text-black">
             <span>0px</span>
             <span className="font-medium">{borderRadius}px</span>
             <span>24px</span>

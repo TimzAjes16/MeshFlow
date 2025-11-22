@@ -8,7 +8,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import BaseNode from './BaseNode';
 import type { Node as NodeType } from '@/types/Node';
 import { NodeProps } from 'reactflow';
-import { Camera, RefreshCw, History } from 'lucide-react';
+import { Camera, RefreshCw, History, Volume2, VolumeX, Pause, Play } from 'lucide-react';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 
 interface LiveCaptureNodeProps extends NodeProps {
@@ -23,15 +23,29 @@ interface CaptureData {
   sourceUrl?: string;
   timestamp?: string;
   captureHistory?: Array<{ imageUrl: string; timestamp: string }>;
+  autoRefresh?: boolean;
+  autoRefreshInterval?: number; // in seconds
+  isLiveStream?: boolean; // If true, show live video feed
+  streamId?: string; // Stream ID for lookup
+  captureMode?: 'fullscreen' | 'custom';
 }
 
 function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
   const { node } = data;
   const imageRef = useRef<HTMLImageElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const updateNode = useWorkspaceStore((state) => state.updateNode);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
+  const autoRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastCaptureHashRef = useRef<string | null>(null);
+  const cropIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastDimensionsRef = useRef<{ width: number; height: number } | null>(null);
   
   // Extract capture config from content
   const captureData: CaptureData = typeof node.content === 'object' && node.content?.type === 'live-capture'
@@ -41,12 +55,114 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
         sourceUrl: node.content.sourceUrl || '',
         timestamp: node.content.timestamp || new Date().toISOString(),
         captureHistory: node.content.captureHistory || [],
+        autoRefresh: node.content.autoRefresh ?? true,
+        autoRefreshInterval: node.content.autoRefreshInterval ?? 5, // default 5 seconds
+        isLiveStream: node.content.isLiveStream ?? false,
+        streamId: node.content.streamId,
+        captureMode: node.content.captureMode || 'custom',
       }
     : {
         imageUrl: '',
         cropArea: { x: 0, y: 0, width: 0, height: 0 },
         captureHistory: [],
+        autoRefresh: true,
+        autoRefreshInterval: 5,
+        isLiveStream: false,
+        captureMode: 'custom',
       };
+  
+  // Get live stream from global registry
+  useEffect(() => {
+    if (captureData.isLiveStream && captureData.streamId) {
+      const streamRegistry = (window as any).liveCaptureStreams;
+      if (streamRegistry && streamRegistry.has(id)) {
+        const streamData = streamRegistry.get(id);
+        if (streamData && streamData.stream) {
+          setLiveStream(streamData.stream);
+        }
+      }
+    }
+    
+    return () => {
+      // Cleanup on unmount
+      if (cropIntervalRef.current) {
+        clearInterval(cropIntervalRef.current);
+      }
+    };
+  }, [id, captureData.isLiveStream, captureData.streamId]);
+  
+  // Set up video element for live stream
+  useEffect(() => {
+    if (liveStream && videoRef.current && captureData.isLiveStream) {
+      videoRef.current.srcObject = liveStream;
+      videoRef.current.autoplay = true;
+      videoRef.current.playsInline = true;
+      videoRef.current.muted = isMuted;
+      
+      // Set up canvas for cropping the video feed
+      if (canvasRef.current && captureData.cropArea && captureData.cropArea.width > 0 && captureData.cropArea.height > 0) {
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        canvas.width = captureData.cropArea.width;
+        canvas.height = captureData.cropArea.height;
+        
+        // Continuously crop and draw the video feed
+        const drawFrame = () => {
+          if (videoRef.current && canvas && ctx && !isPaused) {
+            try {
+              ctx.drawImage(
+                videoRef.current,
+                captureData.cropArea.x,
+                captureData.cropArea.y,
+                captureData.cropArea.width,
+                captureData.cropArea.height,
+                0,
+                0,
+                canvas.width,
+                canvas.height
+              );
+            } catch (error) {
+              console.error('Error drawing video frame:', error);
+            }
+          }
+        };
+        
+        // Draw at video frame rate (60fps)
+        cropIntervalRef.current = setInterval(drawFrame, 16);
+        
+        return () => {
+          if (cropIntervalRef.current) {
+            clearInterval(cropIntervalRef.current);
+          }
+        };
+      }
+    }
+  }, [liveStream, captureData.isLiveStream, captureData.cropArea, isMuted, isPaused]);
+  
+  // Update node dimensions for live stream
+  useEffect(() => {
+    if (captureData.isLiveStream && captureData.cropArea && captureData.cropArea.width > 0 && captureData.cropArea.height > 0) {
+      const newWidth = captureData.cropArea.width + 32;
+      const newHeight = captureData.cropArea.height + 80; // Extra space for controls
+      
+      // Only update if dimensions changed significantly AND we didn't just set these values
+      const lastDims = lastDimensionsRef.current;
+      if (
+        (!lastDims || Math.abs(lastDims.width - newWidth) > 5 || Math.abs(lastDims.height - newHeight) > 5) &&
+        (Math.abs((node.width || 300) - newWidth) > 5 || Math.abs((node.height || 200) - newHeight) > 5)
+      ) {
+        lastDimensionsRef.current = { width: newWidth, height: newHeight };
+        updateNode(id, {
+          width: newWidth,
+          height: newHeight,
+        });
+      }
+    }
+    // Remove node.width and node.height from dependencies to prevent infinite loops
+    // Only re-run when live stream state or crop area changes
+  }, [captureData.isLiveStream, captureData.cropArea, id, updateNode]);
 
   // Update dimensions when image loads
   useEffect(() => {
@@ -60,7 +176,13 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
         const newWidth = width + 32; // Add padding
         const newHeight = height + 56; // Add padding + header
         
-        if (Math.abs((node.width || 300) - newWidth) > 5 || Math.abs((node.height || 200) - newHeight) > 5) {
+        // Only update if dimensions changed significantly AND we didn't just set these values
+        const lastDims = lastDimensionsRef.current;
+        if (
+          (!lastDims || Math.abs(lastDims.width - newWidth) > 5 || Math.abs(lastDims.height - newHeight) > 5) &&
+          (Math.abs((node.width || 300) - newWidth) > 5 || Math.abs((node.height || 200) - newHeight) > 5)
+        ) {
+          lastDimensionsRef.current = { width: newWidth, height: newHeight };
           updateNode(id, {
             width: newWidth,
             height: newHeight,
@@ -75,7 +197,9 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
         return () => img.removeEventListener('load', handleLoad);
       }
     }
-  }, [captureData.imageUrl, id, node.width, node.height, updateNode]);
+    // Remove node.width and node.height from dependencies to prevent infinite loops
+    // Only re-run when image URL changes (which should trigger a resize)
+  }, [captureData.imageUrl, id, updateNode]);
 
   // Measure container for empty state
   useEffect(() => {
@@ -83,7 +207,13 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
       const resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
           const { width, height } = entry.contentRect;
-          if (Math.abs((node.width || 300) - width) > 5 || Math.abs((node.height || 200) - height) > 5) {
+          // Only update if dimensions changed significantly AND we didn't just set these values
+          const lastDims = lastDimensionsRef.current;
+          if (
+            (!lastDims || Math.abs(lastDims.width - width) > 5 || Math.abs(lastDims.height - height) > 5) &&
+            (Math.abs((node.width || 300) - width) > 5 || Math.abs((node.height || 200) - height) > 5)
+          ) {
+            lastDimensionsRef.current = { width, height };
             updateNode(id, {
               width: width,
               height: height,
@@ -95,23 +225,170 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
       resizeObserver.observe(containerRef.current);
       return () => resizeObserver.disconnect();
     }
-  }, [captureData.imageUrl, id, node.width, node.height, updateNode]);
+    // Remove node.width and node.height from dependencies to prevent infinite loops
+    // Only re-run when image URL changes (which determines if we show empty state)
+  }, [captureData.imageUrl, id, updateNode]);
 
   const handleUpdateCapture = () => {
     // Trigger capture modal to update this node
     window.dispatchEvent(new CustomEvent('update-capture-node', { detail: { nodeId: id } }));
   };
 
-  if (!captureData.imageUrl) {
+  // Calculate image hash for change detection (perceptual hash)
+  const calculateImageHash = async (imageUrl: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve('');
+            return;
+          }
+          
+          // Downscale for faster comparison (8x8 = 64 pixels)
+          canvas.width = 8;
+          canvas.height = 8;
+          ctx.drawImage(img, 0, 0, 8, 8);
+          
+          const imageData = ctx.getImageData(0, 0, 8, 8);
+          const pixels = imageData.data;
+          
+          // Calculate average brightness
+          let totalBrightness = 0;
+          for (let i = 0; i < pixels.length; i += 4) {
+            const r = pixels[i];
+            const g = pixels[i + 1];
+            const b = pixels[i + 2];
+            totalBrightness += (r + g + b) / 3;
+          }
+          const avgBrightness = totalBrightness / (pixels.length / 4);
+          
+          // Generate hash: compare each pixel to average
+          let hash = '';
+          for (let i = 0; i < pixels.length; i += 4) {
+            const r = pixels[i];
+            const g = pixels[i + 1];
+            const b = pixels[i + 2];
+            const brightness = (r + g + b) / 3;
+            hash += brightness > avgBrightness ? '1' : '0';
+          }
+          resolve(hash);
+        } catch (error) {
+          console.error('Error calculating image hash:', error);
+          resolve('');
+        }
+      };
+      img.onerror = () => resolve('');
+      img.src = imageUrl;
+    });
+  };
+
+  // Calculate similarity between two hashes (Hamming distance)
+  const calculateSimilarity = (hash1: string, hash2: string): number => {
+    if (hash1.length !== hash2.length || hash1.length === 0) return 0;
+    let matches = 0;
+    for (let i = 0; i < hash1.length; i++) {
+      if (hash1[i] === hash2[i]) matches++;
+    }
+    return matches / hash1.length;
+  };
+
+  // Check current displayed image for changes
+  const checkForChanges = async () => {
+    if (!captureData.imageUrl || !captureData.autoRefresh || !imageRef.current) return;
+    
+    try {
+      const currentImageUrl = latestCapture?.imageUrl || captureData.imageUrl;
+      const currentHash = await calculateImageHash(currentImageUrl);
+      
+      if (currentHash === '') return;
+      
+      // If we have a previous hash, compare
+      if (lastCaptureHashRef.current !== null) {
+        const similarity = calculateSimilarity(lastCaptureHashRef.current, currentHash);
+        // If similarity is less than 95%, consider it a change
+        if (similarity < 0.95) {
+          // Change detected - trigger auto-capture
+          console.log('Change detected in Live Capture node, triggering auto-capture...');
+          handleUpdateCapture();
+        }
+      } else {
+        // Initialize hash
+        lastCaptureHashRef.current = currentHash;
+      }
+    } catch (error) {
+      console.error('Error checking for changes:', error);
+    }
+  };
+
+  // Set up automatic change detection polling
+  useEffect(() => {
+    if (!captureData.imageUrl || !captureData.autoRefresh) {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+        autoRefreshIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // Initialize hash with current image
+    calculateImageHash(captureData.imageUrl).then((hash) => {
+      if (hash) {
+        lastCaptureHashRef.current = hash;
+      }
+    });
+
+    // Set up polling interval
+    const interval = (captureData.autoRefreshInterval || 5) * 1000; // Convert seconds to milliseconds
+    autoRefreshIntervalRef.current = setInterval(() => {
+      checkForChanges();
+    }, interval);
+
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+        autoRefreshIntervalRef.current = null;
+      }
+    };
+  }, [captureData.imageUrl, captureData.autoRefresh, captureData.autoRefreshInterval]);
+
+  // Handle mute toggle
+  const handleToggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
+  };
+
+  // Handle pause/play toggle
+  const handleTogglePause = () => {
+    if (videoRef.current) {
+      if (isPaused) {
+        videoRef.current.play();
+      } else {
+        videoRef.current.pause();
+      }
+      setIsPaused(!isPaused);
+    }
+  };
+
+  if (!captureData.isLiveStream && !captureData.imageUrl) {
     return (
-      <BaseNode node={node} selected={selected}>
+      <BaseNode node={node} selected={selected} nodeId={id}>
         <div 
           ref={containerRef}
           className="p-8 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg border-2 border-dashed border-blue-300 flex flex-col items-center justify-center min-w-[300px] min-h-[200px]"
+          style={{
+            width: node.width ? `${node.width}px` : 'auto',
+            height: node.height ? `${node.height}px` : 'auto',
+          }}
         >
           <Camera className="w-12 h-12 text-blue-400 mb-3" />
-          <p className="text-sm font-medium text-gray-700 mb-1">Live Capture Node</p>
-          <p className="text-xs text-gray-500 text-center">Click to capture an area</p>
+          <p className="text-sm font-medium text-black mb-1">Live Capture Node</p>
+          <p className="text-xs text-black text-center">Click to capture an area</p>
         </div>
       </BaseNode>
     );
@@ -122,13 +399,22 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
     ? captureHistory[captureHistory.length - 1]
     : null;
 
+  // Determine display dimensions
+  const displayWidth = captureData.isLiveStream && captureData.cropArea.width > 0
+    ? captureData.cropArea.width
+    : imageDimensions?.width || 300;
+  const displayHeight = captureData.isLiveStream && captureData.cropArea.height > 0
+    ? captureData.cropArea.height
+    : imageDimensions?.height || 200;
+
   return (
-    <BaseNode node={node} selected={selected}>
+    <BaseNode node={node} selected={selected} nodeId={id}>
       <div 
         ref={containerRef}
-        className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
+        className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col"
         style={{ 
-          width: imageDimensions ? `${imageDimensions.width + 32}px` : 'auto',
+          width: node.width ? `${node.width}px` : `${displayWidth + 32}px`,
+          height: node.height ? `${node.height}px` : 'auto',
           minWidth: '300px',
         }}
       >
@@ -136,15 +422,43 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
         <div className="px-3 py-2 bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Camera className="w-4 h-4 text-white" />
-            <span className="text-xs font-medium text-white">Live Capture</span>
-            {captureHistory.length > 0 && (
+            <span className="text-xs font-medium text-white">
+              {captureData.isLiveStream ? 'Live Feed' : 'Live Capture'}
+            </span>
+            {captureHistory.length > 0 && !captureData.isLiveStream && (
               <span className="text-xs text-white/80">
                 ({captureHistory.length} {captureHistory.length === 1 ? 'capture' : 'captures'})
               </span>
             )}
           </div>
           <div className="flex items-center gap-1">
-            {captureHistory.length > 0 && (
+            {captureData.isLiveStream && liveStream && (
+              <>
+                <button
+                  onClick={handleTogglePause}
+                  className="p-1 hover:bg-white/20 rounded transition-colors"
+                  title={isPaused ? 'Play' : 'Pause'}
+                >
+                  {isPaused ? (
+                    <Play className="w-3.5 h-3.5 text-white" />
+                  ) : (
+                    <Pause className="w-3.5 h-3.5 text-white" />
+                  )}
+                </button>
+                <button
+                  onClick={handleToggleMute}
+                  className="p-1 hover:bg-white/20 rounded transition-colors"
+                  title={isMuted ? 'Unmute' : 'Mute'}
+                >
+                  {isMuted ? (
+                    <VolumeX className="w-3.5 h-3.5 text-white" />
+                  ) : (
+                    <Volume2 className="w-3.5 h-3.5 text-white" />
+                  )}
+                </button>
+              </>
+            )}
+            {captureHistory.length > 0 && !captureData.isLiveStream && (
               <button
                 onClick={() => setShowHistory(!showHistory)}
                 className="p-1 hover:bg-white/20 rounded transition-colors"
@@ -153,34 +467,48 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
                 <History className="w-3.5 h-3.5 text-white" />
               </button>
             )}
-            <button
-              onClick={handleUpdateCapture}
-              className="p-1 hover:bg-white/20 rounded transition-colors"
-              title="Update capture"
-            >
-              <RefreshCw className="w-3.5 h-3.5 text-white" />
-            </button>
+            {!captureData.isLiveStream && (
+              <button
+                onClick={handleUpdateCapture}
+                className="p-1 hover:bg-white/20 rounded transition-colors"
+                title="Update capture"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-white" />
+              </button>
+            )}
           </div>
         </div>
-
-        {/* Image Display */}
-        <div className="relative">
-          <img
-            ref={imageRef}
-            src={latestCapture?.imageUrl || captureData.imageUrl}
-            alt="Captured area"
-            className="w-full h-auto block"
-            style={{ 
-              maxWidth: '100%',
-              width: imageDimensions ? `${imageDimensions.width}px` : 'auto',
-              height: imageDimensions ? `${imageDimensions.height}px` : 'auto',
-            }}
-          />
-          
-          {/* Timestamp overlay */}
-          {latestCapture?.timestamp && (
-            <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-              {new Date(latestCapture.timestamp).toLocaleString()}
+        
+        {/* Live Video Feed or Static Image */}
+        <div className="relative bg-black flex items-center justify-center" style={{ width: `${displayWidth}px`, height: `${displayHeight}px` }}>
+          {captureData.isLiveStream && liveStream ? (
+            <>
+              {/* Hidden video element for source */}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted={isMuted}
+                className="hidden"
+              />
+              {/* Canvas showing cropped live feed */}
+              <canvas
+                ref={canvasRef}
+                className="max-w-full max-h-full object-contain"
+                style={{ width: '100%', height: '100%' }}
+              />
+            </>
+          ) : captureData.imageUrl ? (
+            <img
+              ref={imageRef}
+              src={latestCapture?.imageUrl || captureData.imageUrl}
+              alt="Captured area"
+              className="max-w-full max-h-full object-contain"
+              style={{ width: '100%', height: '100%' }}
+            />
+          ) : (
+            <div className="flex items-center justify-center text-black">
+              <Camera className="w-8 h-8" />
             </div>
           )}
         </div>
@@ -188,7 +516,7 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
         {/* History Panel */}
         {showHistory && captureHistory.length > 0 && (
           <div className="border-t border-gray-200 p-3 bg-gray-50 max-h-48 overflow-y-auto">
-            <div className="text-xs font-semibold text-gray-700 mb-2">Capture History</div>
+            <div className="text-xs font-semibold text-black mb-2">Capture History</div>
             <div className="space-y-2">
               {[...captureHistory].reverse().map((capture, index) => (
                 <button
@@ -214,10 +542,10 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
                     className="w-12 h-12 object-cover rounded border border-gray-300"
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-gray-900">
+                    <div className="font-medium text-black">
                       Capture {captureHistory.length - index}
                     </div>
-                    <div className="text-gray-500 truncate">
+                    <div className="text-black truncate">
                       {new Date(capture.timestamp).toLocaleString()}
                     </div>
                   </div>

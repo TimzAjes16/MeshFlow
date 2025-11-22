@@ -35,6 +35,10 @@ export default function NodesListView({ workspaceId }: NodesListViewProps) {
     }
   }, [workspaceId]);
 
+  // Refs for scrolling to selected node
+  const recentlyVisitedRef = useRef<HTMLDivElement>(null);
+  const allNodesRef = useRef<HTMLDivElement>(null);
+
   // Update recently visited when a node is selected
   // Use ref to track last selected node ID to prevent infinite loops
   const lastSelectedNodeIdRef = useRef<string | null>(null);
@@ -83,7 +87,26 @@ export default function NodesListView({ workspaceId }: NodesListViewProps) {
 
       return updated;
     });
-  }, [selectedNodeId, workspaceId]); // Removed nodes from dependencies - only depend on selectedNodeId
+  }, [selectedNodeId, workspaceId, nodes]); // Added nodes back to ensure node data is available
+
+  // Listen for scrollToNode event to scroll sidebar to selected node
+  useEffect(() => {
+    const handleScrollToNode = (event: CustomEvent) => {
+      const { nodeId } = event.detail;
+      if (!nodeId || nodeId !== selectedNodeId) return;
+
+      // Try to find the node button in the DOM and scroll to it
+      requestAnimationFrame(() => {
+        const nodeButton = document.querySelector(`[data-node-id="${nodeId}"]`) as HTMLElement;
+        if (nodeButton) {
+          nodeButton.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+    };
+
+    window.addEventListener('scrollToNode', handleScrollToNode as EventListener);
+    return () => window.removeEventListener('scrollToNode', handleScrollToNode as EventListener);
+  }, [selectedNodeId]);
 
   // Filter out recently visited from all nodes
   const allOtherNodes = useMemo(() => {
@@ -156,10 +179,11 @@ export default function NodesListView({ workspaceId }: NodesListViewProps) {
                 Recently Visited
               </h4>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1" ref={recentlyVisitedRef}>
               {recentlyVisited.map((node) => (
                 <button
                   key={node.id}
+                  data-node-id={node.id}
                   onClick={() => handleNodeClick(node.id)}
                   className={`w-full text-left px-3 py-2 rounded-lg transition-colors text-sm ${
                     selectedNodeId === node.id
@@ -207,10 +231,11 @@ export default function NodesListView({ workspaceId }: NodesListViewProps) {
                     {tag === '_untagged' ? 'Untagged' : tag} ({tagNodes.length})
                   </h4>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1" ref={allNodesRef}>
                   {tagNodes.map((node) => (
                     <button
                       key={node.id}
+                      data-node-id={node.id}
                       onClick={() => handleNodeClick(node.id)}
                       className={`w-full text-left px-3 py-2 rounded-lg transition-colors text-sm ${
                         selectedNodeId === node.id

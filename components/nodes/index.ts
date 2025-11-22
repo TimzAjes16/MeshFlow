@@ -9,6 +9,7 @@ import ImageNode from './ImageNode';
 import ShapeNode from './ShapeNode';
 import ChartNode from './ChartNode';
 import LiveCaptureNode from './LiveCaptureNode';
+import ArrowNode from './ArrowNode';
 import type { ComponentType } from 'react';
 import type { NodeProps } from 'reactflow';
 import type { NodeTypeId } from '@/lib/nodeTypes';
@@ -32,7 +33,7 @@ export const NODE_RENDERERS: Record<NodeTypeId, ComponentType<NodeRendererProps>
   'pie-chart': ChartNode,
   'area-chart': ChartNode,
   'emoji': NoteNode, // Emoji uses note renderer for now
-  'arrow': NoteNode, // Arrow uses note renderer for now
+  'arrow': ArrowNode,
   'live-capture': LiveCaptureNode,
 };
 
@@ -43,5 +44,6 @@ export { default as ImageNode } from './ImageNode';
 export { default as ShapeNode } from './ShapeNode';
 export { default as ChartNode } from './ChartNode';
 export { default as LiveCaptureNode } from './LiveCaptureNode';
+export { default as ArrowNode } from './ArrowNode';
 export { default as BaseNode } from './BaseNode';
 

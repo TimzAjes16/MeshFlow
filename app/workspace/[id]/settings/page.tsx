@@ -10,6 +10,7 @@ interface WorkspaceSettingsPageProps {
   }>;
 }
 
+
 export default async function WorkspaceSettingsPage({ params }: WorkspaceSettingsPageProps) {
   const { id: workspaceId } = await params;
   const user = await getCurrentUser();

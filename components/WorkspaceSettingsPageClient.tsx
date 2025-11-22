@@ -142,13 +142,13 @@ export default function WorkspaceSettingsPageClient({ workspace, userRole }: Wor
             <button
               type="button"
               onClick={() => router.push(`/workspace/${workspace.id}/canvas`)}
-              className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4 transition-colors"
+              className="flex items-center gap-2 text-sm text-black hover:text-black mb-4 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to Canvas
             </button>
-            <h1 className="text-3xl font-bold text-gray-900">Workspace Settings</h1>
-            <p className="mt-2 text-gray-600">Manage workspace settings and members</p>
+            <h1 className="text-3xl font-bold text-black">Workspace Settings</h1>
+            <p className="mt-2 text-black">Manage workspace settings and members</p>
           </div>
 
           {/* Messages */}
@@ -166,11 +166,11 @@ export default function WorkspaceSettingsPageClient({ workspace, userRole }: Wor
           <div className="space-y-6">
             {/* Workspace Info */}
             <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Workspace Information</h2>
+              <h2 className="text-xl font-semibold text-black mb-6">Workspace Information</h2>
 
               <form onSubmit={handleUpdateWorkspace} className="space-y-4">
                 <div>
-                  <label htmlFor="workspaceName" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="workspaceName" className="block text-sm font-medium text-black mb-2">
                     Workspace Name
                   </label>
                   <input
@@ -185,12 +185,12 @@ export default function WorkspaceSettingsPageClient({ workspace, userRole }: Wor
 
                 <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-200">
                   <div>
-                    <p className="text-sm text-gray-500">Nodes</p>
-                    <p className="text-2xl font-bold text-gray-900">{workspace._count.nodes}</p>
+                    <p className="text-sm text-black">Nodes</p>
+                    <p className="text-2xl font-bold text-black">{workspace._count.nodes}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Connections</p>
-                    <p className="text-2xl font-bold text-gray-900">{workspace._count.edges}</p>
+                    <p className="text-sm text-black">Connections</p>
+                    <p className="text-2xl font-bold text-black">{workspace._count.edges}</p>
                   </div>
                 </div>
 
@@ -213,7 +213,7 @@ export default function WorkspaceSettingsPageClient({ workspace, userRole }: Wor
                     <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
                       <Users className="w-5 h-5 text-blue-600" />
                     </div>
-                    <h2 className="text-xl font-semibold text-gray-900">Members</h2>
+                    <h2 className="text-xl font-semibold text-black">Members</h2>
                   </div>
 
                   {/* Invite Member */}
@@ -247,10 +247,10 @@ export default function WorkspaceSettingsPageClient({ workspace, userRole }: Wor
                           {workspace.owner.name?.[0]?.toUpperCase() || workspace.owner.email[0].toUpperCase()}
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-900">
+                          <p className="text-sm font-medium text-black">
                             {workspace.owner.name || workspace.owner.email}
                           </p>
-                          <p className="text-xs text-gray-500">{workspace.owner.email}</p>
+                          <p className="text-xs text-black">{workspace.owner.email}</p>
                         </div>
                       </div>
                       <span className="px-2 py-1 text-xs font-semibold bg-blue-100 text-blue-700 rounded-full">
@@ -266,20 +266,20 @@ export default function WorkspaceSettingsPageClient({ workspace, userRole }: Wor
                             {member.user.name?.[0]?.toUpperCase() || member.user.email[0].toUpperCase()}
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-gray-900">
+                            <p className="text-sm font-medium text-black">
                               {member.user.name || member.user.email}
                             </p>
-                            <p className="text-xs text-gray-500">{member.user.email}</p>
+                            <p className="text-xs text-black">{member.user.email}</p>
                           </div>
                         </div>
-                        <span className="px-2 py-1 text-xs font-semibold bg-gray-100 text-gray-700 rounded-full capitalize">
+                        <span className="px-2 py-1 text-xs font-semibold bg-gray-100 text-black rounded-full capitalize">
                           {member.role}
                         </span>
                       </div>
                     ))}
 
                     {workspace.members.length === 0 && (
-                      <p className="text-sm text-gray-500 text-center py-4">No members yet</p>
+                      <p className="text-sm text-black text-center py-4">No members yet</p>
                     )}
                   </div>
                 </div>
@@ -291,15 +291,15 @@ export default function WorkspaceSettingsPageClient({ workspace, userRole }: Wor
                       <Trash2 className="w-5 h-5 text-red-600" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-semibold text-gray-900">Danger Zone</h2>
-                      <p className="text-sm text-gray-500">Irreversible and destructive actions</p>
+                      <h2 className="text-xl font-semibold text-black">Danger Zone</h2>
+                      <p className="text-sm text-black">Irreversible and destructive actions</p>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between pt-4 border-t border-gray-200">
                     <div>
-                      <h3 className="text-sm font-medium text-gray-900">Delete Workspace</h3>
-                      <p className="text-sm text-gray-500">Once you delete this workspace, there is no going back.</p>
+                      <h3 className="text-sm font-medium text-black">Delete Workspace</h3>
+                      <p className="text-sm text-black">Once you delete this workspace, there is no going back.</p>
                     </div>
                     <button
                       type="button"

@@ -22,9 +22,9 @@ import { useCanvasStore } from '@/state/canvasStore';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import NodeComponent from './NodeComponent';
 import EdgeComponent from './EdgeComponent';
+import DrawingCanvas from './DrawingCanvas';
 import { useAutoOrganize } from '@/lib/useAutoOrganize';
 import { getNodeColor } from '@/lib/nodeColors';
-import EmptyState from './EmptyState';
 
 const nodeTypes: NodeTypes = {
   custom: NodeComponent,
@@ -69,8 +69,14 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   // by only syncing when nodes/edges actually change
   const lastSyncedCanvasNodesRef = useRef<string>('');
   const lastSyncedCanvasEdgesRef = useRef<string>('');
+  const isSyncingFromWorkspaceRef = useRef(false); // Flag to prevent circular updates
   
   useEffect(() => {
+    // Skip sync if we're currently syncing from workspace store to prevent loops
+    if (isSyncingFromWorkspaceRef.current) {
+      return;
+    }
+    
     const nodesHash = JSON.stringify(nodes.map(n => ({ id: n.id, position: n.position })));
     const edgesHash = JSON.stringify(edges.map(e => ({ id: e.id, source: e.source, target: e.target })));
     
@@ -78,8 +84,11 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     if (nodesHash !== lastSyncedCanvasNodesRef.current || edgesHash !== lastSyncedCanvasEdgesRef.current) {
       lastSyncedCanvasNodesRef.current = nodesHash;
       lastSyncedCanvasEdgesRef.current = edgesHash;
-      setCanvasNodes(nodes);
-      setCanvasEdges(edges);
+      // Batch updates to prevent multiple re-renders
+      requestAnimationFrame(() => {
+        setCanvasNodes(nodes);
+        setCanvasEdges(edges);
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, edges]); // Removed setCanvasNodes and setCanvasEdges from dependencies - they're stable Zustand setters
@@ -87,9 +96,6 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   // Auto-organize state
   const [autoOrganize, setAutoOrganize] = useState(false);
   
-  // Empty state - track if user has manually dismissed it
-  const [hasDismissedEmptyState, setHasDismissedEmptyState] = useState(false);
-  const [showEmptyState, setShowEmptyState] = useState(nodes.length === 0 && !hasDismissedEmptyState);
   
   // Handle position updates from auto-organize animation
   const handlePositionUpdate = useCallback(
@@ -119,13 +125,11 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   // Track if we've done initial organization for current workspace
   const [hasOrganized, setHasOrganized] = useState(false);
 
-  // Reset organization state and empty state dismissal when workspace nodes change (new workspace loaded)
+    // Reset organization state when workspace nodes change (new workspace loaded)
   useEffect(() => {
     if (workspaceNodes.length > 0) {
       setHasOrganized(false);
     }
-    // Reset empty state dismissal when switching workspaces
-    setHasDismissedEmptyState(false);
   }, [workspaceId, workspaceNodes.length]);
 
   // Disable auto-organize by default - only run when explicitly triggered
@@ -159,13 +163,20 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     const sortedNodes = [...workspaceNodes].sort((a, b) => a.id.localeCompare(b.id));
     const sortedEdges = [...workspaceEdges].sort((a, b) => a.id.localeCompare(b.id));
     
+    // Only hash properties that affect React Flow rendering
+    // Exclude content from hash to prevent re-renders on content-only changes
     const nodesHash = JSON.stringify(sortedNodes.map(n => ({ 
       id: n.id, 
       x: n.x, 
       y: n.y, 
       title: n.title, 
+      width: n.width,
+      height: n.height,
       tags: n.tags ? [...n.tags].sort() : [],
-      content: n.content ? JSON.stringify(n.content) : null,
+      // Only include content type, not full content, to detect node type changes
+      contentType: n.content && typeof n.content === 'object' && 'type' in n.content 
+        ? (n.content as any).type 
+        : null,
     })));
     const edgesHash = JSON.stringify(sortedEdges.map(e => ({ id: e.id, source: e.source, target: e.target })));
     
@@ -177,13 +188,6 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     // Update tracking refs
     lastSyncedNodesRef.current = nodesHash;
     lastSyncedEdgesRef.current = edgesHash;
-    
-    console.log('[CanvasContainer] Syncing workspace nodes to canvas:', {
-      workspaceNodesCount: workspaceNodes.length,
-      workspaceEdgesCount: workspaceEdges.length,
-      existingNodesCount: nodesRef.current.length,
-      existingEdgesCount: edgesRef.current.length,
-    });
 
     const reactFlowNodes: Node[] = workspaceNodes.map((node) => {
       const isChart = node.tags?.some(tag => ['bar-chart', 'line-chart', 'pie-chart', 'area-chart'].includes(tag));
@@ -248,20 +252,25 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     });
 
     // Compare React Flow nodes by value to prevent unnecessary updates
-    // Compare essential properties: id, position, label, selected state, and zIndex
+    // Compare essential properties: id, position, label, selected state, zIndex, width, height
+    // Exclude data.node.content from comparison to avoid re-renders on content changes that don't affect React Flow
     const currentNodesHash = JSON.stringify(nodes.map(n => ({ 
       id: n.id, 
       position: n.position, 
       label: n.data?.label,
       selected: n.selected,
-      zIndex: n.zIndex
+      zIndex: n.zIndex,
+      width: n.width,
+      height: n.height,
     })));
     const newNodesHash = JSON.stringify(reactFlowNodes.map(n => ({ 
       id: n.id, 
       position: n.position, 
       label: n.data?.label,
       selected: n.selected,
-      zIndex: n.zIndex
+      zIndex: n.zIndex,
+      width: n.width,
+      height: n.height,
     })));
     const currentEdgesHash = JSON.stringify(edges.map(e => ({ 
       id: e.id, 
@@ -277,14 +286,10 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     // Only update React Flow state if nodes/edges actually changed
     // This prevents unnecessary setState calls that trigger infinite loops
     if (currentNodesHash !== newNodesHash || currentEdgesHash !== newEdgesHash) {
-      console.log('[CanvasContainer] Setting React Flow nodes:', {
-        nodeCount: reactFlowNodes.length,
-        edgeCount: reactFlowEdges.length,
-        firstNodeId: reactFlowNodes[0]?.id,
-        firstNodePosition: reactFlowNodes[0]?.position,
-        nodesChanged: currentNodesHash !== newNodesHash,
-        edgesChanged: currentEdgesHash !== newEdgesHash,
-      });
+      // Removed verbose logging to prevent console spam
+      
+      // Set flag to prevent circular updates
+      isSyncingFromWorkspaceRef.current = true;
       
       // Update React Flow state only if actually changed
       if (currentNodesHash !== newNodesHash) {
@@ -294,11 +299,16 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         setEdges(reactFlowEdges);
       }
       
+      // Reset flag after React Flow state updates
+      requestAnimationFrame(() => {
+        isSyncingFromWorkspaceRef.current = false;
+      });
+      
       // Note: Don't update canvas store here - the effect that syncs canvas store 
       // from React Flow state will handle it automatically
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceNodes, workspaceEdges]); // Removed unstable setter dependencies
+  }, [workspaceNodes, workspaceEdges, selectedNodeId]); // Include selectedNodeId to update selection state
 
   const onConnect = useCallback(
     async (params: Connection) => {
@@ -417,9 +427,13 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
       // MIRO-LIKE: Always select node on single click
-      // This ensures FloatingNodeEditor appears immediately
+      // This ensures node selection works immediately
       // Inline editing will handle text input separately
       selectNode(node.id);
+      
+      // Scroll to node in sidebar and highlight it
+      // Dispatch event to scroll sidebar to this node
+      window.dispatchEvent(new CustomEvent('scrollToNode', { detail: { nodeId: node.id } }));
     },
     [selectNode]
   );
@@ -580,20 +594,14 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
           y: event.clientY,
         };
         
-        // Use screen coordinates for toolbar placement (relative to viewport)
-        const screenPos = {
+        console.log('[CanvasContainer] Double-click detected at screen position:', {
           x: event.clientX,
           y: event.clientY,
-        };
+        });
         
-        console.log('[CanvasContainer] Calling onCreateNode with screen position:', screenPos);
+        // Note: Node creation is now handled by VerticalToolbar
+        // Double-click can be used for other purposes in the future
         
-        // Show toolbar to select node type
-        onCreateNode(screenPos);
-        
-        // Trigger empty state dismissal if it's showing
-        const dismissEvent = new CustomEvent('dismiss-empty-state');
-        window.dispatchEvent(dismissEvent);
       } catch (error) {
         console.error('[CanvasContainer] Error in handlePaneDoubleClick:', error);
       }
@@ -839,35 +847,12 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     (window as any).triggerAutoOrganize = triggerAutoOrganize;
   }, [triggerAutoOrganize]);
 
-  // Dismiss empty state when nodes are added
-  useEffect(() => {
-    const handleDismiss = () => {
-      setShowEmptyState(false);
-      setHasDismissedEmptyState(true);
-    };
-    
-    window.addEventListener('dismiss-empty-state', handleDismiss);
-    
-    // Hide empty state when nodes are added
-    if (nodes.length > 0 && showEmptyState) {
-      setShowEmptyState(false);
-    }
-    
-    // Show empty state when all nodes are removed (only if not manually dismissed)
-    if (nodes.length === 0 && !showEmptyState && !hasDismissedEmptyState) {
-      setShowEmptyState(true);
-    }
-    
-    return () => {
-      window.removeEventListener('dismiss-empty-state', handleDismiss);
-    };
-  }, [nodes.length, showEmptyState, hasDismissedEmptyState]);
 
       return (
         <div 
-          className="relative w-full h-full min-h-0 bg-white overflow-hidden"
+          className="relative w-full h-full min-h-0 bg-white dark:bg-gray-900 overflow-hidden"
           onClick={(e) => {
-            // Handle single click on canvas wrapper to show horizontal bar
+            // Handle single click on canvas wrapper
             // Only process if clicking on the canvas background, not on React Flow UI elements
             const target = e.target as HTMLElement;
             
@@ -880,13 +865,12 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
               target.closest('.react-flow__attribution') ||
               target.closest('.react-flow__handle') ||
               target.closest('button') ||
-              target.closest('[role="button"]') ||
-              target.closest('.floating-horizontal-bar')
+              target.closest('[role="button"]')
             ) {
               return;
             }
             
-            // Process click on canvas background - show horizontal bar
+            // Process click on canvas background - store position for node creation
             if (onCreateNode) {
               const screenPos = {
                 x: e.clientX,
@@ -901,9 +885,6 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
               
               // Store flow position for node creation
               (window as any).lastFlowPosition = flowPos;
-              
-              // Dispatch event to show horizontal bar
-              window.dispatchEvent(new CustomEvent('show-create-toolbar', { detail: screenPos }));
             }
           }}
         >
@@ -933,7 +914,7 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         connectionLineStyle={{ stroke: '#3b82f6', strokeWidth: 2 }}
         fitView={false}
         attributionPosition="bottom-left"
-        className="bg-white"
+        className="bg-white dark:bg-gray-900"
         minZoom={0.1}
         maxZoom={4}
         defaultViewport={
@@ -951,11 +932,15 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
               variant={BackgroundVariant.Dots}
               gap={20}
               size={1}
+              style={{ 
+                backgroundColor: 'transparent',
+              }}
+              className="[&_svg]:opacity-30 dark:[&_svg]:opacity-10"
             />
         
             {/* Controls - premium rounded with shadow */}
             <Controls
-              className="[&_button]:bg-white/95 [&_button]:border-gray-200 [&_button]:text-gray-700 [&_button:hover]:bg-gray-50 [&_button:hover]:border-gray-300 [&_button:hover]:text-gray-900 [&_button]:rounded-lg [&_button]:shadow-sm [&_button]:backdrop-blur-sm"
+              className="[&_button]:bg-white/95 dark:[&_button]:bg-gray-800/95 [&_button]:border-gray-200 dark:[&_button]:border-gray-700 [&_button]:text-black dark:[&_button]:text-white [&_button:hover]:bg-gray-50 dark:[&_button:hover]:bg-gray-700 [&_button:hover]:border-gray-300 dark:[&_button:hover]:border-gray-600 [&_button:hover]:text-black dark:[&_button:hover]:text-white [&_button]:rounded-lg [&_button]:shadow-sm [&_button]:backdrop-blur-sm"
               showZoom={true}
               showFitView={true}
               showInteractive={false}
@@ -963,41 +948,17 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
                 opacity: 0.95,
               }}
             />
+            
+            {/* Drawing Canvas - Overlay for brush tool */}
+            <DrawingCanvas workspaceId={workspaceId} />
           </ReactFlow>
-
-          {/* Empty State Overlay - shows on top when no nodes (first time only) */}
-          {!hasDismissedEmptyState && showEmptyState && nodes.length === 0 && (
-            <div 
-              className="absolute inset-0" 
-              style={{ zIndex: 100, pointerEvents: 'auto' }}
-              onClick={(e) => {
-                // Allow clicking backdrop to dismiss
-                if (e.target === e.currentTarget) {
-                  console.log('Empty state backdrop clicked - dismissing');
-                  setShowEmptyState(false);
-                  setHasDismissedEmptyState(true);
-                }
-              }}
-            >
-              <EmptyState 
-                visible={true}
-                onDismiss={() => {
-                  console.log('Empty state onDismiss called - canvas should now be interactive');
-                  setShowEmptyState(false);
-                  setHasDismissedEmptyState(true);
-                }} 
-              />
-            </div>
-          )}
-
-          {/* Minimal inline hint removed - no longer showing hint on empty canvas */}
 
           {/* Auto-organize button - minimalistic, top-right, very subtle */}
           {nodes.length > 0 && (
             <button
               onClick={triggerAutoOrganize}
               disabled={isAnimating}
-              className="absolute top-4 right-4 z-10 px-3 py-1.5 bg-white/90 backdrop-blur-md text-xs text-gray-700 rounded-lg border border-gray-300 shadow-sm hover:bg-gray-100 hover:border-gray-400 hover:text-gray-900 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="absolute top-4 right-4 z-10 px-3 py-1.5 bg-white/90 backdrop-blur-md text-xs text-black rounded-lg border border-gray-300 shadow-sm hover:bg-gray-100 hover:border-gray-400 hover:text-black transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
               style={{
                 fontSize: '11px',
                 letterSpacing: '0.5px',

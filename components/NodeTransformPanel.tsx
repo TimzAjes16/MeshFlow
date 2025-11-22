@@ -91,13 +91,13 @@ export default function NodeTransformPanel({ node, onUpdate }: NodeTransformPane
 
   return (
     <div className="space-y-4 pt-4 border-t border-gray-200">
-      <h3 className="text-sm font-semibold text-gray-900 mb-3">Transform</h3>
+      <h3 className="text-sm font-semibold text-black mb-3">Transform</h3>
 
       {/* Width Control */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs font-medium text-gray-700">Width</label>
-          <span className="text-xs text-gray-500">{Math.round(width)}px</span>
+          <label className="text-xs font-medium text-black">Width</label>
+          <span className="text-xs text-black">{Math.round(width)}px</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -105,7 +105,7 @@ export default function NodeTransformPanel({ node, onUpdate }: NodeTransformPane
             className="p-1.5 border border-gray-200 rounded hover:bg-gray-50 transition-colors"
             title="Decrease width"
           >
-            <Minus className="w-3 h-3 text-gray-600" />
+            <Minus className="w-3 h-3 text-black" />
           </button>
           <input
             type="range"
@@ -121,7 +121,7 @@ export default function NodeTransformPanel({ node, onUpdate }: NodeTransformPane
             className="p-1.5 border border-gray-200 rounded hover:bg-gray-50 transition-colors"
             title="Increase width"
           >
-            <Plus className="w-3 h-3 text-gray-600" />
+            <Plus className="w-3 h-3 text-black" />
           </button>
         </div>
       </div>
@@ -129,8 +129,8 @@ export default function NodeTransformPanel({ node, onUpdate }: NodeTransformPane
       {/* Height Control */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs font-medium text-gray-700">Height</label>
-          <span className="text-xs text-gray-500">{Math.round(height)}px</span>
+          <label className="text-xs font-medium text-black">Height</label>
+          <span className="text-xs text-black">{Math.round(height)}px</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -138,7 +138,7 @@ export default function NodeTransformPanel({ node, onUpdate }: NodeTransformPane
             className="p-1.5 border border-gray-200 rounded hover:bg-gray-50 transition-colors"
             title="Decrease height"
           >
-            <Minus className="w-3 h-3 text-gray-600" />
+            <Minus className="w-3 h-3 text-black" />
           </button>
           <input
             type="range"
@@ -154,7 +154,7 @@ export default function NodeTransformPanel({ node, onUpdate }: NodeTransformPane
             className="p-1.5 border border-gray-200 rounded hover:bg-gray-50 transition-colors"
             title="Increase height"
           >
-            <Plus className="w-3 h-3 text-gray-600" />
+            <Plus className="w-3 h-3 text-black" />
           </button>
         </div>
       </div>
@@ -162,11 +162,11 @@ export default function NodeTransformPanel({ node, onUpdate }: NodeTransformPane
       {/* Rotation Control */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+          <label className="text-xs font-medium text-black flex items-center gap-1">
             <RotateCw className="w-3 h-3" />
             Rotation
           </label>
-          <span className="text-xs text-gray-500">{Math.round(rotation)}°</span>
+          <span className="text-xs text-black">{Math.round(rotation)}°</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -174,7 +174,7 @@ export default function NodeTransformPanel({ node, onUpdate }: NodeTransformPane
             className="p-1.5 border border-gray-200 rounded hover:bg-gray-50 transition-colors"
             title="Rotate -15°"
           >
-            <RotateCw className="w-3 h-3 text-gray-600 rotate-180" />
+            <RotateCw className="w-3 h-3 text-black rotate-180" />
           </button>
           <input
             type="range"
@@ -190,7 +190,7 @@ export default function NodeTransformPanel({ node, onUpdate }: NodeTransformPane
             className="p-1.5 border border-gray-200 rounded hover:bg-gray-50 transition-colors"
             title="Rotate +15°"
           >
-            <RotateCw className="w-3 h-3 text-gray-600" />
+            <RotateCw className="w-3 h-3 text-black" />
           </button>
         </div>
         <div className="flex gap-1 mt-2">
@@ -201,7 +201,7 @@ export default function NodeTransformPanel({ node, onUpdate }: NodeTransformPane
               className={`flex-1 px-2 py-1 text-xs border rounded transition-colors ${
                 rotation === angle
                   ? 'bg-blue-500 text-white border-blue-500'
-                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                  : 'bg-white text-black border-gray-200 hover:bg-gray-50'
               }`}
             >
               {angle}°
@@ -212,7 +212,7 @@ export default function NodeTransformPanel({ node, onUpdate }: NodeTransformPane
 
       {/* Quick Size Presets */}
       <div>
-        <label className="text-xs font-medium text-gray-700 mb-2 block">Size Presets</label>
+        <label className="text-xs font-medium text-black mb-2 block">Size Presets</label>
         <div className="grid grid-cols-2 gap-2">
           {[
             { label: 'Small', w: 200, h: 100 },
@@ -226,7 +226,7 @@ export default function NodeTransformPanel({ node, onUpdate }: NodeTransformPane
                 setWidth(preset.w);
                 setHeight(preset.h);
               }}
-              className="px-3 py-1.5 text-xs border border-gray-200 rounded hover:bg-gray-50 transition-colors text-gray-700"
+              className="px-3 py-1.5 text-xs border border-gray-200 rounded hover:bg-gray-50 transition-colors text-black"
             >
               {preset.label}
             </button>

@@ -214,12 +214,12 @@ export default function EmojiPickerPopup({ node, position, onClose, onSelect }: 
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
             <div className="flex items-center gap-3">
-              <h2 className="text-xl font-bold text-gray-900">Choose an Emoji</h2>
+              <h2 className="text-xl font-bold text-black">Choose an Emoji</h2>
               <div className="flex items-center gap-2 px-3 py-1 bg-white rounded-full border border-gray-200">
                 <button
                   onClick={() => setEmojiStyle('apple')}
                   className={`flex items-center gap-1.5 px-2 py-1 rounded transition-colors ${
-                    emojiStyle === 'apple' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
+                    emojiStyle === 'apple' ? 'bg-blue-100 text-blue-700' : 'text-black hover:bg-gray-100'
                   }`}
                 >
                   <Monitor className="w-4 h-4" />
@@ -229,7 +229,7 @@ export default function EmojiPickerPopup({ node, position, onClose, onSelect }: 
                 <button
                   onClick={() => setEmojiStyle('device')}
                   className={`flex items-center gap-1.5 px-2 py-1 rounded transition-colors ${
-                    emojiStyle === 'device' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
+                    emojiStyle === 'device' ? 'bg-blue-100 text-blue-700' : 'text-black hover:bg-gray-100'
                   }`}
                 >
                   <Smartphone className="w-4 h-4" />
@@ -242,7 +242,7 @@ export default function EmojiPickerPopup({ node, position, onClose, onSelect }: 
               className="p-2 hover:bg-white rounded-lg transition-colors"
               title="Close"
             >
-              <X className="w-5 h-5 text-gray-600" />
+              <X className="w-5 h-5 text-black" />
             </button>
           </div>
 
@@ -255,7 +255,7 @@ export default function EmojiPickerPopup({ node, position, onClose, onSelect }: 
                 className={`px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
                   selectedCategory === category
                     ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 hover:bg-gray-200'
+                    : 'text-black hover:bg-gray-200'
                 }`}
               >
                 {category}
@@ -268,7 +268,7 @@ export default function EmojiPickerPopup({ node, position, onClose, onSelect }: 
             <div className="px-4 py-3 border-b border-gray-200 bg-blue-50">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 flex-wrap flex-1">
-                  <span className="text-sm font-medium text-gray-700">Selected:</span>
+                  <span className="text-sm font-medium text-black">Selected:</span>
                   {uniqueEmojis.map((emoji) => (
                     <button
                       key={emoji}
@@ -329,11 +329,11 @@ export default function EmojiPickerPopup({ node, position, onClose, onSelect }: 
 
           {/* Footer */}
           <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-black">
               {totalEmojiCount > 0 ? (
                 <span>
                   {totalEmojiCount} emoji{totalEmojiCount > 1 ? 's' : ''} selected ({uniqueEmojis.length} unique)
-                  <span className="ml-2 text-xs text-gray-400">• Press Backspace to remove last</span>
+                  <span className="ml-2 text-xs text-black">• Press Backspace to remove last</span>
                 </span>
               ) : (
                 'Click emojis to add them'

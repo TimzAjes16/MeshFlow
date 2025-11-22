@@ -30,7 +30,7 @@ export function useAutoOrganize({
   height = 2000,
   duration = 2000,
 }: UseAutoOrganizeOptions) {
-  const simulationRef = useRef<d3.Simulation<LayoutNode> | null>(null);
+  const simulationRef = useRef<d3.Simulation<LayoutNode, any> | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const startPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const targetPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());

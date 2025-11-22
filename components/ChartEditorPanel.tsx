@@ -264,7 +264,7 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
     <div className="space-y-4">
         {/* Chart Size */}
         <div>
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">Chart Size</h3>
+          <h3 className="text-sm font-semibold text-black mb-3">Chart Size</h3>
           <div className="space-y-2">
             {sizeOptions.map((option) => (
               <button
@@ -273,7 +273,7 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
                 className={`w-full px-4 py-2.5 text-left border-2 rounded-lg transition-all ${
                   size === option.value
                     ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
-                    : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                    : 'border-gray-200 bg-white text-black hover:border-gray-300'
                 }`}
               >
                 {option.label} ({option.dimensions})
@@ -284,7 +284,7 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
 
         {/* Color Preset (for all charts) */}
         <div>
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">
+          <h3 className="text-sm font-semibold text-black mb-3">
             {isLineOrAreaChart ? 'Line Color' : chartType === 'bar-chart' ? 'Bar Color' : 'Chart Color'}
           </h3>
           <div className="space-y-2">
@@ -295,7 +295,7 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
                 className={`w-full px-4 py-2.5 text-left border-2 rounded-lg transition-all ${
                   colorPreset === preset.value
                     ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
-                    : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                    : 'border-gray-200 bg-white text-black hover:border-gray-300'
                 }`}
               >
                 {preset.label}
@@ -306,7 +306,7 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
 
         {/* Preview Section */}
         <div>
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">Preview</h3>
+          <h3 className="text-sm font-semibold text-black mb-3">Preview</h3>
           <div 
             className="w-full bg-gray-100 rounded-lg p-4 flex items-center justify-center"
             style={{ minHeight: '200px' }}
@@ -416,7 +416,7 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
                 </ResponsiveContainer>
               </div>
             ) : (
-              <div className="text-center text-gray-400 text-sm py-8">
+              <div className="text-center text-black text-sm py-8">
                 Preview will appear here based on your settings
               </div>
             )}
@@ -428,7 +428,7 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
       <div className="border-t border-gray-200 pt-4 space-y-3">
         {/* Color picker (custom color) */}
           <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Custom Color</label>
+          <label className="block text-xs font-medium text-black mb-1">Custom Color</label>
             <div className="flex items-center gap-2">
               <input
                 type="color"
@@ -455,7 +455,7 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
 
           {/* Options */}
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-xs text-gray-700">
+            <label className="flex items-center gap-2 text-xs text-black">
               <input
                 type="checkbox"
                 checked={showGrid}
@@ -464,7 +464,7 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
               />
               Show Grid
             </label>
-            <label className="flex items-center gap-2 text-xs text-gray-700">
+            <label className="flex items-center gap-2 text-xs text-black">
               <input
                 type="checkbox"
                 checked={showLegend}
@@ -479,7 +479,7 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
           {chartType !== 'pie-chart' && (
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">X-Axis Key</label>
+                <label className="block text-xs font-medium text-black mb-1">X-Axis Key</label>
                 <input
                   type="text"
                   value={xKey}
@@ -489,7 +489,7 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Y-Axis Key</label>
+                <label className="block text-xs font-medium text-black mb-1">Y-Axis Key</label>
                 <input
                   type="text"
                   value={yKey}
@@ -505,7 +505,7 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
       {/* Data Editor */}
       <div className="border-t border-gray-200 pt-4">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-semibold text-gray-900">Data</h3>
+          <h3 className="text-sm font-semibold text-black">Data</h3>
         </div>
 
         <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -550,11 +550,11 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
                 </>
               ) : (
                 <>
-                  <div className="flex-1 text-sm text-gray-700">{row.name}</div>
-                  <div className="w-20 text-sm text-gray-700 text-right">{row.value}</div>
+                  <div className="flex-1 text-sm text-black">{row.name}</div>
+                  <div className="w-20 text-sm text-black text-right">{row.value}</div>
                   <button
                     onClick={() => setEditingIndex(index)}
-                    className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900"
+                    className="px-2 py-1 text-xs text-black hover:text-black"
                   >
                     Edit
                   </button>

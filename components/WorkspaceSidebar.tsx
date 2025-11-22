@@ -57,9 +57,9 @@ export default function WorkspaceSidebar({ workspaceId, userRole, view, setView 
         aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {isCollapsed ? (
-          <ChevronRight className="w-4 h-4 text-gray-600" />
+          <ChevronRight className="w-4 h-4 text-black" />
         ) : (
-          <ChevronLeft className="w-4 h-4 text-gray-600" />
+          <ChevronLeft className="w-4 h-4 text-black" />
         )}
       </button>
 
@@ -68,7 +68,7 @@ export default function WorkspaceSidebar({ workspaceId, userRole, view, setView 
         <button
           type="button"
           onClick={() => router.push('/dashboard')}
-          className={`flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors w-full relative group/item ${
+          className={`flex items-center gap-2 text-sm text-black hover:text-black transition-colors w-full relative group/item ${
             isCollapsed ? 'justify-center' : ''
           }`}
           title={isCollapsed ? 'Back to Dashboard' : undefined}
@@ -107,7 +107,7 @@ export default function WorkspaceSidebar({ workspaceId, userRole, view, setView 
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.15 }}
-              className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-3"
+              className="text-xs font-semibold text-black uppercase tracking-wider mb-3 px-3"
             >
               Views
             </motion.div>
@@ -126,7 +126,7 @@ export default function WorkspaceSidebar({ workspaceId, userRole, view, setView 
               className={`${itemBase} ${
                 isActive
                   ? 'bg-gray-900 text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
+                  : 'text-black hover:bg-gray-100'
               } ${isCollapsed ? 'justify-center' : ''} relative group/item`}
               title={isCollapsed ? viewItem.label : undefined}
             >
@@ -162,7 +162,7 @@ export default function WorkspaceSidebar({ workspaceId, userRole, view, setView 
         <button
           type="button"
           onClick={() => router.push(`/workspace/${workspaceId}/settings`)}
-          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors w-full ${
+          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-black hover:bg-gray-50 transition-colors w-full ${
             isCollapsed ? 'justify-center' : ''
           } relative group/item`}
           title={isCollapsed ? 'Settings' : undefined}

@@ -117,7 +117,7 @@ export function exportAsObsidian(data: ExportData): Map<string, string> {
 
   data.nodes.forEach((node) => {
     let content = `# ${node.title}\n\n`;
-    content += `Created: ${new Date(node.created_at).toLocaleString()}\n\n`;
+    content += `Created: ${new Date(node.createdAt).toLocaleString()}\n\n`;
     
     if (node.tags && node.tags.length > 0) {
       content += `Tags: ${node.tags.map((t) => `[[${t}]]`).join(', ')}\n\n`;

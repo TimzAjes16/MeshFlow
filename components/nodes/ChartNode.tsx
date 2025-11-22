@@ -71,12 +71,12 @@ function ChartNode({ data, selected }: ChartNodeProps) {
           />
         );
       default:
-        return <div className="text-gray-400">Unknown chart type</div>;
+        return <div className="text-black">Unknown chart type</div>;
     }
   };
 
   return (
-    <BaseNode node={node} selected={selected}>
+    <BaseNode node={node} selected={selected} nodeId={data.node.id}>
       <div 
         className="bg-white rounded-lg shadow-sm border border-gray-200 p-4"
         style={{ width: `${width}px`, height: `${height}px` }}

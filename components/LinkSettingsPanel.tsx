@@ -130,7 +130,7 @@ export default function LinkSettingsPanel({ node, onUpdate }: LinkSettingsPanelP
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-black mb-2">
           URL
         </label>
         <div className="relative">
@@ -150,7 +150,7 @@ export default function LinkSettingsPanel({ node, onUpdate }: LinkSettingsPanelP
           {url && (
             <div className="absolute right-3 top-1/2 -translate-y-1/2">
               {isValidating ? (
-                <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                <Loader2 className="w-4 h-4 text-black animate-spin" />
               ) : isValid ? (
                 <CheckCircle2 className="w-4 h-4 text-green-500" />
               ) : (
@@ -167,7 +167,7 @@ export default function LinkSettingsPanel({ node, onUpdate }: LinkSettingsPanelP
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-black mb-2">
           Title (optional)
         </label>
         <input
@@ -189,7 +189,7 @@ export default function LinkSettingsPanel({ node, onUpdate }: LinkSettingsPanelP
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-black mb-2">
           Description (optional)
         </label>
         <textarea
@@ -227,7 +227,7 @@ export default function LinkSettingsPanel({ node, onUpdate }: LinkSettingsPanelP
           }}
           className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
         />
-        <label htmlFor="link-preview" className="text-sm text-gray-700">
+        <label htmlFor="link-preview" className="text-sm text-black">
           Show preview
         </label>
       </div>

@@ -341,7 +341,7 @@ export default function Canvas({ workspaceId }: CanvasProps) {
           >
             <ArrowLeft size={20} />
           </button>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+          <h1 className="text-xl font-semibold text-black dark:text-white">
             Workspace
           </h1>
         </div>

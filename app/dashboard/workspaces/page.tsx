@@ -54,7 +54,7 @@ export default async function WorkspacesPage() {
       <main className="flex-1 overflow-auto p-8">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Workspaces</h1>
+            <h1 className="text-3xl font-bold text-black">Workspaces</h1>
           </div>
           <WorkspaceList 
             workspaces={workspaces.map((w: any) => ({

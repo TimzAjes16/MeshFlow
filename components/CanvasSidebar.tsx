@@ -21,6 +21,9 @@ export default function CanvasSidebar({ workspaceId }: CanvasSidebarProps) {
       setIsHistoryAttached(attached);
       if (attached) {
         setActiveTab('history');
+      } else {
+        // If history is popped out, switch back to nodes tab
+        setActiveTab('nodes');
       }
     };
     
@@ -40,33 +43,33 @@ export default function CanvasSidebar({ workspaceId }: CanvasSidebarProps) {
 
   return (
     <div
-      className={`relative bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${
+      className={`relative bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-all duration-300 ${
         isCollapsed ? 'w-12' : 'w-80'
       }`}
     >
       {/* Toggle Button */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="absolute -right-3 top-4 z-10 w-6 h-6 bg-white border border-gray-300 rounded-full shadow-sm flex items-center justify-center hover:bg-gray-50 transition-colors"
+        className="absolute -right-3 top-4 z-10 w-6 h-6 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-full shadow-sm flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {isCollapsed ? (
-          <ChevronRight className="w-4 h-4 text-gray-600" />
+          <ChevronRight className="w-4 h-4 text-black dark:text-white" />
         ) : (
-          <ChevronLeft className="w-4 h-4 text-gray-600" />
+          <ChevronLeft className="w-4 h-4 text-black dark:text-white" />
         )}
       </button>
 
       {!isCollapsed && (
         <>
           {/* Tabs */}
-          <div className="flex border-b border-gray-200 bg-slate-50">
+          <div className="flex border-b border-gray-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-800">
             <button
               onClick={() => setActiveTab('nodes')}
               className={`flex-1 px-4 py-2 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
                 activeTab === 'nodes'
-                  ? 'text-slate-900 bg-white border-b-2 border-blue-500'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-gray-50'
+                  ? 'text-slate-900 dark:text-white bg-white dark:bg-gray-900 border-b-2 border-blue-500 dark:border-blue-400'
+                  : 'text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700'
               }`}
             >
               <List className="w-4 h-4" />
@@ -92,7 +95,7 @@ export default function CanvasSidebar({ workspaceId }: CanvasSidebarProps) {
             {activeTab === 'nodes' ? (
               <NodesListView workspaceId={workspaceId} />
             ) : (
-              <HistoryBarContent />
+              <HistoryBarContent isInSidebar={true} />
             )}
           </div>
         </>

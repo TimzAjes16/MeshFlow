@@ -252,7 +252,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
     <div className="space-y-6">
       {/* Preview */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Preview</h3>
+        <h3 className="text-sm font-semibold text-black mb-3">Preview</h3>
         <div 
           className="w-full bg-gray-100 rounded-lg p-4"
           style={{ minHeight: '150px' }}
@@ -267,7 +267,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
               letterSpacing: `${letterSpacing}px`,
               color: '#374151',
             }}
-            className="text-gray-700"
+            className="text-black"
           >
             The quick brown fox jumps over the lazy dog. This is a preview of how your text will appear with the current settings.
           </div>
@@ -276,7 +276,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
 
       {/* Font Size */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-2">Font Size</h3>
+        <h3 className="text-sm font-semibold text-black mb-2">Font Size</h3>
         <div className="space-y-2">
           <select
             value={fontSize}
@@ -286,7 +286,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
                 setCustomFontSize(''); // Clear custom size when selecting preset
               }
             }}
-            className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg bg-white text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+            className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg bg-white text-black hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
           >
             {fontSizeOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -309,9 +309,9 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
                   }
                 }}
                 placeholder="e.g., 18px, 1.5em, 2rem"
-                className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-lg bg-white text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-lg bg-white text-black hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
-              <span className="text-sm text-gray-500 whitespace-nowrap">
+              <span className="text-sm text-black whitespace-nowrap">
                 {customFontSize && getFontSizeString()}
               </span>
             </div>
@@ -321,11 +321,11 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
 
       {/* Font Style */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-2">Font Style</h3>
+        <h3 className="text-sm font-semibold text-black mb-2">Font Style</h3>
         <select
           value={fontStyle}
           onChange={(e) => setFontStyle(e.target.value as FontStyle)}
-          className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg bg-white text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+          className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg bg-white text-black hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
         >
           {fontStyleOptions.map((option) => (
             <option key={option.value} value={option.value}>
@@ -337,7 +337,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
 
       {/* System Font Family */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-2">System Fonts</h3>
+        <h3 className="text-sm font-semibold text-black mb-2">System Fonts</h3>
         <div className="grid grid-cols-3 gap-2 mb-4">
           {fontFamilyOptions.map((option) => (
             <button
@@ -349,7 +349,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
               className={`px-3 py-2 text-sm border-2 rounded-lg transition-all ${
                 fontFamily === option.value && !selectedGoogleFont
                   ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
-                  : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                  : 'border-gray-200 bg-white text-black hover:border-gray-300'
               }`}
               style={{ fontFamily: option.font }}
             >
@@ -361,7 +361,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
 
       {/* Google Fonts */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-2">Google Fonts</h3>
+        <h3 className="text-sm font-semibold text-black mb-2">Google Fonts</h3>
         <select
           value={selectedGoogleFont}
           onChange={(e) => {
@@ -372,7 +372,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
               loadGoogleFont(fontName);
             }
           }}
-          className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg bg-white text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+          className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg bg-white text-black hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
         >
           <option value="">Select a Google Font...</option>
           {googleFontsOptions.map((font) => (
@@ -382,7 +382,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
           ))}
         </select>
         {selectedGoogleFont && (
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-black">
             Using: <span style={{ fontFamily: getFontFamilyString() }}>{selectedGoogleFont}</span>
           </p>
         )}
@@ -390,7 +390,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
 
       {/* Text Alignment */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Text Alignment</h3>
+        <h3 className="text-sm font-semibold text-black mb-3">Text Alignment</h3>
         <div className="space-y-2">
           {alignmentOptions.map((option) => (
             <button
@@ -399,7 +399,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
               className={`w-full px-4 py-2.5 text-left border-2 rounded-lg transition-all ${
                 alignment === option.value
                   ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
-                  : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                  : 'border-gray-200 bg-white text-black hover:border-gray-300'
               }`}
             >
               {option.label}
@@ -410,7 +410,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
 
       {/* Line Height */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Line Height</h3>
+        <h3 className="text-sm font-semibold text-black mb-3">Line Height</h3>
         <div className="space-y-2">
           <input
             type="range"
@@ -421,7 +421,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
             onChange={(e) => setLineHeight(parseFloat(e.target.value))}
             className="w-full"
           />
-          <div className="flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center justify-between text-xs text-black">
             <span>1.0</span>
             <span className="font-medium">{lineHeight.toFixed(1)}</span>
             <span>3.0</span>
@@ -431,7 +431,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
 
       {/* Letter Spacing */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Letter Spacing</h3>
+        <h3 className="text-sm font-semibold text-black mb-3">Letter Spacing</h3>
         <div className="space-y-2">
           <input
             type="range"
@@ -442,7 +442,7 @@ export default function TextSettingsPanel({ node, onUpdate }: TextSettingsPanelP
             onChange={(e) => setLetterSpacing(parseFloat(e.target.value))}
             className="w-full"
           />
-          <div className="flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center justify-between text-xs text-black">
             <span>-2px</span>
             <span className="font-medium">{letterSpacing}px</span>
             <span>4px</span>

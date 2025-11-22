@@ -324,18 +324,18 @@ export default function SlashCommandMenu({ editor }: SlashCommandMenuProps) {
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="p-2 border-b border-gray-200">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div className="text-xs font-semibold text-black uppercase tracking-wider">
           / Commands
         </div>
         {query && (
-          <div className="text-xs text-gray-400 mt-1">Search: {query}</div>
+          <div className="text-xs text-black mt-1">Search: {query}</div>
         )}
       </div>
 
       <div className="p-1">
         {categories.format.length > 0 && (
           <>
-            <div className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            <div className="px-2 py-1 text-xs font-semibold text-black uppercase tracking-wider">
               Format
             </div>
             {categories.format.map((cmd, idx) => {
@@ -349,7 +349,7 @@ export default function SlashCommandMenu({ editor }: SlashCommandMenuProps) {
                   className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
                     selectedIndex === globalIndex
                       ? 'bg-blue-50 text-blue-600'
-                      : 'text-gray-700 hover:bg-gray-50'
+                      : 'text-black hover:bg-gray-50'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -362,7 +362,7 @@ export default function SlashCommandMenu({ editor }: SlashCommandMenuProps) {
 
         {categories.ai.length > 0 && (
           <>
-            <div className="px-2 py-1 mt-2 text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+            <div className="px-2 py-1 mt-2 text-xs font-semibold text-black uppercase tracking-wider flex items-center gap-1">
               <Sparkles className="w-3 h-3" />
               AI Assist
             </div>
@@ -377,7 +377,7 @@ export default function SlashCommandMenu({ editor }: SlashCommandMenuProps) {
                   className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
                     selectedIndex === globalIndex
                       ? 'bg-purple-50 text-purple-600'
-                      : 'text-gray-700 hover:bg-gray-50'
+                      : 'text-black hover:bg-gray-50'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -390,7 +390,7 @@ export default function SlashCommandMenu({ editor }: SlashCommandMenuProps) {
 
         {categories.node.length > 0 && (
           <>
-            <div className="px-2 py-1 mt-2 text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+            <div className="px-2 py-1 mt-2 text-xs font-semibold text-black uppercase tracking-wider flex items-center gap-1">
               <Link2 className="w-3 h-3" />
               Node Actions
             </div>
@@ -405,7 +405,7 @@ export default function SlashCommandMenu({ editor }: SlashCommandMenuProps) {
                   className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
                     selectedIndex === globalIndex
                       ? 'bg-blue-50 text-blue-600'
-                      : 'text-gray-700 hover:bg-gray-50'
+                      : 'text-black hover:bg-gray-50'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -418,7 +418,7 @@ export default function SlashCommandMenu({ editor }: SlashCommandMenuProps) {
 
         {categories.visual.length > 0 && (
           <>
-            <div className="px-2 py-1 mt-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            <div className="px-2 py-1 mt-2 text-xs font-semibold text-black uppercase tracking-wider">
               Visual Blocks
             </div>
             {categories.visual.map((cmd, idx) => {
@@ -432,7 +432,7 @@ export default function SlashCommandMenu({ editor }: SlashCommandMenuProps) {
                   className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
                     selectedIndex === globalIndex
                       ? 'bg-blue-50 text-blue-600'
-                      : 'text-gray-700 hover:bg-gray-50'
+                      : 'text-black hover:bg-gray-50'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -444,7 +444,7 @@ export default function SlashCommandMenu({ editor }: SlashCommandMenuProps) {
         )}
 
         {commands.length === 0 && (
-          <div className="px-2 py-4 text-sm text-gray-500 text-center">
+          <div className="px-2 py-4 text-sm text-black text-center">
             No commands found
           </div>
         )}

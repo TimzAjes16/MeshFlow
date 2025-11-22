@@ -2,17 +2,20 @@
 
 import { useCallback, useState, useEffect } from 'react';
 import CanvasContainer from './CanvasContainer';
-import FloatingNodeEditor from './FloatingNodeEditor';
-import FloatingHorizontalBar from './FloatingHorizontalBar';
-import HistoryBar from './HistoryBar';
+import VerticalToolbar from './VerticalToolbar';
+import HorizontalEditorBar from './HorizontalEditorBar';
+import DrawingCanvas from './DrawingCanvas';
 import KeyboardShortcuts from './KeyboardShortcuts';
-import CanvasSidebar from './CanvasSidebar';
 import ToolbarSettingsPanel from './ToolbarSettingsPanel';
 import EmojiPickerPopup from './EmojiPickerPopup';
 import CaptureModal from './CaptureModal';
+import ClipboardMonitor from './ClipboardMonitor';
+import ScreenCaptureMonitor from './ScreenCaptureMonitor';
+import ScreenCapturePreview from './ScreenCapturePreview';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
 import { useHistoryStore } from '@/state/historyStore';
+import { getDefaultNodeContent, getDefaultNodeTitle } from '@/lib/nodeDefaults';
 import type { Node } from '@/types/Node';
 
 interface CanvasPageClientProps {
@@ -31,6 +34,11 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
   const [emojiPickerPosition, setEmojiPickerPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [captureModalOpen, setCaptureModalOpen] = useState(false);
   const [captureNodeId, setCaptureNodeId] = useState<string | null>(null); // For updating existing nodes
+  const [activeCaptureNodes, setActiveCaptureNodes] = useState<Set<string>>(new Set()); // Nodes with auto-refresh enabled
+  const [screenCaptureNodeId, setScreenCaptureNodeId] = useState<string | null>(null); // Node currently being monitored via screen capture
+  const [screenCaptureArea, setScreenCaptureArea] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [screenCaptureStream, setScreenCaptureStream] = useState<MediaStream | null>(null);
+  const [showScreenCapturePreview, setShowScreenCapturePreview] = useState(false);
 
   // Clear selectedNodeType when node is deselected
   useEffect(() => {
@@ -145,13 +153,302 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
   // Listen for capture node updates
   useEffect(() => {
     const handleUpdateCaptureNode = (event: CustomEvent) => {
-      setCaptureNodeId(event.detail.nodeId);
-      setCaptureModalOpen(true);
+      const nodeId = event.detail.nodeId;
+      const node = nodes.find(n => n.id === nodeId);
+      const isLiveCaptureNode = node && typeof node.content === 'object' && node.content?.type === 'live-capture';
+      
+      if (isLiveCaptureNode) {
+        // For live capture nodes, trigger screen capture directly
+        handleStartScreenCaptureForNode(nodeId);
+      } else {
+        // For regular capture, show upload/paste modal
+        setCaptureNodeId(nodeId);
+        setCaptureModalOpen(true);
+      }
+    };
+    
+    const handleStartScreenCaptureForNode = async (nodeId: string) => {
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            displaySurface: 'browser',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          } as any,
+          audio: false,
+        });
+
+        setScreenCaptureNodeId(nodeId);
+        setScreenCaptureStream(stream);
+        setShowScreenCapturePreview(true);
+
+        // Handle stream end
+        stream.getVideoTracks()[0].addEventListener('ended', () => {
+          setScreenCaptureStream(null);
+          setShowScreenCapturePreview(false);
+          setScreenCaptureNodeId(null);
+          setScreenCaptureArea(null);
+        });
+
+      } catch (error) {
+        console.error('Error starting screen capture:', error);
+      }
+    };
+    
+    const handleStartScreenCapture = (event: CustomEvent) => {
+      const { nodeId, captureArea } = event.detail;
+      setScreenCaptureNodeId(nodeId);
+      setScreenCaptureArea(captureArea);
     };
     
     window.addEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
-    return () => window.removeEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
+    window.addEventListener('start-screen-capture', handleStartScreenCapture as EventListener);
+    
+    return () => {
+      window.removeEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
+      window.removeEventListener('start-screen-capture', handleStartScreenCapture as EventListener);
+    };
   }, []);
+
+  // Handle clipboard image detection for live capture nodes
+  const handleClipboardImage = useCallback(
+    async (imageUrl: string) => {
+      // Find all active live capture nodes
+      const liveCaptureNodes = nodes.filter((node) => {
+        const content = typeof node.content === 'object' && node.content?.type === 'live-capture'
+          ? node.content
+          : null;
+        return content && (content.autoRefresh ?? true) && activeCaptureNodes.has(node.id);
+      });
+
+      for (const node of liveCaptureNodes) {
+        const currentContent = typeof node.content === 'object' && node.content?.type === 'live-capture'
+          ? node.content
+          : { type: 'live-capture', imageUrl: '', cropArea: { x: 0, y: 0, width: 0, height: 0 }, captureHistory: [] };
+        
+        const captureHistory = currentContent.captureHistory || [];
+        
+        // If we have a crop area, apply it to the new image
+        if (currentContent.cropArea && currentContent.cropArea.width > 0 && currentContent.cropArea.height > 0) {
+          try {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d');
+              if (!ctx) return;
+              
+              canvas.width = currentContent.cropArea.width;
+              canvas.height = currentContent.cropArea.height;
+              
+              ctx.drawImage(
+                img,
+                currentContent.cropArea.x, currentContent.cropArea.y,
+                currentContent.cropArea.width, currentContent.cropArea.height,
+                0, 0, currentContent.cropArea.width, currentContent.cropArea.height
+              );
+              
+              const croppedImageUrl = canvas.toDataURL('image/png');
+              
+              // Add new capture to history
+              const newCapture = {
+                imageUrl: croppedImageUrl,
+                timestamp: new Date().toISOString(),
+              };
+              
+              updateNode(node.id, {
+                content: {
+                  ...currentContent,
+                  type: 'live-capture',
+                  imageUrl: croppedImageUrl,
+                  captureHistory: [...captureHistory, newCapture],
+                  timestamp: new Date().toISOString(),
+                },
+              });
+              
+              // Persist to API
+              fetch('/api/nodes/update', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  nodeId: node.id,
+                  content: {
+                    ...currentContent,
+                    type: 'live-capture',
+                    imageUrl: croppedImageUrl,
+                    captureHistory: [...captureHistory, newCapture],
+                    timestamp: new Date().toISOString(),
+                  },
+                }),
+              }).then((response) => {
+                if (response.ok) {
+                  return response.json();
+                }
+              }).then((data) => {
+                if (data?.node) {
+                  updateNode(node.id, data.node);
+                }
+              }).catch((error) => {
+                console.error('Error updating capture node from clipboard:', error);
+              });
+            };
+            img.src = imageUrl;
+          } catch (error) {
+            console.error('Error cropping clipboard image:', error);
+          }
+        } else {
+          // No crop area, use image as-is
+          const newCapture = {
+            imageUrl,
+            timestamp: new Date().toISOString(),
+          };
+          
+          updateNode(node.id, {
+            content: {
+              ...currentContent,
+              type: 'live-capture',
+              imageUrl,
+              captureHistory: [...captureHistory, newCapture],
+              timestamp: new Date().toISOString(),
+            },
+          });
+          
+          // Persist to API
+          fetch('/api/nodes/update', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nodeId: node.id,
+              content: {
+                ...currentContent,
+                type: 'live-capture',
+                imageUrl,
+                captureHistory: [...captureHistory, newCapture],
+                timestamp: new Date().toISOString(),
+              },
+            }),
+          }).then((response) => {
+            if (response.ok) {
+              return response.json();
+            }
+          }).then((data) => {
+            if (data?.node) {
+              updateNode(node.id, data.node);
+            }
+          }).catch((error) => {
+            console.error('Error updating capture node from clipboard:', error);
+          });
+        }
+      }
+    },
+    [nodes, activeCaptureNodes, updateNode]
+  );
+
+  // Handle screen capture frames
+  const handleScreenCapture = useCallback(
+    async (imageUrl: string) => {
+      if (!screenCaptureNodeId) return;
+      
+      const node = nodes.find(n => n.id === screenCaptureNodeId);
+      if (!node) return;
+
+      const currentContent = typeof node.content === 'object' && node.content?.type === 'live-capture'
+        ? node.content
+        : { type: 'live-capture', imageUrl: '', cropArea: { x: 0, y: 0, width: 0, height: 0 }, captureHistory: [] };
+      
+      const captureHistory = currentContent.captureHistory || [];
+      const newCapture = {
+        imageUrl,
+        timestamp: new Date().toISOString(),
+      };
+      
+      updateNode(screenCaptureNodeId, {
+        content: {
+          ...currentContent,
+          type: 'live-capture',
+          imageUrl,
+          captureHistory: [...captureHistory, newCapture],
+          timestamp: new Date().toISOString(),
+        },
+      });
+      
+      // Persist to API
+      try {
+        const response = await fetch('/api/nodes/update', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nodeId: screenCaptureNodeId,
+            content: {
+              ...currentContent,
+              type: 'live-capture',
+              imageUrl,
+              captureHistory: [...captureHistory, newCapture],
+              timestamp: new Date().toISOString(),
+            },
+          }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.node) {
+            updateNode(screenCaptureNodeId, data.node);
+          }
+        }
+      } catch (error) {
+        console.error('Error updating capture node from screen capture:', error);
+      }
+    },
+    [screenCaptureNodeId, nodes, updateNode]
+  );
+
+  // Handle screen area selection from preview
+  const handleScreenAreaSelected = useCallback((area: { x: number; y: number; width: number; height: number }) => {
+    if (screenCaptureNodeId && screenCaptureStream) {
+      // Close preview and start monitoring
+      setScreenCaptureArea(area);
+      setShowScreenCapturePreview(false);
+      
+      // Update the node with the selected area
+      const node = nodes.find(n => n.id === screenCaptureNodeId);
+      if (node) {
+        const currentContent = typeof node.content === 'object' && node.content?.type === 'live-capture'
+          ? node.content
+          : { type: 'live-capture', imageUrl: '', cropArea: { x: 0, y: 0, width: 0, height: 0 }, captureHistory: [] };
+        
+        updateNode(screenCaptureNodeId, {
+          content: {
+            ...currentContent,
+            type: 'live-capture',
+            cropArea: area,
+          },
+        });
+      }
+    }
+  }, [screenCaptureNodeId, screenCaptureStream, nodes, updateNode]);
+
+  const handleScreenCaptureCancel = useCallback(() => {
+    // Stop the stream
+    if (screenCaptureStream) {
+      screenCaptureStream.getTracks().forEach(track => track.stop());
+    }
+    setScreenCaptureStream(null);
+    setShowScreenCapturePreview(false);
+    setScreenCaptureNodeId(null);
+    setScreenCaptureArea(null);
+  }, [screenCaptureStream]);
+
+  // Update active capture nodes when nodes change
+  useEffect(() => {
+    const liveCaptureNodes = nodes.filter((node) => {
+      const content = typeof node.content === 'object' && node.content?.type === 'live-capture'
+        ? node.content
+        : null;
+      return content && (content.autoRefresh ?? true);
+    });
+    
+    setActiveCaptureNodes(new Set(liveCaptureNodes.map((n) => n.id)));
+  }, [nodes]);
 
   const handleCreateNode = useCallback(
     async (type: string = 'note', screenPosition: { x: number; y: number }) => {
@@ -234,25 +531,11 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           headers: {
             'Content-Type': 'application/json',
           },
-            body: JSON.stringify({
+          body: JSON.stringify({
             workspaceId,
-            title: titles[type] || 'New Node',
+            title: getDefaultNodeTitle(type as any),
             type: type, // Explicit type (following Miro/Notion pattern)
-            content: type === 'text' 
-              ? { type: 'doc', content: [{ type: 'paragraph' }] } 
-              : type.includes('chart') 
-                ? { type, ...getDefaultChartContent(type).chart }
-                : type === 'image'
-                  ? { type: 'image', url: '', size: 'medium', alignment: 'center' }
-                  : type === 'box' || type === 'circle'
-                    ? { type, fill: true, fillColor: '#ffffff', borderColor: '#000000', borderWidth: 1 }
-                    : type === 'emoji' 
-                      ? { type: 'emoji', emoji: '😀' } 
-                      : type === 'arrow' 
-                        ? { type: 'arrow', direction: 'right' } 
-                        : type === 'link' 
-                          ? { type: 'link', url: '', preview: true } 
-                          : {},
+            content: getDefaultNodeContent(type as any),
             tags: [type], // Keep for backwards compatibility
             x: storedFlowPos.x,
             y: storedFlowPos.y,
@@ -319,19 +602,16 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
             
             // Keep settings panel visible - it will switch to NodeEditorPanel automatically
             // when selectedNodeId is set (see the conditional rendering in the return statement)
-            
-            // Trigger empty state dismissal if needed
-            const dismissEvent = new CustomEvent('dismiss-empty-state');
-            window.dispatchEvent(dismissEvent);
-            
+          
+          
             // Focus title field after a brief delay to ensure editor is rendered
-            setTimeout(() => {
-              const titleInput = document.querySelector('input[placeholder="Node title..."]') as HTMLInputElement;
-              if (titleInput) {
-                titleInput.focus();
-                titleInput.select();
-              }
-            }, 100);
+          setTimeout(() => {
+            const titleInput = document.querySelector('input[placeholder="Node title..."]') as HTMLInputElement;
+            if (titleInput) {
+              titleInput.focus();
+              titleInput.select();
+            }
+          }, 100);
           }, 150); // Small delay to ensure node is in React Flow state
         }
       } catch (error: any) {
@@ -401,17 +681,10 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           selectNode(null);
           setToolbarPosition(null);
         }
-        // Allow Ctrl/Cmd+N when typing
+        // Allow Ctrl/Cmd+N when typing (node creation handled elsewhere)
         if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
           e.preventDefault();
-          // Dispatch event to show horizontal bar
-          const viewportCenter = {
-            x: window.innerWidth / 2,
-            y: window.innerHeight / 2,
-          };
-          window.dispatchEvent(new CustomEvent('show-create-toolbar', { detail: viewportCenter }));
-          // Store center position as flow position
-          (window as any).lastFlowPosition = { x: 500, y: 400 };
+          // Node creation will be handled by toolbar
         }
         return;
       }
@@ -672,17 +945,10 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         }
       }
 
-      // Ctrl/Cmd + N: Show horizontal bar for creating node
+      // Ctrl/Cmd + N: Create new node (handled by toolbar)
       if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
         e.preventDefault();
-        // Dispatch event to show horizontal bar
-        const viewportCenter = {
-          x: window.innerWidth / 2,
-          y: window.innerHeight / 2,
-        };
-        window.dispatchEvent(new CustomEvent('show-create-toolbar', { detail: viewportCenter }));
-        // Store center position as flow position
-        (window as any).lastFlowPosition = { x: 500, y: 400 };
+        // Node creation will be handled by toolbar
       }
 
       // Delete/Backspace: Delete selected node
@@ -796,49 +1062,33 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     <div className="flex flex-col h-full overflow-hidden bg-white">
       {/* Main Canvas Area - must fill available space */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left Sidebar - Nodes List (Collapsible) */}
-        <CanvasSidebar workspaceId={workspaceId} />
-        
         {/* Canvas Area */}
         <div className="flex-1 min-w-0 min-h-0 relative">
           <CanvasContainer 
             workspaceId={workspaceId} 
             onCreateNode={(pos) => {
-              // Store click position for horizontal bar
+              // Store click position for node creation
               (window as any).lastClickPosition = pos;
-              // Dispatch event to show horizontal bar
-              window.dispatchEvent(new CustomEvent('show-create-toolbar', { detail: pos }));
             }}
           />
           
-          {/* Floating Horizontal Bar - Only show when no node is selected */}
-          {!selectedNodeId && (
-            <FloatingHorizontalBar
-              onCreateNode={handleCreateNode}
-              onDeleteNode={(nodeId) => {
-                window.dispatchEvent(new CustomEvent('deleteSelectedNode', { detail: { nodeId } }));
-              }}
-              onDuplicateNode={handleDuplicateNode}
-            />
-          )}
+          {/* Floating Vertical Toolbar - Left side */}
+          <VerticalToolbar />
           
-          {/* Floating Node Editor - Shows when a node is selected (replaces FloatingHorizontalBar) */}
-          {selectedNodeId && <FloatingNodeEditor />}
+          {/* Floating Horizontal Editor Bar - Bottom (only shows when node selected) */}
+          <HorizontalEditorBar selectedNodeId={selectedNodeId} />
         </div>
         
         {/* Right Panel - Toolbar Settings - Only show when creating a new node */}
         {selectedNodeType && !selectedNodeId ? (
-          <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
+        <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
             <ToolbarSettingsPanel 
               selectedNodeType={selectedNodeType}
               onClose={() => setSelectedNodeType(null)}
             />
-          </aside>
+        </aside>
         ) : null}
       </div>
-      
-      {/* History Bar - Undo/Redo with history log */}
-      <HistoryBar />
       
       {/* Emoji Picker Popup */}
       {emojiPickerOpen && emojiPickerNode && (
@@ -850,14 +1100,180 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         />
       )}
       
-      {/* Capture Modal */}
+      {/* Capture Modal - Shows croppable area selection for live capture nodes */}
       <CaptureModal
         isOpen={captureModalOpen}
         onClose={() => {
           setCaptureModalOpen(false);
           setCaptureNodeId(null);
+          if (screenCaptureStream) {
+            screenCaptureStream.getTracks().forEach(track => track.stop());
+            setScreenCaptureStream(null);
+          }
+          if ((window as any).currentScreenStream) {
+            (window as any).currentScreenStream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+            delete (window as any).currentScreenStream;
+          }
         }}
         onCapture={handleCaptureComplete}
+        isLiveCapture={
+          captureNodeId 
+            ? (() => {
+                const node = nodes.find(n => n.id === captureNodeId);
+                return node && typeof node.content === 'object' && node.content?.type === 'live-capture';
+              })()
+            : true // If no captureNodeId, it's a new live-capture node
+        }
+        onScreenCapture={async (area, stream) => {
+          // Handle screen area selection for live capture with live stream
+          if (!stream) {
+            console.error('No screen stream available');
+            setCaptureModalOpen(false);
+            setCaptureNodeId(null);
+            return;
+          }
+
+          try {
+            // Get the captured image URL from CaptureModal (for thumbnail)
+            const imageUrl = (window as any).lastCapturedImageUrl || '';
+            
+            // If updating existing node
+            if (captureNodeId) {
+              setScreenCaptureNodeId(captureNodeId);
+              setScreenCaptureStream(stream);
+              setScreenCaptureArea(area);
+              setShowScreenCapturePreview(false);
+              setCaptureModalOpen(false);
+              
+              // Update node with selected area and stream info
+              const node = nodes.find(n => n.id === captureNodeId);
+              if (node) {
+                const currentContent = typeof node.content === 'object' && node.content?.type === 'live-capture'
+                  ? node.content
+                  : { type: 'live-capture', imageUrl: '', cropArea: { x: 0, y: 0, width: 0, height: 0 }, captureHistory: [] };
+                
+                updateNode(captureNodeId, {
+                  content: {
+                    ...currentContent,
+                    type: 'live-capture',
+                    cropArea: area,
+                    imageUrl, // Thumbnail
+                    streamId: stream.id, // Store stream ID for reference
+                    isLiveStream: true, // Flag to indicate live stream
+                  },
+                });
+              }
+              setCaptureNodeId(null);
+            } else {
+              // Create new node with live stream
+              const storedFlowPos = (window as any).lastFlowPosition || { x: 500, y: 400 };
+              const captureMode = (window as any).liveCaptureMode || 'custom';
+              
+              try {
+                const response = await fetch('/api/nodes/create', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    workspaceId,
+                    title: 'Live Capture',
+                    type: 'live-capture',
+                    content: {
+                      type: 'live-capture',
+                      imageUrl, // Thumbnail
+                      cropArea: area,
+                      streamId: stream.id,
+                      isLiveStream: true,
+                      captureMode,
+                      captureHistory: imageUrl ? [{
+                        imageUrl,
+                        timestamp: new Date().toISOString(),
+                      }] : [],
+                      timestamp: new Date().toISOString(),
+                    },
+                    tags: ['live-capture'],
+                    x: storedFlowPos.x,
+                    y: storedFlowPos.y,
+                  }),
+                });
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  if (data.node) {
+                    addNode(data.node);
+                    selectNode(data.node.id);
+                    
+                    // Set up live stream monitoring
+                    setScreenCaptureNodeId(data.node.id);
+                    setScreenCaptureStream(stream);
+                    setScreenCaptureArea(area);
+                    
+                    // Store stream in global registry for LiveCaptureNode to access
+                    if (!(window as any).liveCaptureStreams) {
+                      (window as any).liveCaptureStreams = new Map();
+                    }
+                    (window as any).liveCaptureStreams.set(data.node.id, {
+                      stream,
+                      cropArea: area,
+                    });
+                    
+                    (window as any).lastFlowPosition = null;
+                  }
+                }
+              } catch (error) {
+                console.error('Error creating capture node:', error);
+                alert('Failed to create capture node');
+              }
+              
+              setCaptureModalOpen(false);
+              setCaptureNodeId(null);
+            }
+            
+            // Clean up
+            delete (window as any).lastCapturedImageUrl;
+            delete (window as any).liveCaptureMode;
+          } catch (error) {
+            console.error('Error capturing screen area:', error);
+            alert('Failed to capture screen area. Please try again.');
+            setCaptureModalOpen(false);
+            setCaptureNodeId(null);
+            delete (window as any).lastCapturedImageUrl;
+            delete (window as any).liveCaptureMode;
+          }
+        }}
+        captureMode={(window as any).liveCaptureMode || 'custom'}
+      />
+      
+      {/* Clipboard Monitor for Live Capture Nodes */}
+      <ClipboardMonitor
+        enabled={activeCaptureNodes.size > 0}
+        onNewImage={handleClipboardImage}
+      />
+      
+      {/* Screen Capture Preview - Apple-style preview with cropping */}
+      <ScreenCapturePreview
+        isOpen={showScreenCapturePreview}
+        stream={screenCaptureStream}
+        onCapture={handleScreenAreaSelected}
+        onCancel={handleScreenCaptureCancel}
+      />
+      
+      {/* Screen Capture Monitor for continuous monitoring (runs in background) */}
+      <ScreenCaptureMonitor
+        enabled={screenCaptureNodeId !== null && !showScreenCapturePreview && screenCaptureArea !== null}
+        stream={screenCaptureStream}
+        captureArea={screenCaptureArea || undefined}
+        interval={2000} // Capture every 2 seconds
+        onCapture={handleScreenCapture}
+        onError={(error: Error) => {
+          console.error('Screen capture error:', error);
+          if (screenCaptureStream) {
+            screenCaptureStream.getTracks().forEach(track => track.stop());
+          }
+          setScreenCaptureStream(null);
+          setScreenCaptureNodeId(null);
+          setScreenCaptureArea(null);
+          setShowScreenCapturePreview(false);
+        }}
       />
       
       {/* Keyboard Shortcuts */}

@@ -143,14 +143,42 @@ export default function WorkspaceProvider({ workspaceId, children }: WorkspacePr
     // Initial load
     loadWorkspace(true);
 
-    // Set up polling after initial load (only refresh data, don't change loading state)
-    const timeoutId = setTimeout(() => {
+    // Set up smart polling - only when tab is visible and with longer interval
+    // This reduces unnecessary API calls when user is not actively using the app
+    const setupPolling = () => {
       if (pollInterval) clearInterval(pollInterval);
       
-      pollInterval = setInterval(() => {
-        loadWorkspace(false); // Don't set loading state during polling
-      }, 5000);
-    }, 1000); // Wait 1 second after initial load before starting polling
+      // Only poll if document is visible (tab is active)
+      if (document.visibilityState === 'visible') {
+        pollInterval = setInterval(() => {
+          // Double-check visibility before making API call
+          if (document.visibilityState === 'visible' && isMounted) {
+            loadWorkspace(false); // Don't set loading state during polling
+          }
+        }, 30000); // Poll every 30 seconds instead of 5 seconds
+      }
+    };
+
+    // Set up polling after initial load
+    const timeoutId = setTimeout(() => {
+      setupPolling();
+    }, 2000); // Wait 2 seconds after initial load before starting polling
+
+    // Handle visibility changes - pause polling when tab is hidden
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Tab became visible - start polling
+        setupPolling();
+      } else {
+        // Tab became hidden - stop polling
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Listen for refresh events (e.g., after node creation/deletion - major operations only)
     // HEAVILY debounced to prevent blocking during editing
@@ -188,6 +216,7 @@ export default function WorkspaceProvider({ workspaceId, children }: WorkspacePr
       clearTimeout(timeoutId);
       if (refreshTimeout) clearTimeout(refreshTimeout);
       window.removeEventListener('refreshWorkspace', handleRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]); // Only depend on workspaceId - no reload loop

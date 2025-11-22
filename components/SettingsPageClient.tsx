@@ -158,24 +158,24 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
               onClick={() => setShowProfileMenu(!showProfileMenu)}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <User className="w-5 h-5 text-gray-600" />
+              <User className="w-5 h-5 text-black" />
             </button>
             {showProfileMenu && (
               <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                 <div className="px-4 py-3 border-b border-gray-200">
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-black">
                     Hi, {session?.user?.name || user.name || 'User'}
                   </p>
-                  <p className="text-xs text-gray-500 mt-0.5">Manage your account</p>
+                  <p className="text-xs text-black mt-0.5">Manage your account</p>
                 </div>
                 <button
                   onClick={() => {
                     router.push('/settings');
                     setShowProfileMenu(false);
                   }}
-                  className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                  className="w-full px-4 py-2.5 text-left text-sm text-black hover:bg-gray-50 flex items-center gap-3"
                 >
-                  <User className="w-4 h-4 text-gray-500" />
+                  <User className="w-4 h-4 text-black" />
                   <span>Account Settings</span>
                 </button>
                 <button
@@ -183,9 +183,9 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     router.push('/settings?tab=subscription');
                     setShowProfileMenu(false);
                   }}
-                  className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                  className="w-full px-4 py-2.5 text-left text-sm text-black hover:bg-gray-50 flex items-center gap-3"
                 >
-                  <CreditCard className="w-4 h-4 text-gray-500" />
+                  <CreditCard className="w-4 h-4 text-black" />
                   <span>Manage Subscription</span>
                 </button>
                 <div className="border-t border-gray-200">
@@ -214,13 +214,13 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             <button
               type="button"
               onClick={() => router.back()}
-              className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4 transition-colors"
+              className="flex items-center gap-2 text-sm text-black hover:text-black mb-4 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Back
             </button>
-            <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-            <p className="mt-2 text-gray-600">Manage your account and preferences</p>
+            <h1 className="text-3xl font-bold text-black">Settings</h1>
+            <p className="mt-2 text-black">Manage your account and preferences</p>
           </div>
 
           {/* Messages */}
@@ -247,7 +247,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === 'profile'
                     ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-black hover:text-black hover:border-gray-300'
                 }`}
               >
                 Profile
@@ -261,7 +261,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === 'subscription'
                     ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-black hover:text-black hover:border-gray-300'
                 }`}
               >
                 Subscription
@@ -279,12 +279,12 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
                   <User className="w-5 h-5 text-blue-600" />
                 </div>
-                <h2 className="text-xl font-semibold text-gray-900">Profile</h2>
+                <h2 className="text-xl font-semibold text-black">Profile</h2>
               </div>
 
               <form onSubmit={handleUpdateProfile} className="space-y-4">
                 <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="name" className="block text-sm font-medium text-black mb-2">
                     Name
                   </label>
                   <input
@@ -298,7 +298,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 </div>
 
                 <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="email" className="block text-sm font-medium text-black mb-2">
                     Email
                   </label>
                   <input
@@ -307,17 +307,17 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-black cursor-not-allowed"
                   />
-                  <p className="mt-1 text-xs text-gray-500">Email cannot be changed</p>
+                  <p className="mt-1 text-xs text-black">Email cannot be changed</p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-black mb-2">
                     Plan
                   </label>
                   <div className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg">
-                    <span className="text-sm font-medium text-gray-700 capitalize">{user.plan.toLowerCase()}</span>
+                    <span className="text-sm font-medium text-black capitalize">{user.plan.toLowerCase()}</span>
                   </div>
                 </div>
 
@@ -338,12 +338,12 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
                   <Key className="w-5 h-5 text-blue-600" />
                 </div>
-                <h2 className="text-xl font-semibold text-gray-900">Change Password</h2>
+                <h2 className="text-xl font-semibold text-black">Change Password</h2>
               </div>
 
               <form onSubmit={handleChangePassword} className="space-y-4">
                 <div>
-                  <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="currentPassword" className="block text-sm font-medium text-black mb-2">
                     Current Password
                   </label>
                   <input
@@ -357,7 +357,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 </div>
 
                 <div>
-                  <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="newPassword" className="block text-sm font-medium text-black mb-2">
                     New Password
                   </label>
                   <input
@@ -372,7 +372,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 </div>
 
                 <div>
-                  <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="confirmPassword" className="block text-sm font-medium text-black mb-2">
                     Confirm New Password
                   </label>
                   <input
@@ -404,15 +404,15 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                   <Trash2 className="w-5 h-5 text-red-600" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900">Danger Zone</h2>
-                  <p className="text-sm text-gray-500">Irreversible and destructive actions</p>
+                  <h2 className="text-xl font-semibold text-black">Danger Zone</h2>
+                  <p className="text-sm text-black">Irreversible and destructive actions</p>
                 </div>
               </div>
 
               <div className="flex items-center justify-between pt-4 border-t border-gray-200">
                 <div>
-                  <h3 className="text-sm font-medium text-gray-900">Delete Account</h3>
-                  <p className="text-sm text-gray-500">Once you delete your account, there is no going back.</p>
+                  <h3 className="text-sm font-medium text-black">Delete Account</h3>
+                  <p className="text-sm text-black">Once you delete your account, there is no going back.</p>
                 </div>
                 <button
                   type="button"
@@ -435,8 +435,8 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     <CreditCard className="w-5 h-5 text-blue-600" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-semibold text-gray-900">Subscription</h2>
-                    <p className="text-sm text-gray-500">Manage your subscription and billing</p>
+                    <h2 className="text-xl font-semibold text-black">Subscription</h2>
+                    <p className="text-sm text-black">Manage your subscription and billing</p>
                   </div>
                 </div>
 
@@ -445,10 +445,10 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                   <div className="border border-gray-200 rounded-lg p-6">
                     <div className="flex items-center justify-between mb-4">
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900 capitalize">
+                        <h3 className="text-lg font-semibold text-black capitalize">
                           {user.plan.toLowerCase()} Plan
                         </h3>
-                        <p className="text-sm text-gray-500 mt-1">
+                        <p className="text-sm text-black mt-1">
                           {user.plan.toLowerCase() === 'free' 
                             ? 'Basic features for personal use'
                             : user.plan.toLowerCase() === 'pro'
@@ -465,8 +465,8 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                   {/* Subscription Actions */}
                   {user.plan.toLowerCase() === 'free' ? (
                     <div className="border border-gray-200 rounded-lg p-6 bg-gray-50">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Upgrade to Pro</h3>
-                      <p className="text-sm text-gray-600 mb-4">
+                      <h3 className="text-lg font-semibold text-black mb-2">Upgrade to Pro</h3>
+                      <p className="text-sm text-black mb-4">
                         Unlock advanced features like unlimited workspaces, priority support, and more.
                       </p>
                       <button
@@ -483,8 +483,8 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                   ) : (
                     <div className="space-y-4">
                       <div className="border border-gray-200 rounded-lg p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Billing</h3>
-                        <p className="text-sm text-gray-600 mb-4">
+                        <h3 className="text-lg font-semibold text-black mb-2">Billing</h3>
+                        <p className="text-sm text-black mb-4">
                           Manage your billing information and payment methods.
                         </p>
                         <button
@@ -500,8 +500,8 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       </div>
 
                       <div className="border border-red-200 rounded-lg p-6 bg-red-50">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Cancel Subscription</h3>
-                        <p className="text-sm text-gray-600 mb-4">
+                        <h3 className="text-lg font-semibold text-black mb-2">Cancel Subscription</h3>
+                        <p className="text-sm text-black mb-4">
                           Cancel your subscription at any time. You&apos;ll continue to have access until the end of your billing period.
                         </p>
                         <button

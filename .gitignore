@@ -1,3 +1,5 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
 # dependencies
 /node_modules
 /.pnp
@@ -12,6 +14,7 @@
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store
@@ -26,13 +29,27 @@ yarn-error.log*
 .env*.local
 .env
 
-# database
-*.db
-*.db-journal
-
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# prisma
+prisma/dev.db
+prisma/dev.db-journal
+
+# electron
+electron/main.js.map
+electron/preload.js.map
+*.dmg
+*.exe
+*.AppImage
+*.zip
+
+# build icons (generated)
+build/icon.iconset/
+build/icon.icns
+build/icon.ico
+build/icon.png

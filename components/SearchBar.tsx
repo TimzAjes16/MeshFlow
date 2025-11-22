@@ -44,18 +44,18 @@ export default function SearchBar({ workspaceId, onSearch }: SearchBarProps) {
 
   return (
     <div className="relative">
-      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-black" size={18} />
       <input
         type="text"
         value={query}
         onChange={(e) => handleChange(e.target.value)}
         placeholder="Search nodes..."
-        className="pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+        className="pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
       />
       {query && (
         <button
           onClick={handleClear}
-          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-black hover:text-black dark:hover:text-gray-300"
         >
           <X size={18} />
         </button>

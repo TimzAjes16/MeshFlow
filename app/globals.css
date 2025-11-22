@@ -18,6 +18,17 @@ body {
   color: var(--foreground);
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
+  /* Ensure safe area insets work for Electron and modern browsers */
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dark body {
+  background: #0a0a0a;
+  color: #ededed;
 }
 
 @layer utilities {
@@ -36,13 +47,25 @@ body {
   outline-offset: 2px;
 }
 
+.dark .react-flow__node.selected {
+  outline-color: #60a5fa;
+}
+
 .react-flow__node.highlighted {
   filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.8));
+}
+
+.dark .react-flow__node.highlighted {
+  filter: drop-shadow(0 0 8px rgba(96, 165, 250, 0.8));
 }
 
 .react-flow__edge.selected {
   stroke: #3b82f6;
   stroke-width: 3;
+}
+
+.dark .react-flow__edge.selected {
+  stroke: #60a5fa;
 }
 
 /* Minimap styles - ensure all elements are visible */

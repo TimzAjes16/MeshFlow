@@ -10,6 +10,8 @@ interface WorkspaceLayoutProps {
 
 export default async function WorkspaceLayout({ children, params }: WorkspaceLayoutProps) {
   const { id: workspaceId } = await params;
+
+  // Normal server-side logic for web app
   const user = await getCurrentUser();
 
   if (!user) {
@@ -65,4 +67,3 @@ export default async function WorkspaceLayout({ children, params }: WorkspaceLay
     </WorkspaceShell>
   );
 }
-

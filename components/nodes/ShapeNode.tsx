@@ -46,7 +46,7 @@ function ShapeNode({ data, selected }: ShapeNodeProps) {
   };
 
   return (
-    <BaseNode node={node} selected={selected} showHandles={false}>
+    <BaseNode node={node} selected={selected} showHandles={false} nodeId={data.node.id}>
       <div 
         style={shapeStyle}
         className="shadow-sm"

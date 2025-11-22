@@ -9,6 +9,7 @@ import BaseNode from './BaseNode';
 import type { Node as NodeType } from '@/types/Node';
 import { NodeProps } from 'reactflow';
 import { useWorkspaceStore } from '@/state/workspaceStore';
+import { useCanvasStore } from '@/state/canvasStore';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -23,6 +24,7 @@ function TextNode({ data, selected, id }: TextNodeProps) {
   const { node } = data;
   const contentRef = useRef<HTMLDivElement>(null);
   const updateNode = useWorkspaceStore((state) => state.updateNode);
+  const { selectNode } = useCanvasStore();
   const [isEditing, setIsEditing] = useState(false);
   const updateTimerRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -39,7 +41,7 @@ function TextNode({ data, selected, id }: TextNodeProps) {
       : (node.content && typeof node.content === 'object' && node.content.type === 'doc'
           ? node.content
           : { type: 'doc', content: [{ type: 'paragraph' }] }),
-    editable: selected && isEditing,
+    editable: selected, // Make editable immediately when selected
     onUpdate: ({ editor }) => {
       // Debounce updates
       if (updateTimerRef.current) {
@@ -69,18 +71,24 @@ function TextNode({ data, selected, id }: TextNodeProps) {
     },
   });
 
-  // Enable editing when node is selected
+  // Enable editing and focus when node is selected
   useEffect(() => {
-    if (selected && !isEditing) {
+    if (selected && editor) {
       setIsEditing(true);
       // Focus editor after a brief delay to ensure it's mounted
       setTimeout(() => {
-        editor?.commands.focus();
+        if (editor && !editor.isDestroyed) {
+          editor.commands.focus();
+        }
       }, 100);
-    } else if (!selected && isEditing) {
+    } else if (!selected) {
       setIsEditing(false);
+      // Blur editor when deselected
+      if (editor && !editor.isDestroyed && editor.isFocused) {
+        editor.commands.blur();
+      }
     }
-  }, [selected, isEditing, editor]);
+  }, [selected, editor]);
 
   // Sync editor content when node content changes (from external updates)
   useEffect(() => {
@@ -98,6 +106,9 @@ function TextNode({ data, selected, id }: TextNodeProps) {
     }
   }, [node.content, editor, isEditing]);
 
+  // Track last dimensions we set to prevent infinite loops
+  const lastDimensionsRef = useRef<{ width: number; height: number } | null>(null);
+
   // Measure content and update node dimensions
   useEffect(() => {
     if (contentRef.current) {
@@ -107,7 +118,13 @@ function TextNode({ data, selected, id }: TextNodeProps) {
           const newWidth = Math.max(200, Math.min(400, width + 32));
           const newHeight = Math.max(60, height + 32);
           
-          if (Math.abs((node.width || 200) - newWidth) > 5 || Math.abs((node.height || 60) - newHeight) > 5) {
+          // Only update if dimensions changed significantly AND we didn't just set these values
+          const lastDims = lastDimensionsRef.current;
+          if (
+            (!lastDims || Math.abs(lastDims.width - newWidth) > 5 || Math.abs(lastDims.height - newHeight) > 5) &&
+            (Math.abs((node.width || 200) - newWidth) > 5 || Math.abs((node.height || 60) - newHeight) > 5)
+          ) {
+            lastDimensionsRef.current = { width: newWidth, height: newHeight };
             updateNode(id, {
               width: newWidth,
               height: newHeight,
@@ -125,7 +142,9 @@ function TextNode({ data, selected, id }: TextNodeProps) {
         }
       };
     }
-  }, [id, node.width, node.height, updateNode]);
+    // Remove node.width and node.height from dependencies to prevent infinite loops
+    // Only re-run when the node ID changes or when content changes (handled by contentRef)
+  }, [id, updateNode]);
 
   // Cleanup editor on unmount
   useEffect(() => {
@@ -135,22 +154,38 @@ function TextNode({ data, selected, id }: TextNodeProps) {
   }, [editor]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent React Flow from handling the click
-    if (selected && !isEditing) {
+    // First, ensure node is selected (this will trigger FloatingNodeEditor to appear)
+    if (!selected) {
+      selectNode(id);
+      // Dispatch scroll event for sidebar
+      window.dispatchEvent(new CustomEvent('scrollToNode', { detail: { nodeId: id } }));
+    }
+    
+    // Then stop propagation to prevent React Flow from handling it again
+    e.stopPropagation();
+    
+    // Focus editor if already selected
+    if (selected && editor && !editor.isDestroyed) {
       setIsEditing(true);
       setTimeout(() => {
-        editor?.commands.focus();
-      }, 100);
+        if (editor && !editor.isDestroyed) {
+          editor.commands.focus();
+        }
+      }, 50);
     }
-  }, [selected, isEditing, editor]);
+  }, [selected, editor, id, selectNode]);
 
   return (
-    <BaseNode node={node} selected={selected}>
+    <BaseNode node={node} selected={selected} nodeId={id}>
       <div 
         ref={contentRef}
         onClick={handleClick}
         className="p-4 min-w-[200px] max-w-[400px] bg-white rounded-lg shadow-sm border border-gray-200 cursor-text"
-        style={{ width: 'fit-content', maxWidth: '400px' }}
+        style={{ 
+          width: node.width ? `${node.width}px` : 'fit-content', 
+          maxWidth: node.width ? `${node.width}px` : '400px',
+          height: node.height ? `${node.height}px` : 'auto',
+        }}
       >
         {editor && (
           <EditorContent 

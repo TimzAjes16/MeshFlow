@@ -82,12 +82,12 @@ export default function TopBar({ workspaceId, onCreateNode }: TopBarProps) {
     <div className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4">
       {/* Left: Workspace name and search */}
       <div className="flex items-center gap-4 flex-1">
-        <h1 className="text-lg font-semibold text-gray-900">
+        <h1 className="text-lg font-semibold text-black">
           {currentWorkspace?.name || 'Workspace'}
         </h1>
         
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-black" />
           <input
             type="text"
             value={searchQuery}
@@ -105,7 +105,7 @@ export default function TopBar({ workspaceId, onCreateNode }: TopBarProps) {
                   onClick={() => handleSelectResult(result.node.id)}
                   className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
                 >
-                  <div className="font-medium text-sm text-gray-900">
+                  <div className="font-medium text-sm text-black">
                     {result.node.title}
                   </div>
                   {result.node.tags && result.node.tags.length > 0 && (
@@ -170,7 +170,7 @@ export default function TopBar({ workspaceId, onCreateNode }: TopBarProps) {
 
         {/* Settings Button */}
         <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-          <Settings className="w-5 h-5 text-gray-600" />
+          <Settings className="w-5 h-5 text-black" />
         </button>
       </div>
     </div>

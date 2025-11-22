@@ -182,15 +182,15 @@ export default function ToolbarSettingsPanel({ selectedNodeType, onClose }: Tool
         <div className="flex-1 flex items-center justify-center px-6">
           <div className="text-center">
             <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <FontIcon className="w-8 h-8 text-gray-400" />
+              <FontIcon className="w-8 h-8 text-black" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-lg font-semibold text-black mb-2">
               Nothing selected
             </h3>
-            <p className="text-sm text-gray-500 mb-4">
+            <p className="text-sm text-black mb-4">
               Select a node type from the toolbar to edit its settings
             </p>
-            <div className="text-xs text-gray-400 space-y-1 pt-4 border-t border-gray-200">
+            <div className="text-xs text-black space-y-1 pt-4 border-t border-gray-200">
               <p>💡 Tip: Double-click the canvas to see node type options</p>
             </div>
           </div>
@@ -218,12 +218,12 @@ export default function ToolbarSettingsPanel({ selectedNodeType, onClose }: Tool
       {/* Header */}
       <div className="p-4 border-b border-gray-200 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Icon className="w-4 h-4 text-gray-600" />
-          <h2 className="text-sm font-semibold text-gray-900">{config.label} Settings</h2>
+          <Icon className="w-4 h-4 text-black" />
+          <h2 className="text-sm font-semibold text-black">{config.label} Settings</h2>
         </div>
         <button
           onClick={onClose}
-          className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"
+          className="p-1 hover:bg-gray-100 rounded text-black hover:text-black"
         >
           ×
         </button>
@@ -233,7 +233,7 @@ export default function ToolbarSettingsPanel({ selectedNodeType, onClose }: Tool
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         {Object.entries(config.settings).map(([key, setting]) => (
           <div key={key}>
-            <label className="block text-xs font-medium text-gray-700 mb-2">
+            <label className="block text-xs font-medium text-black mb-2">
               {setting.label}
             </label>
             <div className="space-y-2">
@@ -246,7 +246,7 @@ export default function ToolbarSettingsPanel({ selectedNodeType, onClose }: Tool
                     className={`w-full text-left px-3 py-2 rounded-lg border transition-colors text-sm ${
                       isSelected
                         ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-black'
                     }`}
                   >
                     {option}
@@ -259,11 +259,11 @@ export default function ToolbarSettingsPanel({ selectedNodeType, onClose }: Tool
 
         {/* Preview Section */}
         <div className="pt-4 border-t border-gray-200">
-          <label className="block text-xs font-medium text-gray-700 mb-2">
+          <label className="block text-xs font-medium text-black mb-2">
             Preview
           </label>
           <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-black">
               Preview will appear here based on your settings
             </div>
           </div>

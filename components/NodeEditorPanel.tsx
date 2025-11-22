@@ -7,7 +7,6 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { useCanvasStore } from '@/state/canvasStore';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { X, Tag, Sparkles, ArrowRight, Link2, Image as ImageIcon, Upload, Copy, Camera } from 'lucide-react';
-import FloatingFormatToolbar from './FloatingFormatToolbar';
 import SlashCommandMenu from './SlashCommandMenu';
 import ChartEditorPanel from './ChartEditorPanel';
 import ImageSettingsPanel from './ImageSettingsPanel';
@@ -490,12 +489,12 @@ export default function NodeEditorPanel() {
         <div className="flex-1 flex items-center justify-center px-6">
           <div className="text-center">
             <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Sparkles className="w-8 h-8 text-gray-400 animate-pulse" />
+              <Sparkles className="w-8 h-8 text-black animate-pulse" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-lg font-semibold text-black mb-2">
               Loading node...
             </h3>
-            <p className="text-sm text-gray-500 mb-4">
+            <p className="text-sm text-black mb-4">
               Please wait while the node loads
             </p>
           </div>
@@ -511,15 +510,15 @@ export default function NodeEditorPanel() {
         <div className="flex-1 flex items-center justify-center px-6">
           <div className="text-center">
             <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Sparkles className="w-8 h-8 text-gray-400" />
+              <Sparkles className="w-8 h-8 text-black" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-lg font-semibold text-black mb-2">
               Nothing selected
             </h3>
-            <p className="text-sm text-gray-500 mb-4">
+            <p className="text-sm text-black mb-4">
               Click a node to edit it
             </p>
-            <div className="text-xs text-gray-400 space-y-1 pt-4 border-t border-gray-200">
+            <div className="text-xs text-black space-y-1 pt-4 border-t border-gray-200">
               <p>💡 Tip: Double-click the canvas to create a new node</p>
             </div>
           </div>
@@ -533,9 +532,9 @@ export default function NodeEditorPanel() {
       {/* Header */}
       <div className="p-4 border-b border-gray-200 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-gray-900">Edit Node</h2>
+          <h2 className="text-sm font-semibold text-black">Edit Node</h2>
           {isUpdating && (
-            <span className="text-xs text-gray-500 animate-pulse">Saving...</span>
+            <span className="text-xs text-black animate-pulse">Saving...</span>
           )}
         </div>
         <button
@@ -611,20 +610,55 @@ export default function NodeEditorPanel() {
               <div className="space-y-6">
                 {/* Live Capture Panel */}
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Live Capture</h3>
-                  <p className="text-xs text-gray-500 mb-4">
-                    Track changes to a specific area over time. Update captures to build a history.
+                  <h3 className="text-sm font-semibold text-black mb-3">Live Capture</h3>
+                  <p className="text-xs text-black mb-4">
+                    Track changes to a specific area over time. Automatically detects changes from clipboard or screen capture.
                   </p>
                   
-                  <button
-                    onClick={() => {
-                      window.dispatchEvent(new CustomEvent('update-capture-node', { detail: { nodeId: selectedNode.id } }));
-                    }}
-                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium"
-                  >
-                    <Camera className="w-5 h-5" />
-                    Update Capture
-                  </button>
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('update-capture-node', { detail: { nodeId: selectedNode.id } }));
+                      }}
+                      className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium"
+                    >
+                      <Camera className="w-5 h-5" />
+                      Update Capture
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        // Trigger screen capture monitoring
+                        // User will first share their screen (select window/tab), then select area to monitor
+                        window.dispatchEvent(new CustomEvent('start-screen-capture', { 
+                          detail: { 
+                            nodeId: selectedNode.id,
+                          } 
+                        }));
+                      }}
+                      className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 font-medium"
+                    >
+                      <Camera className="w-5 h-5" />
+                      Monitor Screen Area
+                    </button>
+                    
+                    <div className="text-xs text-black bg-blue-50 p-3 rounded-lg border border-blue-200">
+                      <p className="font-semibold text-blue-900 mb-1">💡 How It Works</p>
+                      <p className="text-blue-700 mb-2">
+                        Automatically tracks changes in the background:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 text-blue-700 mb-2">
+                        <li><strong>Clipboard:</strong> Copy screenshots from TradingView, charts, etc.</li>
+                        <li><strong>Screen Monitoring:</strong> Select an area and monitor continuously</li>
+                        <li><strong>YouTube Videos:</strong> Track playback while you work in other apps</li>
+                        <li><strong>TradingView Charts:</strong> Monitor charts even when not viewing them</li>
+                        <li><strong>Background Monitoring:</strong> Works even when you switch windows/tabs</li>
+                      </ul>
+                      <p className="text-blue-600 font-medium mt-2">
+                        Click "Monitor Screen Area" → Share screen → Select area → Monitoring starts in background!
+                      </p>
+                    </div>
+                  </div>
                   
                   {/* Capture History */}
                   {selectedNode.content && typeof selectedNode.content === 'object' && 
@@ -632,7 +666,7 @@ export default function NodeEditorPanel() {
                    (selectedNode.content as any).captureHistory &&
                    (selectedNode.content as any).captureHistory.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-gray-200">
-                      <h4 className="text-xs font-semibold text-gray-700 mb-2">
+                      <h4 className="text-xs font-semibold text-black mb-2">
                         Capture History ({(selectedNode.content as any).captureHistory.length})
                       </h4>
                       <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -647,10 +681,10 @@ export default function NodeEditorPanel() {
                               className="w-16 h-16 object-cover rounded border border-gray-300"
                             />
                             <div className="flex-1 min-w-0">
-                              <div className="text-xs font-medium text-gray-900">
+                              <div className="text-xs font-medium text-black">
                                 Capture {(selectedNode.content as any).captureHistory.length - index}
                               </div>
-                              <div className="text-xs text-gray-500">
+                              <div className="text-xs text-black">
                                 {new Date(capture.timestamp).toLocaleString()}
                               </div>
                             </div>
@@ -667,12 +701,13 @@ export default function NodeEditorPanel() {
                 <ImageSettingsPanel
                   node={selectedNode}
                   onUpdate={async (config) => {
-                    const imageData = selectedNode.content && typeof selectedNode.content === 'object' && 'image' in selectedNode.content
-                      ? (selectedNode.content as any).image
-                      : {};
+                    // Handle both formats and convert to new format: { type: 'image', ... }
+                    const newContent = ('type' in config && config.type === 'image')
+                      ? config 
+                      : { type: 'image' as const, ...config };
                     
                     updateNode(selectedNode.id, {
-                      content: { image: { ...imageData, ...config } },
+                      content: newContent,
                     });
                     
                     if (workspaceId) {
@@ -683,7 +718,7 @@ export default function NodeEditorPanel() {
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
                             nodeId: selectedNode.id,
-                            content: { image: { ...imageData, ...config } },
+                            content: newContent,
                           }),
                         });
                         
@@ -705,7 +740,7 @@ export default function NodeEditorPanel() {
                 
                 {/* Image Upload Section */}
                 <div className="border-t border-gray-200 pt-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Upload Image</h3>
+                  <h3 className="text-sm font-semibold text-black mb-3">Upload Image</h3>
                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                     {imageUrl ? (
                       <div className="space-y-4">
@@ -759,9 +794,9 @@ export default function NodeEditorPanel() {
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        <ImageIcon className="w-12 h-12 text-gray-400 mx-auto" />
+                        <ImageIcon className="w-12 h-12 text-black mx-auto" />
                         <div>
-                          <p className="text-sm text-gray-600 mb-2">Upload an image or paste from clipboard</p>
+                          <p className="text-sm text-black mb-2">Upload an image or paste from clipboard</p>
                           <div className="flex gap-2 justify-center">
                             <button
                               onClick={() => fileInputRef.current?.click()}
@@ -896,7 +931,7 @@ export default function NodeEditorPanel() {
               <div className="space-y-6">
                 {/* Emoji Info */}
                 <div className="border-t border-gray-200 pt-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Emoji</h3>
+                  <h3 className="text-sm font-semibold text-black mb-3">Emoji</h3>
                   <div className="space-y-4">
                     <div className="flex items-center justify-center p-8 bg-gray-50 rounded-lg border-2 border-gray-200">
                       <div className="text-6xl flex items-center justify-center gap-2 flex-wrap">
@@ -944,11 +979,11 @@ export default function NodeEditorPanel() {
               <div className="space-y-6">
                 {/* Arrow Settings Panel */}
                 <div className="border-t border-gray-200 pt-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Arrow Settings</h3>
+                  <h3 className="text-sm font-semibold text-black mb-3">Arrow Settings</h3>
                   <div className="space-y-4">
                     {/* Arrow Type */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-black mb-2">
                         Arrow Type
                       </label>
                       <div className="grid grid-cols-4 gap-2 max-h-96 overflow-y-auto">
@@ -1021,7 +1056,7 @@ export default function NodeEditorPanel() {
                               title={arrow.name}
                             >
                               <div className="text-2xl mb-1">{arrow.label}</div>
-                              <div className="text-xs text-gray-500 text-center leading-tight">{arrow.name}</div>
+                              <div className="text-xs text-black text-center leading-tight">{arrow.name}</div>
                             </button>
                           );
                         })}
@@ -1030,7 +1065,7 @@ export default function NodeEditorPanel() {
                     
                     {/* Thickness */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-black mb-2">
                         Width
                       </label>
                       <div className="space-y-2">
@@ -1086,7 +1121,7 @@ export default function NodeEditorPanel() {
                           }}
                           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
                         />
-                        <p className="text-right text-xs text-gray-500">
+                        <p className="text-right text-xs text-black">
                           {(() => {
                             const arrowSettings = selectedNode.content && typeof selectedNode.content === 'object' && 'arrow' in selectedNode.content
                               ? (selectedNode.content as any).arrow
@@ -1099,7 +1134,7 @@ export default function NodeEditorPanel() {
                     
                     {/* Color Wall */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-black mb-2">
                         Color
                       </label>
                       <div className="grid grid-cols-8 gap-1.5">
@@ -1231,12 +1266,11 @@ export default function NodeEditorPanel() {
                 
                 {/* Rich Text Editor for Box/Circle Content */}
                 <div className="border-t border-gray-200 pt-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Content</h3>
+                  <h3 className="text-sm font-semibold text-black mb-3">Content</h3>
                   <div className="relative border border-gray-200 rounded-lg min-h-[200px] focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-colors" style={{ overflow: 'visible', zIndex: 1 }}>
                     <EditorContent editor={editor} className="prose prose-sm max-w-none p-3 focus:outline-none" />
                     
                     {/* Floating Format Toolbar */}
-                    {editor && <FloatingFormatToolbar editor={editor} />}
                     
                     {/* Slash Command Menu */}
                     {editor && <SlashCommandMenu editor={editor} />}
@@ -1289,12 +1323,11 @@ export default function NodeEditorPanel() {
 
                 {/* Rich Text Editor */}
                 <div className="border-t border-gray-200 pt-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Content</h3>
+                  <h3 className="text-sm font-semibold text-black mb-3">Content</h3>
                   <div className="relative border border-gray-200 rounded-lg min-h-[200px] focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-colors" style={{ overflow: 'visible', zIndex: 1 }}>
                     <EditorContent editor={editor} className="prose prose-sm max-w-none p-3 focus:outline-none" />
                     
                     {/* Floating Format Toolbar - appears when text is selected - rendered outside editor container */}
-                    {editor && <FloatingFormatToolbar editor={editor} />}
                     
                     {/* Slash Command Menu - appears when typing / - rendered outside editor container */}
                     {editor && <SlashCommandMenu editor={editor} />}
@@ -1341,8 +1374,8 @@ export default function NodeEditorPanel() {
         {/* Tags */}
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <Tag className="w-4 h-4 text-gray-500" />
-            <span className="text-sm font-medium text-gray-700">Tags</span>
+            <Tag className="w-4 h-4 text-black" />
+            <span className="text-sm font-medium text-black">Tags</span>
           </div>
           <div className="flex flex-wrap gap-2 mb-2">
             {tags.map((tag, idx) => (
@@ -1389,14 +1422,14 @@ export default function NodeEditorPanel() {
             onClick={handleSummarize}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
           >
-            <Sparkles className="w-4 h-4 text-gray-600" />
+            <Sparkles className="w-4 h-4 text-black" />
             <span>Summarize with AI</span>
           </button>
           <button
             onClick={handleExpandIdea}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
           >
-            <ArrowRight className="w-4 h-4 text-gray-600" />
+            <ArrowRight className="w-4 h-4 text-black" />
             <span>Expand idea</span>
           </button>
         </div>
@@ -1404,11 +1437,11 @@ export default function NodeEditorPanel() {
         {/* Linked Nodes */}
         <div className="pt-4 border-t border-gray-200">
           <div className="flex items-center gap-2 mb-2">
-            <Link2 className="w-4 h-4 text-gray-500" />
-            <span className="text-sm font-medium text-gray-700">Linked Nodes</span>
+            <Link2 className="w-4 h-4 text-black" />
+            <span className="text-sm font-medium text-black">Linked Nodes</span>
           </div>
           {linkedNodes.length === 0 ? (
-            <div className="mt-2 text-sm text-gray-500">No linked nodes yet</div>
+            <div className="mt-2 text-sm text-black">No linked nodes yet</div>
           ) : (
             <div className="mt-2 space-y-2">
               {linkedNodes.map((linkedNode) => (
@@ -1423,7 +1456,7 @@ export default function NodeEditorPanel() {
                   }}
                   className="w-full text-left px-3 py-2 text-sm bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
                 >
-                  <div className="font-medium text-gray-900">{linkedNode.title || 'Untitled'}</div>
+                  <div className="font-medium text-black">{linkedNode.title || 'Untitled'}</div>
                   {linkedNode.tags && linkedNode.tags.length > 0 && (
                     <div className="flex gap-1 mt-1">
                       {linkedNode.tags.slice(0, 3).map((tag, idx) => (

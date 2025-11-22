@@ -23,20 +23,26 @@ export default function HistoryBar() {
   const [activeTab, setActiveTab] = useState<'nodes' | 'history'>('nodes');
   const barRef = useRef<HTMLDivElement>(null);
 
-  // Listen for detachment events from HistoryBarContent
+  // Listen for attachment/detachment events
   useEffect(() => {
-    const handleDetachEvent = (event: CustomEvent) => {
-      if (event.detail?.attached === false) {
-        setIsAttachedToSidebar(false);
-        if (event.detail?.position) {
-          setPosition(event.detail.position);
-        }
+    const handleAttachmentEvent = (event: CustomEvent) => {
+      const attached = event.detail?.attached === true;
+      setIsAttachedToSidebar(attached);
+      if (!attached && event.detail?.position) {
+        setPosition(event.detail.position);
       }
     };
     
-    window.addEventListener('history-bar-attached', handleDetachEvent as EventListener);
+    window.addEventListener('history-bar-attached', handleAttachmentEvent as EventListener);
+    
+    // Also check localStorage on mount
+    const savedAttachment = localStorage.getItem('historyBarAttached');
+    if (savedAttachment === 'true') {
+      setIsAttachedToSidebar(true);
+    }
+    
     return () => {
-      window.removeEventListener('history-bar-attached', handleDetachEvent as EventListener);
+      window.removeEventListener('history-bar-attached', handleAttachmentEvent as EventListener);
     };
   }, []);
 
@@ -381,8 +387,10 @@ export default function HistoryBar() {
   // Get the total history count (past + future)
   const totalHistoryCount = past.length + future.length;
 
-  // Always show floating bar - it will be hidden when attached via CSS or component unmount
-  // But we keep it in DOM so dragging works even when attached
+  // Don't render floating bar when attached to sidebar
+  if (isAttachedToSidebar) {
+    return null;
+  }
 
   return (
     <div
@@ -399,7 +407,7 @@ export default function HistoryBar() {
       <div className="flex items-center gap-2 px-3 py-2">
         {/* Drag handle - hamburger icon */}
         <div
-          className="w-6 h-6 flex items-center justify-center cursor-grab active:cursor-grabbing hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
+          className="w-6 h-6 flex items-center justify-center cursor-grab active:cursor-grabbing hover:bg-gray-100 rounded text-black hover:text-black transition-colors"
           onMouseDown={handleMouseDown}
           title="Drag to move or snap to sidebar"
         >
@@ -412,7 +420,7 @@ export default function HistoryBar() {
           disabled={!canUndo()}
           className={`p-1.5 rounded transition-colors ${
             canUndo()
-              ? 'text-gray-700 hover:bg-gray-100 cursor-pointer'
+              ? 'text-black hover:bg-gray-100 cursor-pointer'
               : 'text-gray-300 cursor-not-allowed'
           }`}
           title="Undo (Ctrl+Z)"
@@ -426,7 +434,7 @@ export default function HistoryBar() {
           disabled={!canRedo()}
           className={`p-1.5 rounded transition-colors ${
             canRedo()
-              ? 'text-gray-700 hover:bg-gray-100 cursor-pointer'
+              ? 'text-black hover:bg-gray-100 cursor-pointer'
               : 'text-gray-300 cursor-not-allowed'
           }`}
           title="Redo (Ctrl+Shift+Z)"
@@ -440,7 +448,7 @@ export default function HistoryBar() {
         {/* History toggle */}
         <button
           onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-          className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 transition-colors text-sm text-gray-700"
+          className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 transition-colors text-sm text-black"
           title="History log"
         >
           <History className="w-4 h-4" />
@@ -457,11 +465,11 @@ export default function HistoryBar() {
       {isHistoryOpen && (
         <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 w-80 max-h-96 overflow-y-auto z-50">
           <div className="p-2">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-2 py-1 mb-2">
+            <div className="text-xs font-semibold text-black uppercase tracking-wider px-2 py-1 mb-2">
               History ({totalHistoryCount})
             </div>
             {history.length === 0 ? (
-              <div className="px-2 py-4 text-sm text-gray-400 text-center">No history yet</div>
+              <div className="px-2 py-4 text-sm text-black text-center">No history yet</div>
             ) : (
               <div className="space-y-1">
                 {history.map((entry) => {
@@ -471,13 +479,13 @@ export default function HistoryBar() {
                       key={entry.id}
                       className={`px-2 py-1.5 rounded text-sm transition-colors ${
                         isInFuture
-                          ? 'text-gray-400 bg-gray-50'
-                          : 'text-gray-700 hover:bg-gray-50'
+                          ? 'text-black bg-gray-50'
+                          : 'text-black hover:bg-gray-50'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="flex-1 truncate">{entry.description}</span>
-                        <span className="text-xs text-gray-400 ml-2">
+                        <span className="text-xs text-black ml-2">
                           {formatTime(entry.timestamp)}
                         </span>
                       </div>

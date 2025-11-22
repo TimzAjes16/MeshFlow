@@ -23,11 +23,11 @@ function CustomNode({ data, selected }: CustomNodeProps) {
     >
       <Handle type="target" position={Position.Top} className="w-3 h-3" />
       <div>
-        <div className="font-semibold text-gray-900 dark:text-white text-sm mb-1">
+        <div className="font-semibold text-black dark:text-white text-sm mb-1">
           {data.label}
         </div>
         {data.content && (
-          <div className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">
+          <div className="text-xs text-black dark:text-black line-clamp-2">
             {data.content}
           </div>
         )}

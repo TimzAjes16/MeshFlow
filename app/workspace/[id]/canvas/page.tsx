@@ -8,6 +8,7 @@ interface CanvasPageProps {
 }
 
 // Layout handles auth and access checks
+
 export default async function CanvasPage({ params }: CanvasPageProps) {
   const { id: workspaceId } = await params;
   return (
