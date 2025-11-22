@@ -133,7 +133,7 @@ export default function HomePage() {
                   Your knowledge should last.
                 </h2>
                 <p className="text-slate-300 text-lg">
-                  MeshFlow uses open formats and exports, so you're never locked in. You own your data for the long term.
+                  MeshFlow uses open formats and exports, so you&apos;re never locked in. You own your data for the long term.
                 </p>
               </div>
             </div>
@@ -246,7 +246,7 @@ export default function HomePage() {
           <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-8">
             <h3 className="text-3xl font-bold text-white mb-4">AI-Powered Organization</h3>
             <p className="text-slate-300 text-lg mb-6">
-              Build your ideal knowledge workspace. With AI auto-linking, semantic clustering, and intelligent suggestions, it's easy to tailor MeshFlow to fit your personal workflow.{' '}
+              Build your ideal knowledge workspace. With AI auto-linking, semantic clustering, and intelligent suggestions, it&apos;s easy to tailor MeshFlow to fit your personal workflow.{' '}
               <Link href="/dashboard" className="text-blue-400 hover:text-blue-300 underline">
                 Learn more
               </Link>
@@ -374,7 +374,7 @@ export default function HomePage() {
       <section className="py-24 bg-slate-950">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-4xl font-bold text-white mb-4">
-            It's your time to shine.
+            It&apos;s your time to shine.
           </h2>
           <Link
             href="/auth/signup"

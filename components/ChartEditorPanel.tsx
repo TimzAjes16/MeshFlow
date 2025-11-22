@@ -85,6 +85,11 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
   const isInitialMount = useRef(true);
   const skipNextUpdate = useRef(false);
   const onUpdateRef = useRef(onUpdate);
+  // Track the last config we sent via onUpdate to prevent syncing back our own changes
+  const lastSentConfigRef = useRef<string | null>(null);
+  const lastNodeIdRef = useRef<string | null>(null);
+  // Track the last node content we've seen to detect actual changes (not just reference changes)
+  const lastNodeContentRef = useRef<string | null>(null);
 
   // Keep onUpdate ref in sync
   useEffect(() => {
@@ -92,12 +97,46 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
   }, [onUpdate]);
 
   // Sync state when node changes (e.g., when switching between nodes)
+  // CRITICAL: Only sync from node when:
+  // 1. Node ID changes (switching nodes), OR
+  // 2. Node content actually changes (deep comparison, not object reference)
   useEffect(() => {
     const newConfig = getChartConfig();
+    const newConfigString = JSON.stringify(newConfig);
     
-    // Only update state if the config actually changed
+    // Check if node ID changed (switching nodes)
+    const nodeIdChanged = lastNodeIdRef.current !== node.id;
+    
+    // Check if content actually changed by comparing JSON strings
+    const contentChanged = lastNodeContentRef.current !== newConfigString;
+    
+    // Check if this is the same config we just sent (prevent syncing back our own changes)
+    const isOurOwnUpdate = lastSentConfigRef.current === newConfigString;
+    
+    // Only sync if:
+    // - Node ID changed (switching nodes), OR
+    // - Content actually changed from external source (not our own update)
+    if (nodeIdChanged) {
+      lastNodeIdRef.current = node.id;
+      lastNodeContentRef.current = newConfigString;
+      // When switching nodes, always sync (reset our tracking)
+      lastSentConfigRef.current = null;
+    } else if (isOurOwnUpdate) {
+      // This is our own update coming back from the API, update tracking but don't sync
+      lastNodeContentRef.current = newConfigString;
+      return;
+    } else if (!contentChanged) {
+      // Content hasn't changed, don't sync (this prevents re-syncing when object reference changes)
+      return;
+    }
+    
+    // Content actually changed from external source - update tracking
+    lastNodeContentRef.current = newConfigString;
+    
+    // Deep compare config to avoid unnecessary updates
+    const dataChanged = JSON.stringify(newConfig.data) !== JSON.stringify(data);
     const configChanged = 
-      JSON.stringify(newConfig.data) !== JSON.stringify(data) ||
+      dataChanged ||
       newConfig.xKey !== xKey ||
       newConfig.yKey !== yKey ||
       newConfig.color !== color ||
@@ -106,7 +145,7 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
       newConfig.size !== size ||
       newConfig.colorPreset !== colorPreset;
 
-    if (configChanged) {
+    if (configChanged && !skipNextUpdate.current) {
       skipNextUpdate.current = true; // Skip the update trigger since we're syncing from node
       setData(newConfig.data || []);
       setXKey(newConfig.xKey || 'name');
@@ -116,27 +155,41 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
       setShowLegend(newConfig.showLegend || false);
       setSize(newConfig.size || 'small');
       setColorPreset(newConfig.colorPreset || 'blue');
+      
+      // Reset skip flag after a brief delay to allow state updates to complete
+      setTimeout(() => {
+        skipNextUpdate.current = false;
+      }, 100);
+    } else if (!configChanged) {
+      // If config hasn't changed, ensure skip flag is reset
+      skipNextUpdate.current = false;
     }
-  }, [node.id, node.content]);
+  }, [node.id]); // Only depend on node.id - use JSON comparison to detect content changes
 
-  // Update color when colorPreset changes
+  // Update color when colorPreset changes (but don't trigger onUpdate immediately)
   useEffect(() => {
     const preset = colorPresets.find(p => p.value === colorPreset);
-    if (preset) {
+    if (preset && color !== preset.hex) {
+      // Temporarily skip update to avoid double-trigger
+      skipNextUpdate.current = true;
       setColor(preset.hex);
+      setTimeout(() => {
+        skipNextUpdate.current = false;
+      }, 50);
     }
-  }, [colorPreset]);
+  }, [colorPreset, color]);
 
   // Trigger update when chart config changes (but not on initial mount or when syncing from node)
   useEffect(() => {
+    // Skip on initial mount
     if (isInitialMount.current) {
       isInitialMount.current = false;
       return;
     }
 
+    // Skip if we're syncing from node (to prevent loops)
     if (skipNextUpdate.current) {
-      skipNextUpdate.current = false;
-      return;
+      return; // Don't reset skipNextUpdate here - it's reset in sync effect
     }
 
     // Ensure we always pass a complete config with all properties
@@ -151,8 +204,16 @@ export default function ChartEditorPanel({ node, onUpdate }: ChartEditorPanelPro
       colorPreset: colorPreset || 'blue',
     };
     
-    // Call onUpdate immediately when any setting changes
-    onUpdateRef.current(config);
+    // Track this config as the last one we sent (to prevent syncing it back)
+    const configString = JSON.stringify(config);
+    
+    // Only call onUpdate if this is different from what we last sent
+    // This prevents duplicate updates when state changes but config is the same
+    if (lastSentConfigRef.current !== configString) {
+      lastSentConfigRef.current = configString;
+      // Call onUpdate immediately when any setting changes
+      onUpdateRef.current(config);
+    }
   }, [data, xKey, yKey, color, showGrid, showLegend, size, colorPreset]);
 
   const handleAddRow = () => {

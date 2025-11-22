@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/api-helpers';
 import { prisma } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const user = await getCurrentUser();
 
-    if (!session?.user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.user.id;
+    const userId = user.id;
     const body = await request.json();
     const { currentPassword, newPassword } = body;
 
@@ -30,18 +29,18 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Get current user
-    const user = await prisma.user.findUnique({
+    // Get current user with password
+    const userWithPassword = await prisma.user.findUnique({
       where: { id: userId },
       select: { password: true },
     });
 
-    if (!user) {
+    if (!userWithPassword) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     // Verify current password
-    const isValid = await bcrypt.compare(currentPassword, user.password);
+    const isValid = await bcrypt.compare(currentPassword, userWithPassword.password);
 
     if (!isValid) {
       return NextResponse.json(

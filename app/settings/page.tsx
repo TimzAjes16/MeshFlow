@@ -1,17 +1,16 @@
 import { redirect } from 'next/navigation';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/api-helpers';
 import { prisma } from '@/lib/db';
 import SettingsPageClient from '@/components/SettingsPageClient';
 
 export default async function SettingsPage() {
-  const session = await getServerSession(authOptions);
+  const currentUser = await getCurrentUser();
 
-  if (!session?.user) {
+  if (!currentUser) {
     redirect('/auth/login');
   }
 
-  const userId = session.user.id;
+  const userId = currentUser.id;
 
   // Get user data
   const user = await prisma.user.findUnique({

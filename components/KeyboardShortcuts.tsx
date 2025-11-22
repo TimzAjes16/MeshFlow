@@ -37,6 +37,11 @@ export default function KeyboardShortcuts() {
     { keys: ['Ctrl', '['], description: 'Send to back (Cmd+[ on Mac)' },
     { keys: ['Ctrl', '↑'], description: 'Move forward (Cmd+↑ on Mac)' },
     { keys: ['Ctrl', '↓'], description: 'Move backward (Cmd+↓ on Mac)' },
+    { keys: ['R'], description: 'Reset rotation to 0°' },
+    { keys: ['Ctrl', '0'], description: 'Reset rotation to 0° (Cmd+0 on Mac)' },
+    { keys: ['Ctrl', '['], description: 'Send to back (Cmd+[ on Mac)' },
+    { keys: ['Ctrl', '↑'], description: 'Move forward (Cmd+↑ on Mac)' },
+    { keys: ['Ctrl', '↓'], description: 'Move backward (Cmd+↓ on Mac)' },
   ];
 
   return (
@@ -121,7 +126,7 @@ export default function KeyboardShortcuts() {
                   }}
                   className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
                 >
-                  Don't show hint again
+                  Don&apos;t show hint again
                 </button>
               </div>
             </motion.div>

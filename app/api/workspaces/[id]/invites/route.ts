@@ -5,10 +5,10 @@ import { v4 as uuidv4 } from 'uuid';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const workspaceId = params.id;
+    const { id: workspaceId } = await params;
     const { role } = await requireWorkspaceAccess(workspaceId, true);
     
     // Only owner can create invites
@@ -76,10 +76,10 @@ export async function POST(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const workspaceId = params.id;
+    const { id: workspaceId } = await params;
     await requireWorkspaceAccess(workspaceId, false);
 
     // Get all invites for workspace

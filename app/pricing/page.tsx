@@ -170,7 +170,7 @@ export default function PricingPage() {
                 Can I change plans later?
               </h3>
               <p className="text-slate-300">
-                Yes, you can upgrade or downgrade your plan at any time. Changes take effect immediately, and we'll prorate any charges.
+                Yes, you can upgrade or downgrade your plan at any time. Changes take effect immediately, and we&apos;ll prorate any charges.
               </p>
             </div>
             <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -49,7 +49,11 @@ export default function NodeEditorPanel() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspace?.id);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   
-  const selectedNode = nodes.find((n) => n.id === selectedNodeId);
+  // Use useMemo to find selectedNode to avoid unnecessary re-renders
+  const selectedNode = useMemo(() => {
+    return selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) : null;
+  }, [selectedNodeId, nodes]);
+  
   const [title, setTitle] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
@@ -64,6 +68,11 @@ export default function NodeEditorPanel() {
   // Debounce timer refs for API calls
   const titleUpdateTimer = useRef<NodeJS.Timeout | null>(null);
   const contentUpdateTimer = useRef<NodeJS.Timeout | null>(null);
+  
+  // Flag to prevent editor onUpdate from firing when we're syncing content from node
+  const isSyncingContentRef = useRef(false);
+  // Track the last node ID we synced to prevent re-syncing the same node
+  const lastSyncedNodeIdRef = useRef<string | null>(null);
 
   // Debounced API update function
   const debouncedApiUpdate = useCallback(
@@ -125,6 +134,11 @@ export default function NodeEditorPanel() {
               : ''))
       : '',
     onUpdate: ({ editor }) => {
+      // Don't trigger update if we're currently syncing content from node (prevents infinite loop)
+      if (isSyncingContentRef.current) {
+        return;
+      }
+      
       if (selectedNode && !isChartNode(selectedNode) && !isEmojiNode(selectedNode) && !isArrowNode(selectedNode)) {
         // Only update content for non-chart, non-emoji, and non-arrow nodes
         // Chart nodes use ChartEditorPanel, emoji nodes use emoji input, arrow nodes use arrow settings
@@ -168,7 +182,9 @@ export default function NodeEditorPanel() {
 
   // Sync with workspace store changes - only when node ID changes or when not editing
   useEffect(() => {
-    if (selectedNode) {
+    // Only sync if node ID actually changed (not just object reference)
+    if (selectedNode && selectedNode.id !== lastSyncedNodeIdRef.current) {
+      lastSyncedNodeIdRef.current = selectedNode.id;
       // Only update title if:
       // 1. Node ID changed (switched to different node), OR
       // 2. Title input is not focused (user finished editing)
@@ -217,10 +233,18 @@ export default function NodeEditorPanel() {
         
         // Only update if content actually changed to prevent infinite loops
         if (shouldUpdate) {
+          // Set flag to prevent onUpdate from firing during sync
+          isSyncingContentRef.current = true;
           editor.commands.setContent(newContent);
+          // Reset flag after a brief delay to allow editor to update
+          setTimeout(() => {
+            isSyncingContentRef.current = false;
+          }, 100);
         }
       }
-    } else {
+    } else if (selectedNodeId === null && lastSyncedNodeIdRef.current !== null) {
+      // Node was deselected - clear state
+      lastSyncedNodeIdRef.current = null;
       setTitle('');
       setTags([]);
       isTitleFocusedRef.current = false;
@@ -229,14 +253,18 @@ export default function NodeEditorPanel() {
         const currentContent = editor.getJSON();
         const isEmpty = !currentContent || (currentContent.type === 'doc' && (!currentContent.content || currentContent.content.length === 0));
         if (!isEmpty) {
+          isSyncingContentRef.current = true;
           editor.commands.clearContent();
+          setTimeout(() => {
+            isSyncingContentRef.current = false;
+          }, 100);
         }
       }
     }
     // Only sync when node ID changes, not when title/tags/content change
     // This prevents overwriting user input while typing
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNode?.id]);
+  }, [selectedNodeId]);
 
   // Debounced title update function
   const debouncedTitleUpdate = useCallback(
@@ -289,6 +317,50 @@ export default function NodeEditorPanel() {
       debouncedTitleUpdate(selectedNode.id, value);
     }
   };
+
+  // Memoize chart update callback to prevent ChartEditorPanel from re-rendering unnecessarily
+  const handleChartUpdate = useCallback(async (config: {
+    data: { name: string; value: number; [key: string]: string | number }[];
+    xKey?: string;
+    yKey?: string;
+    color?: string;
+    showGrid?: boolean;
+    showLegend?: boolean;
+    size?: 'small' | 'medium' | 'large';
+    colorPreset?: 'blue' | 'purple' | 'green' | 'red';
+  }) => {
+    if (!selectedNode || !workspaceId) return;
+    
+    // Update store immediately for instant UI feedback
+    updateNode(selectedNode.id, {
+      content: { chart: config },
+    });
+    
+    // Sync to API
+    try {
+      setIsUpdating(true);
+      const response = await fetch('/api/nodes/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId: selectedNode.id,
+          content: { chart: config },
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.node) {
+          updateNode(selectedNode.id, data.node);
+        }
+        // Don't dispatch refreshWorkspace - optimistic updates handle UI, polling will sync
+      }
+    } catch (error) {
+      console.error('Error updating chart:', error);
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [selectedNode, workspaceId, updateNode]);
 
   const handleTitleFocus = () => {
     isTitleFocusedRef.current = true;
@@ -389,7 +461,29 @@ export default function NodeEditorPanel() {
     }
   };
 
-  if (!selectedNode) {
+  // Show loading state if node is selected but not loaded yet
+  if (selectedNodeId && !selectedNode) {
+    return (
+      <div className="flex h-full flex-col bg-white">
+        <div className="flex-1 flex items-center justify-center px-6">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Sparkles className="w-8 h-8 text-gray-400 animate-pulse" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Loading node...
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Please wait while the node loads
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Show empty state if nothing is selected
+  if (!selectedNodeId || !selectedNode) {
     return (
       <div className="flex h-full flex-col bg-white">
         <div className="flex-1 flex items-center justify-center px-6">
@@ -451,39 +545,7 @@ export default function NodeEditorPanel() {
             {isChartNode(selectedNode) ? (
               <ChartEditorPanel
                 node={selectedNode}
-                onUpdate={async (config) => {
-                  // Update store immediately for instant UI feedback
-                  updateNode(selectedNode.id, {
-                    content: { chart: config },
-                  });
-                  
-                  // Sync to API
-                  if (workspaceId) {
-                    try {
-                      setIsUpdating(true);
-                      const response = await fetch('/api/nodes/update', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          nodeId: selectedNode.id,
-                          content: { chart: config },
-                        }),
-                      });
-                      
-                      if (response.ok) {
-                        const data = await response.json();
-                        if (data.node) {
-                          updateNode(selectedNode.id, data.node);
-                        }
-                        // Don't dispatch refreshWorkspace - optimistic updates handle UI, polling will sync
-                      }
-                    } catch (error) {
-                      console.error('Error updating chart:', error);
-                    } finally {
-                      setIsUpdating(false);
-                    }
-                  }
-                }}
+                onUpdate={handleChartUpdate}
               />
             ) : isImageNode(selectedNode) ? (
               <div className="space-y-6">

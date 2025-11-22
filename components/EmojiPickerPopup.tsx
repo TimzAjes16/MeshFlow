@@ -90,7 +90,7 @@ export default function EmojiPickerPopup({ node, position, onClose, onSelect }: 
   // Close on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
+      if (popupRef.current && event.target instanceof Node && !popupRef.current.contains(event.target)) {
         onClose();
       }
     };

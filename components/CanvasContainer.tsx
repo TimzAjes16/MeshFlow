@@ -60,8 +60,30 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     addEdge: addWorkspaceEdge,
   } = useWorkspaceStore();
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(canvasNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(canvasEdges);
+  // Initialize React Flow state with empty arrays - we'll sync from workspace store
+  // Don't initialize from canvasNodes to avoid circular dependencies
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  
+  // Sync canvas store from React Flow state changes (user interactions only)
+  // This syncs the canvas store when React Flow state changes, but we prevent loops
+  // by only syncing when nodes/edges actually change
+  const lastSyncedCanvasNodesRef = useRef<string>('');
+  const lastSyncedCanvasEdgesRef = useRef<string>('');
+  
+  useEffect(() => {
+    const nodesHash = JSON.stringify(nodes.map(n => ({ id: n.id, position: n.position })));
+    const edgesHash = JSON.stringify(edges.map(e => ({ id: e.id, source: e.source, target: e.target })));
+    
+    // Only update canvas store if React Flow nodes actually changed
+    if (nodesHash !== lastSyncedCanvasNodesRef.current || edgesHash !== lastSyncedCanvasEdgesRef.current) {
+      lastSyncedCanvasNodesRef.current = nodesHash;
+      lastSyncedCanvasEdgesRef.current = edgesHash;
+      setCanvasNodes(nodes);
+      setCanvasEdges(edges);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges]); // Removed setCanvasNodes and setCanvasEdges from dependencies - they're stable Zustand setters
   
   // Auto-organize state
   const [autoOrganize, setAutoOrganize] = useState(false);
@@ -120,6 +142,10 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   
+  // Track last synced workspace nodes/edges to prevent unnecessary updates
+  const lastSyncedNodesRef = useRef<string>('');
+  const lastSyncedEdgesRef = useRef<string>('');
+  
   // Keep refs in sync with current state
   useEffect(() => {
     nodesRef.current = nodes;
@@ -128,7 +154,31 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
 
   // Sync workspace nodes/edges to canvas state
   useEffect(() => {
-    // Don't return early - allow empty arrays to clear the canvas
+    // Create a stable hash of the workspace nodes/edges to detect actual changes
+    // Include content in hash to detect textSettings and other content changes
+    // Sort nodes/edges by ID for consistent hashing
+    const sortedNodes = [...workspaceNodes].sort((a, b) => a.id.localeCompare(b.id));
+    const sortedEdges = [...workspaceEdges].sort((a, b) => a.id.localeCompare(b.id));
+    
+    const nodesHash = JSON.stringify(sortedNodes.map(n => ({ 
+      id: n.id, 
+      x: n.x, 
+      y: n.y, 
+      title: n.title, 
+      tags: n.tags ? [...n.tags].sort() : [],
+      content: n.content ? JSON.stringify(n.content) : null,
+    })));
+    const edgesHash = JSON.stringify(sortedEdges.map(e => ({ id: e.id, source: e.source, target: e.target })));
+    
+    // Only sync if nodes or edges actually changed (by value, not reference)
+    if (nodesHash === lastSyncedNodesRef.current && edgesHash === lastSyncedEdgesRef.current) {
+      return; // No actual changes, skip sync
+    }
+    
+    // Update tracking refs
+    lastSyncedNodesRef.current = nodesHash;
+    lastSyncedEdgesRef.current = edgesHash;
+    
     console.log('[CanvasContainer] Syncing workspace nodes to canvas:', {
       workspaceNodesCount: workspaceNodes.length,
       workspaceEdgesCount: workspaceEdges.length,
@@ -170,6 +220,8 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         }),
         // Apply zIndex for layering
         zIndex,
+        // Sync selected state with canvas store
+        selected: selectedNodeId === node.id,
       };
     });
 
@@ -193,20 +245,58 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
       };
     });
 
-    console.log('[CanvasContainer] Setting React Flow nodes:', {
-      nodeCount: reactFlowNodes.length,
-      edgeCount: reactFlowEdges.length,
-      firstNodeId: reactFlowNodes[0]?.id,
-      firstNodePosition: reactFlowNodes[0]?.position,
-    });
-
-    // Update both canvas store and React Flow state
-    // Note: We use direct assignment to avoid stale closure issues
-    setCanvasNodes(reactFlowNodes);
-    setCanvasEdges(reactFlowEdges);
-    setNodes(reactFlowNodes);
-    setEdges(reactFlowEdges);
-  }, [workspaceNodes, workspaceEdges, setCanvasNodes, setCanvasEdges, setNodes, setEdges]);
+    // Compare React Flow nodes by value to prevent unnecessary updates
+    // Compare essential properties: id, position, label, selected state, and zIndex
+    const currentNodesHash = JSON.stringify(nodes.map(n => ({ 
+      id: n.id, 
+      position: n.position, 
+      label: n.data?.label,
+      selected: n.selected,
+      zIndex: n.zIndex
+    })));
+    const newNodesHash = JSON.stringify(reactFlowNodes.map(n => ({ 
+      id: n.id, 
+      position: n.position, 
+      label: n.data?.label,
+      selected: n.selected,
+      zIndex: n.zIndex
+    })));
+    const currentEdgesHash = JSON.stringify(edges.map(e => ({ 
+      id: e.id, 
+      source: e.source, 
+      target: e.target 
+    })));
+    const newEdgesHash = JSON.stringify(reactFlowEdges.map(e => ({ 
+      id: e.id, 
+      source: e.source, 
+      target: e.target 
+    })));
+    
+    // Only update React Flow state if nodes/edges actually changed
+    // This prevents unnecessary setState calls that trigger infinite loops
+    if (currentNodesHash !== newNodesHash || currentEdgesHash !== newEdgesHash) {
+      console.log('[CanvasContainer] Setting React Flow nodes:', {
+        nodeCount: reactFlowNodes.length,
+        edgeCount: reactFlowEdges.length,
+        firstNodeId: reactFlowNodes[0]?.id,
+        firstNodePosition: reactFlowNodes[0]?.position,
+        nodesChanged: currentNodesHash !== newNodesHash,
+        edgesChanged: currentEdgesHash !== newEdgesHash,
+      });
+      
+      // Update React Flow state only if actually changed
+      if (currentNodesHash !== newNodesHash) {
+        setNodes(reactFlowNodes);
+      }
+      if (currentEdgesHash !== newEdgesHash) {
+        setEdges(reactFlowEdges);
+      }
+      
+      // Note: Don't update canvas store here - the effect that syncs canvas store 
+      // from React Flow state will handle it automatically
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceNodes, workspaceEdges]); // Removed unstable setter dependencies
 
   const onConnect = useCallback(
     async (params: Connection) => {
@@ -248,8 +338,17 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         });
 
         if (response.ok) {
-          const data = await response.json();
-          const savedEdge = data.edge;
+          const savedEdge = await response.json();
+          
+          // Validate that savedEdge has required properties
+          if (!savedEdge || !savedEdge.id) {
+            console.error('[CanvasContainer] Invalid edge response:', savedEdge);
+            // Remove failed edge
+            const failedEdges = edges.filter((e) => e.id !== tempEdge.id);
+            setEdges(failedEdges);
+            setCanvasEdges(failedEdges);
+            return;
+          }
           
           // Update edge with real ID from API
           const updatedEdges = newEdges.map((e) =>
@@ -276,8 +375,8 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
             createdAt: savedEdge.createdAt,
           });
           
-          // Trigger workspace refresh
-          window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+          // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
+          // Edge creation is already reflected in local store
         } else {
           // Remove failed edge
           const failedEdges = edges.filter((e) => e.id !== tempEdge.id);
@@ -295,6 +394,23 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     },
     [edges, setEdges, setCanvasEdges, workspaceId, addWorkspaceEdge]
   );
+
+  // Listen for zIndex updates from layer controls
+  useEffect(() => {
+    const handleZIndexUpdate = (event: CustomEvent) => {
+      const { nodeId, zIndex } = event.detail;
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === nodeId
+            ? { ...node, zIndex }
+            : node
+        )
+      );
+    };
+
+    window.addEventListener('update-node-zindex', handleZIndexUpdate as EventListener);
+    return () => window.removeEventListener('update-node-zindex', handleZIndexUpdate as EventListener);
+  }, [setNodes]);
 
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
@@ -497,7 +613,14 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         setTimeout(() => {
           if (reactFlowInstance) {
             const newViewport = reactFlowInstance.getViewport();
-            setViewport(newViewport);
+            // Validate viewport before setting
+            if (
+              typeof newViewport.x === 'number' && !isNaN(newViewport.x) &&
+              typeof newViewport.y === 'number' && !isNaN(newViewport.y) &&
+              typeof newViewport.zoom === 'number' && !isNaN(newViewport.zoom)
+            ) {
+              setViewport(newViewport);
+            }
           }
         }, 350);
       }
@@ -594,12 +717,25 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
             setTimeout(() => {
               if (instance) {
                 const currentViewport = instance.getViewport();
-                setViewport(currentViewport);
+                // Validate viewport before setting
+                if (
+                  typeof currentViewport.x === 'number' && !isNaN(currentViewport.x) &&
+                  typeof currentViewport.y === 'number' && !isNaN(currentViewport.y) &&
+                  typeof currentViewport.zoom === 'number' && !isNaN(currentViewport.zoom)
+                ) {
+                  setViewport(currentViewport);
+                }
               }
             }, 450);
           }
         }, 200);
-      } else if (viewport && hasFittedView.current) {
+      } else if (
+        viewport && 
+        hasFittedView.current &&
+        typeof viewport.x === 'number' && !isNaN(viewport.x) &&
+        typeof viewport.y === 'number' && !isNaN(viewport.y) &&
+        typeof viewport.zoom === 'number' && !isNaN(viewport.zoom)
+      ) {
         // Restore previous viewport if available (on workspace switch)
         instance.setViewport(viewport, { duration: 0 });
       }
@@ -618,6 +754,15 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   
   const onMove = useCallback(
     (_event: any, newViewport: { x: number; y: number; zoom: number }) => {
+      // Validate viewport values before using them
+      if (
+        typeof newViewport.x !== 'number' || isNaN(newViewport.x) ||
+        typeof newViewport.y !== 'number' || isNaN(newViewport.y) ||
+        typeof newViewport.zoom !== 'number' || isNaN(newViewport.zoom)
+      ) {
+        return;
+      }
+      
       // Skip if viewport hasn't changed significantly
       if (lastViewportRef.current) {
         const dx = Math.abs(newViewport.x - lastViewportRef.current.x);
@@ -646,6 +791,15 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
 
   const onMoveEnd = useCallback(
     (_event: any, newViewport: { x: number; y: number; zoom: number }) => {
+      // Validate viewport values before using them
+      if (
+        typeof newViewport.x !== 'number' || isNaN(newViewport.x) ||
+        typeof newViewport.y !== 'number' || isNaN(newViewport.y) ||
+        typeof newViewport.zoom !== 'number' || isNaN(newViewport.zoom)
+      ) {
+        return;
+      }
+      
       // Clear any pending throttled update
       if (viewportUpdateTimer.current) {
         clearTimeout(viewportUpdateTimer.current);
@@ -777,7 +931,14 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         className="bg-white"
         minZoom={0.1}
         maxZoom={4}
-        defaultViewport={viewport || undefined}
+        defaultViewport={
+          viewport && 
+          typeof viewport.x === 'number' && !isNaN(viewport.x) &&
+          typeof viewport.y === 'number' && !isNaN(viewport.y) &&
+          typeof viewport.zoom === 'number' && !isNaN(viewport.zoom)
+            ? viewport
+            : undefined
+        }
         proOptions={{ hideAttribution: true }}
       >
             {/* Infinite canvas - premium subtle grid */}
@@ -804,41 +965,43 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
             {/* ReactFlow MiniMap automatically updates when nodes/edges change */}
             <MiniMap
               nodeColor={(node) => {
-                // Use golden-yellow for all nodes to match canvas aesthetic
+                // Use distinct colors for different node types
                 const nodeData = node.data as any;
                 if (nodeData?.node) {
                   const color = getNodeColor(nodeData.node);
-                  // Use golden-yellow glow color for selected nodes, otherwise use node color
+                  // Use brighter color for selected nodes
                   if (node.id === selectedNodeId) {
-                    return 'rgba(250, 204, 21, 0.9)';
+                    return color.primary || '#3b82f6';
                   }
-                  return color.primary || 'rgba(250, 204, 21, 0.7)';
+                  // Use node's actual color or default
+                  return color.primary || '#6366f1';
                 }
-                return 'rgba(250, 204, 21, 0.7)';
+                return '#6366f1';
               }}
-              nodeStrokeWidth={1.5}
+              nodeStrokeWidth={2}
               nodeBorderRadius={4}
               nodeStrokeColor={(node) => {
-                // Highlight selected node with stronger glow
+                // Highlight selected node with stronger border
                 if (node.id === selectedNodeId) {
-                  return 'rgba(250, 204, 21, 1)';
+                  return '#3b82f6';
                 }
-                return 'rgba(250, 204, 21, 0.8)';
+                return '#1e40af';
               }}
-              maskColor="rgba(0, 0, 0, 0.3)"
-              maskStrokeColor="rgba(250, 204, 21, 0.5)"
+              maskColor="rgba(0, 0, 0, 0.2)"
+              maskStrokeColor="rgba(59, 130, 246, 0.5)"
               maskStrokeWidth={2}
-              className="bg-black/60 backdrop-blur-sm rounded-lg border border-yellow-400/30 shadow-lg"
+              className="bg-white/90 backdrop-blur-sm rounded-lg border border-gray-300 shadow-lg"
               style={{
-                width: '180px',
-                height: '180px',
+                width: '200px',
+                height: '200px',
                 opacity: 0.95,
               }}
               pannable={true}
               zoomable={true}
               ariaLabel="Minimap - shows all nodes and edges on canvas"
               position="bottom-right"
-              offsetScale={5}
+              offsetScale={3}
+              nodeComponent={undefined}
             />
           </ReactFlow>
 

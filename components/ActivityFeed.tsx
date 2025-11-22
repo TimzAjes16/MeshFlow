@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Activity, User, FileText, Link2, Users, Settings } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+// import { createClient } from '@/lib/supabase/client'; // Commented out - not used
 import { formatDistanceToNow } from 'date-fns';
 
 interface Activity {
@@ -30,31 +30,31 @@ interface ActivityFeedProps {
 export default function ActivityFeed({ workspaceId, limit = 50 }: ActivityFeedProps) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  // const supabase = createClient(); // Commented out - not used
 
   useEffect(() => {
     loadActivities();
     
-    // Subscribe to new activities
-    const channel = supabase
-      .channel(`activity:${workspaceId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'activity_log',
-          filter: `workspace_id=eq.${workspaceId}`,
-        },
-        () => {
-          loadActivities();
-        }
-      )
-      .subscribe();
+    // Subscribe to new activities - commented out until supabase client is properly configured
+    // const channel = supabase
+    //   .channel(`activity:${workspaceId}`)
+    //   .on(
+    //     'postgres_changes',
+    //     {
+    //       event: 'INSERT',
+    //       schema: 'public',
+    //       table: 'activity_log',
+    //       filter: `workspace_id=eq.${workspaceId}`,
+    //     },
+    //     () => {
+    //       loadActivities();
+    //     }
+    //   )
+    //   .subscribe();
 
-    return () => {
-      channel.unsubscribe();
-    };
+    // return () => {
+    //   channel.unsubscribe();
+    // };
   }, [workspaceId]);
 
   const loadActivities = async () => {

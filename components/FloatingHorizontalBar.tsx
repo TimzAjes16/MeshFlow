@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Type, FileText, Image, Link2, Square, Circle, ArrowRight,
   BarChart3, LineChart, PieChart, TrendingUp, 
@@ -49,8 +49,13 @@ export default function FloatingHorizontalBar({
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const barRef = useRef<HTMLDivElement>(null);
   const dragStartPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-
-  const selectedNode = selectedNodeId ? nodes.find(n => n.id === selectedNodeId) : null;
+  
+  // Memoize selectedNode to prevent unnecessary re-renders when nodes array reference changes
+  // Only recompute when selectedNodeId or the actual node data changes
+  const selectedNode = useMemo(() => {
+    if (!selectedNodeId) return null;
+    return nodes.find(n => n.id === selectedNodeId) || null;
+  }, [selectedNodeId, nodes]);
 
   // Listen for canvas clicks to show creation toolbar
   useEffect(() => {
@@ -63,6 +68,20 @@ export default function FloatingHorizontalBar({
 
     window.addEventListener('show-create-toolbar', handleCanvasClick as EventListener);
     return () => window.removeEventListener('show-create-toolbar', handleCanvasClick as EventListener);
+  }, [selectedNodeId]);
+
+  // Listen for node click events to show edit bar
+  useEffect(() => {
+    const handleNodeClick = () => {
+      // When a node is clicked, the bar should switch to edit mode
+      // This is handled by the selectedNodeId check below
+    };
+
+    if (selectedNodeId) {
+      // Reset position when node is selected to show edit bar at bottom
+      setPosition(getOriginalPosition());
+      setClickPosition(null);
+    }
   }, [selectedNodeId]);
 
   // Drag handlers
@@ -177,9 +196,9 @@ export default function FloatingHorizontalBar({
     return () => window.removeEventListener('resize', handleResize);
   }, [position]);
 
-  // Node Edit Mode - show when node is selected
-  if (selectedNodeId && selectedNode) {
-    const nodeTitle = selectedNode.title || 'Untitled';
+  // Node Edit Mode - show when node is selected (even if node not loaded yet)
+  if (selectedNodeId) {
+    const nodeTitle = selectedNode?.title || 'Untitled';
     const titleLength = nodeTitle.length;
     // Content-aware width: adjust based on title length
     const contentWidth = Math.min(
@@ -210,7 +229,7 @@ export default function FloatingHorizontalBar({
           
           <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-lg flex-1 min-w-0">
             <Edit className="w-4 h-4 text-blue-600 shrink-0" />
-            <span className="text-sm font-medium text-blue-900 truncate">{nodeTitle}</span>
+            <span className="text-sm font-medium text-gray-900 truncate">{nodeTitle}</span>
           </div>
           
           <div className="h-6 w-px bg-gray-300" />

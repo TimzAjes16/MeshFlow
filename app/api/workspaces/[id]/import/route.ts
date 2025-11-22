@@ -6,10 +6,10 @@ import { getAutoLinkNodes, createAutoEdges } from '@/lib/autoLink';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const workspaceId = params.id;
+    const { id: workspaceId } = await params;
     const { role } = await requireWorkspaceAccess(workspaceId, true);
     
     const body = await request.json();
@@ -98,10 +98,38 @@ export async function POST(
           ? node.content 
           : JSON.stringify(node.content);
         
-        if (content) {
-          const similarNodes = await getAutoLinkNodes(node.id, workspaceId);
-          const newEdges = await createAutoEdges(node.id, similarNodes, workspaceId);
-          importedEdges.push(...newEdges);
+        // Auto-link: Generate embedding and find similar nodes (optional - skip if embedding generation fails)
+        try {
+          const embedding = await getNodeEmbedding({ title: node.title, content: node.content });
+          if (embedding && embedding.length > 0) {
+            // Get all nodes in workspace for similarity comparison
+            const allNodes = await prisma.node.findMany({
+              where: { workspaceId },
+              select: {
+                id: true,
+                workspaceId: true,
+                title: true,
+                content: true,
+                tags: true,
+                x: true,
+                y: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            });
+            // Convert nodes to format expected by getAutoLinkNodes
+            const formattedNodes = allNodes.map(n => ({
+              ...n,
+              createdAt: n.createdAt.toISOString(),
+              updatedAt: n.updatedAt.toISOString(),
+              embedding: undefined, // Embeddings will be fetched separately if needed
+            }));
+            const similarNodes = getAutoLinkNodes(embedding, formattedNodes, node.id);
+            const newEdges = await createAutoEdges(node.id, similarNodes, workspaceId);
+            importedEdges.push(...newEdges);
+          }
+        } catch (embeddingError: any) {
+          console.warn('[Import] Failed to generate embedding or auto-link (continuing):', embeddingError?.message);
         }
       }
     }

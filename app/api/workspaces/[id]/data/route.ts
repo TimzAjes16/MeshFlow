@@ -42,6 +42,23 @@ export async function GET(
       where: { workspaceId },
     });
 
+    // Helper function to safely serialize JSON content
+    const serializeContent = (content: any): any => {
+      if (content === null || content === undefined) {
+        return {};
+      }
+      // If it's already a plain object/array, return as-is (NextResponse.json will handle serialization)
+      // If it's a Prisma JsonValue type, it should already be serializable
+      try {
+        // Ensure it's a plain serializable object by parsing and stringifying
+        // This handles any edge cases with Prisma's JsonValue type
+        return JSON.parse(JSON.stringify(content));
+      } catch (error) {
+        console.warn('[API] Failed to serialize node content, using empty object:', error);
+        return {};
+      }
+    };
+
     return NextResponse.json({
       workspace: {
         id: workspace.id,
@@ -55,7 +72,7 @@ export async function GET(
         id: node.id,
         workspaceId: node.workspaceId,
         title: node.title || '',
-        content: node.content || {},
+        content: serializeContent(node.content),
         tags: node.tags || [],
         x: node.x ?? 0,
         y: node.y ?? 0,

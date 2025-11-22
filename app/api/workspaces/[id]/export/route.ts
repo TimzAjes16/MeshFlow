@@ -5,11 +5,11 @@ import { exportAsMarkdown } from '@/lib/export';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const workspaceId = params.id;
-    const user = await requireWorkspaceAccess(workspaceId, false);
+    const { id: workspaceId } = await params;
+    const { user } = await requireWorkspaceAccess(workspaceId, false);
     
     const { searchParams } = new URL(request.url);
     const format = searchParams.get('format') || 'json';
@@ -20,6 +20,7 @@ export async function GET(
       select: {
         id: true,
         name: true,
+        ownerId: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -34,6 +35,7 @@ export async function GET(
       where: { workspaceId },
       select: {
         id: true,
+        workspaceId: true,
         title: true,
         content: true,
         tags: true,
@@ -49,6 +51,7 @@ export async function GET(
       where: { workspaceId },
       select: {
         id: true,
+        workspaceId: true,
         source: true,
         target: true,
         label: true,
@@ -81,15 +84,19 @@ export async function GET(
         },
         nodes: nodes.map(n => ({
           ...n,
+          workspaceId: n.workspaceId,
           createdAt: n.createdAt.toISOString(),
           updatedAt: n.updatedAt.toISOString(),
         })),
         edges: edges.map(e => ({
           ...e,
+          workspaceId: e.workspaceId,
+          label: e.label || undefined,
+          similarity: e.similarity || undefined,
           createdAt: e.createdAt.toISOString(),
         })),
         exported_at: new Date().toISOString(),
-        exported_by: user.user.id,
+        exported_by: user.id,
       };
       const markdown = exportAsMarkdown(exportData);
       return new NextResponse(markdown, {

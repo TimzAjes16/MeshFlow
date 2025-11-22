@@ -2,16 +2,17 @@ import WorkspaceProvider from '@/components/WorkspaceProvider';
 import CanvasPageClient from '@/components/CanvasPageClient';
 
 interface CanvasPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 // Layout handles auth and access checks
-export default function CanvasPage({ params }: CanvasPageProps) {
+export default async function CanvasPage({ params }: CanvasPageProps) {
+  const { id: workspaceId } = await params;
   return (
-    <WorkspaceProvider workspaceId={params.id}>
-      <CanvasPageClient workspaceId={params.id} />
+    <WorkspaceProvider workspaceId={workspaceId}>
+      <CanvasPageClient workspaceId={workspaceId} />
     </WorkspaceProvider>
   );
 }

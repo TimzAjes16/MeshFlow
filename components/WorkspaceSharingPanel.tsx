@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Users, UserPlus, Mail, X, Copy, Trash2, Shield } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+// import { createClient } from '@/lib/supabase/client'; // Commented out - supabase client not properly configured
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface WorkspaceMember {
@@ -42,7 +42,7 @@ export default function WorkspaceSharingPanel({
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'editor' | 'viewer'>('editor');
   const [creatingInvite, setCreatingInvite] = useState(false);
-  const supabase = createClient();
+  // const supabase = createClient(); // Commented out - supabase client not properly configured
 
   useEffect(() => {
     loadMembers();

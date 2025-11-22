@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { MessageSquare, Send, Trash2 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+// import { createClient } from '@/lib/supabase/client'; // Commented out - supabase client not properly configured
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -36,45 +36,43 @@ export default function CommentsPanel({
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const supabase = createClient();
+  // const supabase = createClient(); // Commented out - supabase client not properly configured
 
   useEffect(() => {
     loadComments();
     
-    // Subscribe to new comments
-    const channel = supabase
-      .channel(`comments:${nodeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'comments',
-          filter: `node_id=eq.${nodeId}`,
-        },
-        () => {
-          loadComments();
-        }
-      )
-      .subscribe();
+    // Subscribe to new comments - commented out until supabase client is properly configured
+    // const channel = supabase
+    //   .channel(`comments:${nodeId}`)
+    //   .on(
+    //     'postgres_changes',
+    //     {
+    //       event: '*',
+    //       schema: 'public',
+    //       table: 'comments',
+    //       filter: `node_id=eq.${nodeId}`,
+    //     },
+    //     () => {
+    //       loadComments();
+    //     }
+    //   )
+    //   .subscribe();
 
-    return () => {
-      channel.unsubscribe();
-    };
+    // return () => {
+    //   channel.unsubscribe();
+    // };
   }, [nodeId]);
 
   const loadComments = async () => {
-    const { data, error } = await supabase
-      .from('comments')
-      .select(`
-        *,
-        profile:profiles!comments_user_id_fkey(id, email, name, avatar_url)
-      `)
-      .eq('node_id', nodeId)
-      .order('created_at', { ascending: true });
-
-    if (!error && data) {
-      setComments(data as Comment[]);
+    // TODO: Replace with API route when supabase client is properly configured
+    try {
+      const response = await fetch(`/api/nodes/${nodeId}/comments`);
+      if (response.ok) {
+        const data = await response.json();
+        setComments(data.comments || []);
+      }
+    } catch (error) {
+      console.error('Error loading comments:', error);
     }
     setLoading(false);
   };
@@ -84,58 +82,40 @@ export default function CommentsPanel({
     if (!newComment.trim()) return;
 
     setSubmitting(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setSubmitting(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('comments')
-      .insert({
-        node_id: nodeId,
-        user_id: user.id,
-        content: newComment.trim(),
-      })
-      .select()
-      .single();
-
-    if (!error && data) {
-      setNewComment('');
-      await loadComments();
-      
-      // Log activity
-      await supabase.rpc('log_activity', {
-        p_workspace_id: workspaceId,
-        p_user_id: user.id,
-        p_action: 'comment',
-        p_entity_type: 'comment',
-        p_entity_id: data.id,
-        p_details: { node_id: nodeId },
+    // TODO: Replace with API route when supabase client is properly configured
+    try {
+      const response = await fetch(`/api/nodes/${nodeId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: newComment.trim(),
+        }),
       });
+      
+      if (response.ok) {
+        setNewComment('');
+        await loadComments();
+      }
+    } catch (error) {
+      console.error('Error submitting comment:', error);
     }
     setSubmitting(false);
   };
 
   const handleDeleteComment = async (commentId: string, userId: string) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user || user.id !== userId) return;
-
     if (!confirm('Delete this comment?')) return;
 
-    const { error } = await supabase
-      .from('comments')
-      .delete()
-      .eq('id', commentId);
+    // TODO: Replace with API route when supabase client is properly configured
+    try {
+      const response = await fetch(`/api/nodes/${nodeId}/comments/${commentId}`, {
+        method: 'DELETE',
+      });
 
-    if (!error) {
-      setComments(comments.filter((c) => c.id !== commentId));
+      if (response.ok) {
+        setComments(comments.filter((c) => c.id !== commentId));
+      }
+    } catch (error) {
+      console.error('Error deleting comment:', error);
     }
   };
 
@@ -182,10 +162,12 @@ export default function CommentsPanel({
             </div>
           ) : (
             comments.map((comment) => {
-              const {
-                data: { user },
-              } = supabase.auth.getUser();
-              const isOwner = user && user.id === comment.user_id;
+              // TODO: Get current user from session when supabase client is properly configured
+              // const {
+              //   data: { user },
+              // } = supabase.auth.getUser();
+              // const isOwner = user && user.id === comment.user_id;
+              const isOwner = false; // Temporarily disabled
 
               return (
                 <motion.div

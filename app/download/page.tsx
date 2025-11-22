@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Download, Apple, Windows, Globe, CheckCircle, ArrowRight } from 'lucide-react';
+import { Download, Apple, Monitor, Globe, CheckCircle, ArrowRight } from 'lucide-react';
 import MeshFlowLogo from '@/components/MeshFlowLogo';
 import Footer from '@/components/Footer';
 
@@ -84,7 +84,7 @@ export default function DownloadPage() {
                   : 'border-slate-800 bg-slate-900/50 hover:border-slate-700'
               }`}
             >
-              <Windows className={`w-12 h-12 mx-auto mb-4 ${
+              <Monitor className={`w-12 h-12 mx-auto mb-4 ${
                 selectedPlatform === 'windows' ? 'text-blue-400' : 'text-slate-400'
               }`} />
               <h3 className="text-xl font-semibold text-white mb-2">Windows</h3>

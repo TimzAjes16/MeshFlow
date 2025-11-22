@@ -1,28 +1,28 @@
 import { redirect } from 'next/navigation';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/api-helpers';
 import { prisma } from '@/lib/db';
 import WorkspaceShell from '@/components/WorkspaceShell';
 import WorkspaceSettingsPageClient from '@/components/WorkspaceSettingsPageClient';
 
 interface WorkspaceSettingsPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default async function WorkspaceSettingsPage({ params }: WorkspaceSettingsPageProps) {
-  const session = await getServerSession(authOptions);
+  const { id: workspaceId } = await params;
+  const user = await getCurrentUser();
 
-  if (!session?.user) {
+  if (!user) {
     redirect('/auth/login');
   }
 
-  const userId = session.user.id;
+  const userId = user.id;
 
   // Get workspace using Prisma
   const workspace = await prisma.workspace.findUnique({
-    where: { id: params.id },
+    where: { id: workspaceId },
     include: {
       owner: {
         select: {
@@ -72,12 +72,12 @@ export default async function WorkspaceSettingsPage({ params }: WorkspaceSetting
 
   // Only owner can access settings
   if (!isOwner && userRole !== 'owner') {
-    redirect(`/workspace/${params.id}/canvas`);
+    redirect(`/workspace/${workspaceId}/canvas`);
   }
 
   return (
     <WorkspaceShell 
-      workspaceId={params.id} 
+      workspaceId={workspaceId} 
       workspace={workspace} 
       userRole={userRole}
     >

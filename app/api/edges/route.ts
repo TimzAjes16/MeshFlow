@@ -53,15 +53,13 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      edge: {
-        id: edge.id,
-        workspaceId: edge.workspaceId,
-        source: edge.source,
-        target: edge.target,
-        label: edge.label,
-        similarity: edge.similarity,
-        createdAt: edge.createdAt.toISOString(),
-      },
+      id: edge.id,
+      workspaceId: edge.workspaceId,
+      source: edge.source,
+      target: edge.target,
+      label: edge.label,
+      similarity: edge.similarity,
+      createdAt: edge.createdAt.toISOString(),
     }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating edge:', error);

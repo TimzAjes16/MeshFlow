@@ -4,10 +4,10 @@ import { prisma } from '@/lib/db';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const nodeId = params.id;
+    const { id: nodeId } = await params;
 
     const node = await prisma.node.findUnique({
       where: { id: nodeId },
@@ -44,10 +44,10 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const nodeId = params.id;
+    const { id: nodeId } = await params;
 
     // Get node to check permissions
     const node = await prisma.node.findUnique({

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Maximize2, RotateCw, Minus, Plus } from 'lucide-react';
+import { RotateCw, Minus, Plus } from 'lucide-react';
 import type { Node } from '@/types/Node';
 
 interface NodeTransformPanelProps {

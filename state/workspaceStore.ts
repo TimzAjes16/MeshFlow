@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Workspace } from '@/types/Workspace';
 import type { Node } from '@/types/Node';
 import type { Edge } from '@/types/Edge';
+import { useHistoryStore, type HistoryAction } from './historyStore';
 
 interface WorkspaceStore {
   currentWorkspace: Workspace | null;
@@ -35,6 +36,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
 
   addNode: (node) => {
     console.log('[WorkspaceStore] Adding node:', node);
+    // Record history action
+    const historyStore = useHistoryStore.getState();
+    historyStore.recordAction(
+      { type: 'create_node', node },
+      `Created node "${node.title}"`
+    );
+    
     return set((state) => {
       // Check if node already exists to avoid duplicates
       if (state.nodes.some(n => n.id === node.id)) {
@@ -50,30 +58,93 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     });
   },
 
-  updateNode: (id, updates) => set((state) => ({
-    nodes: state.nodes.map((node) =>
-      node.id === id ? { ...node, ...updates } : node
-    ),
-  })),
+  updateNode: (id, updates) => {
+    console.log('[WorkspaceStore] Updating node:', id, updates);
+    
+    // Record history action - get the before state
+    return set((state) => {
+      const beforeNode = state.nodes.find((node) => node.id === id);
+      if (beforeNode && useHistoryStore.getState().isRecording) {
+        const historyStore = useHistoryStore.getState();
+        const before: Partial<Node> = {
+          title: beforeNode.title,
+          content: beforeNode.content,
+          tags: beforeNode.tags,
+          x: beforeNode.x,
+          y: beforeNode.y,
+        };
+        historyStore.recordAction(
+          { type: 'update_node', nodeId: id, before, after: updates },
+          `Updated node "${beforeNode.title}"`
+        );
+      }
+      
+      const updatedNodes = state.nodes.map((node) =>
+        node.id === id ? { ...node, ...updates } : node
+      );
+      console.log('[WorkspaceStore] Node updated, new nodes count:', updatedNodes.length);
+      return { nodes: updatedNodes };
+    });
+  },
 
-  deleteNode: (id) => set((state) => ({
-    nodes: state.nodes.filter((node) => node.id !== id),
-    edges: state.edges.filter(
-      (edge) => edge.source !== id && edge.target !== id
-    ),
-  })),
+  deleteNode: (id) => {
+    // Record history action - get the node before deletion
+    return set((state) => {
+      const nodeToDelete = state.nodes.find((node) => node.id === id);
+      if (nodeToDelete && useHistoryStore.getState().isRecording) {
+        const historyStore = useHistoryStore.getState();
+        historyStore.recordAction(
+          { type: 'delete_node', node: nodeToDelete },
+          `Deleted node "${nodeToDelete.title}"`
+        );
+      }
+      
+      return {
+        nodes: state.nodes.filter((node) => node.id !== id),
+        edges: state.edges.filter(
+          (edge) => edge.source !== id && edge.target !== id
+        ),
+      };
+    });
+  },
 
-  addEdge: (edge) => set((state) => {
-    const exists = state.edges.some(
-      (e) => e.source === edge.source && e.target === edge.target
-    );
-    if (exists) return state;
-    return { edges: [...state.edges, edge] };
-  }),
+  addEdge: (edge) => {
+    // Record history action
+    return set((state) => {
+      const exists = state.edges.some(
+        (e) => e.source === edge.source && e.target === edge.target
+      );
+      if (exists) return state;
+      
+      if (useHistoryStore.getState().isRecording) {
+        const historyStore = useHistoryStore.getState();
+        historyStore.recordAction(
+          { type: 'create_edge', edge },
+          'Created connection'
+        );
+      }
+      
+      return { edges: [...state.edges, edge] };
+    });
+  },
 
-  deleteEdge: (id) => set((state) => ({
-    edges: state.edges.filter((edge) => edge.id !== id),
-  })),
+  deleteEdge: (id) => {
+    // Record history action - get the edge before deletion
+    return set((state) => {
+      const edgeToDelete = state.edges.find((edge) => edge.id === id);
+      if (edgeToDelete && useHistoryStore.getState().isRecording) {
+        const historyStore = useHistoryStore.getState();
+        historyStore.recordAction(
+          { type: 'delete_edge', edge: edgeToDelete },
+          'Deleted connection'
+        );
+      }
+      
+      return {
+        edges: state.edges.filter((edge) => edge.id !== id),
+      };
+    });
+  },
 
   setLayout: (layout) => set({ layout }),
 }));

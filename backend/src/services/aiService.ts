@@ -141,3 +141,4 @@ function simpleHashEmbedding(text: string): number[] {
   return embedding.map((val) => (magnitude > 0 ? val / magnitude : 0));
 }
 
+

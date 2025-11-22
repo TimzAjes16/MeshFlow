@@ -4,8 +4,9 @@ import { redirect } from 'next/navigation';
 export default async function WorkspacePage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  redirect(`/workspace/${params.id}/canvas`);
+  const { id: workspaceId } = await params;
+  redirect(`/workspace/${workspaceId}/canvas`);
 }
 

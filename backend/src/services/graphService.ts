@@ -158,3 +158,4 @@ function cosineDistance(a: number[], b: number[]): number {
   return 1 - similarity; // Convert similarity to distance
 }
 
+

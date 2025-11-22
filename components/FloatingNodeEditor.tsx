@@ -1,9 +1,6 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
 import { useCanvasStore } from '@/state/canvasStore';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { 
@@ -12,15 +9,29 @@ import {
   ChevronDown, Type, AlignLeft, Settings,
   Type as FontSizeIcon, Palette as PaletteIcon,
   Square, Layers, ArrowUp, ArrowDown, 
-  BringToFront, SendToBack, BringForward, SendBackward
+  BringToFront, SendToBack
 } from 'lucide-react';
-import FloatingFormatToolbar from './FloatingFormatToolbar';
-import SlashCommandMenu from './SlashCommandMenu';
 import ChartEditorPanel from './ChartEditorPanel';
 import ImageSettingsPanel from './ImageSettingsPanel';
 import TextSettingsPanel from './TextSettingsPanel';
 import type { Node } from '@/types/Node';
 import type { Edge } from '@/types/Edge';
+
+// Helper function to load Google Fonts
+const loadGoogleFont = (fontName: string) => {
+  if (typeof window === 'undefined') return;
+  
+  // Check if font is already loaded
+  const linkId = `google-font-${fontName.replace(/\s+/g, '-').toLowerCase()}`;
+  if (document.getElementById(linkId)) return;
+  
+  // Create link element to load Google Font
+  const link = document.createElement('link');
+  link.id = linkId;
+  link.rel = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontName)}:wght@400;500;600;700&display=swap`;
+  document.head.appendChild(link);
+};
 
 function isChartNode(node: Node): boolean {
   if (!node.tags || node.tags.length === 0) return false;
@@ -58,6 +69,11 @@ export default function FloatingNodeEditor() {
   const titleInputRef = useRef<HTMLInputElement>(null);
   const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   
+  // Helper function to set ref without returning value
+  const setDropdownRef = (key: string) => (el: HTMLDivElement | null) => {
+    dropdownRefs.current[key] = el;
+  };
+  
   // Debounce timer refs
   const titleUpdateTimer = useRef<NodeJS.Timeout | null>(null);
   const contentUpdateTimer = useRef<NodeJS.Timeout | null>(null);
@@ -90,7 +106,7 @@ export default function FloatingNodeEditor() {
             if (data.node) {
               updateNode(nodeId, data.node);
             }
-            window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+            // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
           }
         } catch (error) {
           console.error('Error updating node:', error);
@@ -102,36 +118,13 @@ export default function FloatingNodeEditor() {
     [workspaceId, updateNode]
   );
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Placeholder.configure({
-        placeholder: 'Start typing...',
-      }),
-    ],
-    content: selectedNode && !isChartNode(selectedNode) && !isImageNode(selectedNode)
-      ? (typeof selectedNode.content === 'string' 
-          ? selectedNode.content 
-          : (selectedNode.content && typeof selectedNode.content === 'object' && selectedNode.content.type === 'doc'
-              ? selectedNode.content
-              : ''))
-      : '',
-    onUpdate: ({ editor }) => {
-      if (selectedNode && !isChartNode(selectedNode) && !isImageNode(selectedNode)) {
-        debouncedApiUpdate(selectedNode.id, {
-          content: editor.getJSON(),
-        });
-      }
-    },
-    editable: !selectedNode || (!isChartNode(selectedNode) && !isImageNode(selectedNode)),
-  });
 
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (openDropdown) {
         const dropdown = dropdownRefs.current[openDropdown];
-        if (dropdown && !dropdown.contains(event.target as Node)) {
+        if (dropdown && event.target instanceof Node && !dropdown.contains(event.target)) {
           setOpenDropdown(null);
         }
       }
@@ -141,9 +134,9 @@ export default function FloatingNodeEditor() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [openDropdown]);
 
-  // Sync with selected node
+  // Sync with selected node - depend on selectedNodeId to ensure updates when clicking canvas nodes
   useEffect(() => {
-    if (selectedNode) {
+    if (selectedNodeId && selectedNode) {
       setTitle(selectedNode.title);
       setTags(selectedNode.tags || []);
       
@@ -157,28 +150,11 @@ export default function FloatingNodeEditor() {
         }
       }
       
-      if (editor && !isChartNode(selectedNode) && !isImageNode(selectedNode)) {
-        const nodeContent = selectedNode.content;
-        let newContent: any = '';
-        
-        if (typeof nodeContent === 'string') {
-          newContent = nodeContent;
-        } else if (nodeContent && typeof nodeContent === 'object' && nodeContent.type === 'doc') {
-          newContent = nodeContent;
-        } else {
-          newContent = '';
-        }
-        
-        editor.commands.setContent(newContent);
-      }
-    } else {
+    } else if (!selectedNodeId) {
       setTitle('');
       setTags([]);
-      if (editor) {
-        editor.commands.clearContent();
-      }
     }
-  }, [selectedNode?.id, editor]);
+  }, [selectedNodeId, selectedNode]);
 
   // Fetch linked nodes
   useEffect(() => {
@@ -234,7 +210,7 @@ export default function FloatingNodeEditor() {
             if (data.node) {
               updateNode(nodeId, data.node);
             }
-            window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+            // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
           }
         } catch (error) {
           console.error('Error updating node title:', error);
@@ -350,7 +326,7 @@ export default function FloatingNodeEditor() {
               }),
             }),
           ]);
-          window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+          // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
           return;
         }
         newZIndex = currentZIndex + 1;
@@ -403,7 +379,7 @@ export default function FloatingNodeEditor() {
               }),
             }),
           ]);
-          window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+          // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
           return;
         }
         newZIndex = currentZIndex - 1;
@@ -431,14 +407,27 @@ export default function FloatingNodeEditor() {
             content: newContent,
           }),
         });
-        window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+        // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
+        // React Flow will sync from workspace store automatically
+        
+        // Also trigger a custom event to update React Flow zIndex
+        window.dispatchEvent(new CustomEvent('update-node-zindex', {
+          detail: { nodeId: selectedNode.id, zIndex: newZIndex }
+        }));
       } catch (error) {
         console.error('Error updating layer:', error);
       }
     }
   }, [selectedNode, workspaceId, nodes, updateNode]);
 
+  // Don't render if no node is selected
+  if (!selectedNodeId) {
+    return null;
+  }
+  
+  // If node not found in store yet, show loading state or wait for it
   if (!selectedNode) {
+    // Node might not be loaded yet - wait a bit for workspace store to sync
     return null;
   }
 
@@ -467,10 +456,10 @@ export default function FloatingNodeEditor() {
         <div className="h-6 w-px bg-gray-200" />
 
         {/* Settings Dropdown - for text formatting options */}
-        {!isChartNode(selectedNode) && !isImageNode(selectedNode) && (
+        {!isChartNode(selectedNode) && !isImageNode(selectedNode) && !isEmojiNode(selectedNode) && (
           <>
             {/* Font Size Dropdown */}
-            <div className="relative" ref={(el) => (dropdownRefs.current['fontSize'] = el)}>
+            <div className="relative" ref={setDropdownRef('fontSize')}>
               <button
                 onClick={() => toggleDropdown('fontSize')}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
@@ -481,22 +470,28 @@ export default function FloatingNodeEditor() {
               </button>
               
               {openDropdown === 'fontSize' && (
-                <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[200px] z-50">
+                <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[200px] max-h-[400px] overflow-y-auto z-50">
                   {[
-                    { value: 'small', label: 'Small', size: '14px' },
-                    { value: 'medium', label: 'Medium', size: '16px' },
-                    { value: 'large', label: 'Large', size: '18px' },
-                    { value: 'xlarge', label: 'Extra Large', size: '20px' },
+                    { value: 'xs', label: 'Extra Small', size: '12px' },
+                    { value: 'sm', label: 'Small', size: '14px' },
+                    { value: 'base', label: 'Medium', size: '16px' },
+                    { value: 'lg', label: 'Large', size: '18px' },
+                    { value: 'xl', label: 'Extra Large', size: '20px' },
+                    { value: '2xl', label: '2X Large', size: '24px' },
+                    { value: '3xl', label: '3X Large', size: '30px' },
+                    { value: '4xl', label: '4X Large', size: '36px' },
+                    { value: '5xl', label: '5X Large', size: '48px' },
+                    { value: '6xl', label: '6X Large', size: '60px' },
                   ].map((option) => {
                     const currentSize = (selectedNode.content && typeof selectedNode.content === 'object' && 'textSettings' in selectedNode.content
                       ? (selectedNode.content as any).textSettings?.fontSize
-                      : 'medium') || 'medium';
+                      : 'base') || 'base';
                     const isSelected = currentSize === option.value;
                     
                     return (
                       <button
                         key={option.value}
-                        onClick={() => {
+                        onClick={async () => {
                           const currentContent = selectedNode.content || {};
                           const textSettings = currentContent && typeof currentContent === 'object' && 'textSettings' in currentContent
                             ? (currentContent as any).textSettings
@@ -505,8 +500,12 @@ export default function FloatingNodeEditor() {
                             ...currentContent,
                             textSettings: { ...textSettings, fontSize: option.value },
                           };
+                          
+                          // Update local store immediately for instant UI feedback
                           updateNode(selectedNode.id, { content: newContent });
+                          
                           if (workspaceId) {
+                            // Fire-and-forget API call - don't await to prevent UI blocking
                             fetch('/api/nodes/update', {
                               method: 'PUT',
                               headers: { 'Content-Type': 'application/json' },
@@ -514,9 +513,10 @@ export default function FloatingNodeEditor() {
                                 nodeId: selectedNode.id,
                                 content: newContent,
                               }),
-                            }).then(() => {
-                              window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+                            }).catch((error) => {
+                              console.error('Error updating font size:', error);
                             });
+                            // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
                           }
                           setOpenDropdown(null);
                         }}
@@ -535,7 +535,7 @@ export default function FloatingNodeEditor() {
             </div>
 
             {/* Font Family Dropdown */}
-            <div className="relative" ref={(el) => (dropdownRefs.current['fontFamily'] = el)}>
+            <div className="relative" ref={setDropdownRef('fontFamily')}>
               <button
                 onClick={() => toggleDropdown('fontFamily')}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
@@ -546,11 +546,39 @@ export default function FloatingNodeEditor() {
               </button>
               
               {openDropdown === 'fontFamily' && (
-                <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[200px] z-50">
+                <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[250px] max-h-[400px] overflow-y-auto z-50">
                   {[
-                    { value: 'sans', label: 'Sans Serif', font: 'Inter, system-ui, sans-serif' },
-                    { value: 'serif', label: 'Serif', font: 'Georgia, serif' },
-                    { value: 'mono', label: 'Monospace', font: 'Monaco, monospace' },
+                    // Sans Serif fonts
+                    { value: 'sans', label: 'Sans Serif', font: 'Inter, system-ui, sans-serif', category: 'Sans Serif' },
+                    { value: 'roboto', label: 'Roboto', font: '"Roboto", sans-serif', googleFont: 'Roboto' },
+                    { value: 'open-sans', label: 'Open Sans', font: '"Open Sans", sans-serif', googleFont: 'Open Sans' },
+                    { value: 'lato', label: 'Lato', font: '"Lato", sans-serif', googleFont: 'Lato' },
+                    { value: 'montserrat', label: 'Montserrat', font: '"Montserrat", sans-serif', googleFont: 'Montserrat' },
+                    { value: 'raleway', label: 'Raleway', font: '"Raleway", sans-serif', googleFont: 'Raleway' },
+                    { value: 'poppins', label: 'Poppins', font: '"Poppins", sans-serif', googleFont: 'Poppins' },
+                    { value: 'source-sans', label: 'Source Sans Pro', font: '"Source Sans Pro", sans-serif', googleFont: 'Source Sans Pro' },
+                    { value: 'nunito', label: 'Nunito', font: '"Nunito", sans-serif', googleFont: 'Nunito' },
+                    { value: 'ubuntu', label: 'Ubuntu', font: '"Ubuntu", sans-serif', googleFont: 'Ubuntu' },
+                    { value: 'playfair-display', label: 'Playfair Display', font: '"Playfair Display", serif', googleFont: 'Playfair Display' },
+                    // Serif fonts
+                    { value: 'serif', label: 'Serif', font: 'Georgia, serif', category: 'Serif' },
+                    { value: 'merriweather', label: 'Merriweather', font: '"Merriweather", serif', googleFont: 'Merriweather' },
+                    { value: 'lora', label: 'Lora', font: '"Lora", serif', googleFont: 'Lora' },
+                    { value: 'crimson-text', label: 'Crimson Text', font: '"Crimson Text", serif', googleFont: 'Crimson Text' },
+                    { value: 'libre-baskerville', label: 'Libre Baskerville', font: '"Libre Baskerville", serif', googleFont: 'Libre Baskerville' },
+                    { value: 'pt-serif', label: 'PT Serif', font: '"PT Serif", serif', googleFont: 'PT Serif' },
+                    { value: 'cormorant', label: 'Cormorant', font: '"Cormorant", serif', googleFont: 'Cormorant' },
+                    // Monospace fonts
+                    { value: 'mono', label: 'Monospace', font: 'Monaco, monospace', category: 'Monospace' },
+                    { value: 'roboto-mono', label: 'Roboto Mono', font: '"Roboto Mono", monospace', googleFont: 'Roboto Mono' },
+                    { value: 'source-code-pro', label: 'Source Code Pro', font: '"Source Code Pro", monospace', googleFont: 'Source Code Pro' },
+                    { value: 'fira-code', label: 'Fira Code', font: '"Fira Code", monospace', googleFont: 'Fira Code' },
+                    { value: 'jetbrains-mono', label: 'JetBrains Mono', font: '"JetBrains Mono", monospace', googleFont: 'JetBrains Mono' },
+                    { value: 'inconsolata', label: 'Inconsolata', font: '"Inconsolata", monospace', googleFont: 'Inconsolata' },
+                    // Display/Decorative fonts
+                    { value: 'oswald', label: 'Oswald', font: '"Oswald", sans-serif', googleFont: 'Oswald' },
+                    { value: 'bebas-neue', label: 'Bebas Neue', font: '"Bebas Neue", sans-serif', googleFont: 'Bebas Neue' },
+                    { value: 'dancing-script', label: 'Dancing Script', font: '"Dancing Script", cursive', googleFont: 'Dancing Script' },
                   ].map((option) => {
                     const currentFamily = (selectedNode.content && typeof selectedNode.content === 'object' && 'textSettings' in selectedNode.content
                       ? (selectedNode.content as any).textSettings?.fontFamily
@@ -558,41 +586,61 @@ export default function FloatingNodeEditor() {
                     const isSelected = currentFamily === option.value;
                     
                     return (
-                      <button
-                        key={option.value}
-                        onClick={() => {
-                          const currentContent = selectedNode.content || {};
-                          const textSettings = currentContent && typeof currentContent === 'object' && 'textSettings' in currentContent
-                            ? (currentContent as any).textSettings
-                            : {};
-                          const newContent = {
-                            ...currentContent,
-                            textSettings: { ...textSettings, fontFamily: option.value },
-                          };
-                          updateNode(selectedNode.id, { content: newContent });
-                          if (workspaceId) {
-                            fetch('/api/nodes/update', {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                nodeId: selectedNode.id,
-                                content: newContent,
-                              }),
-                            }).then(() => {
-                              window.dispatchEvent(new CustomEvent('refreshWorkspace'));
-                            });
-                          }
-                          setOpenDropdown(null);
-                        }}
-                        style={{ fontFamily: option.font }}
-                        className={`w-full px-4 py-2.5 text-left border-2 rounded-lg transition-all mb-2 ${
-                          isSelected
-                            ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
-                            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                        }`}
-                      >
-                        {option.label}
-                      </button>
+                      <div key={option.value}>
+                        {option.category && (
+                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-2 py-1 mt-2 first:mt-0">
+                            {option.category}
+                          </div>
+                        )}
+                        <button
+                          onClick={async () => {
+                            // Load Google Font if needed
+                            if (option.googleFont) {
+                              loadGoogleFont(option.googleFont);
+                            }
+                            
+                            const currentContent = selectedNode.content || {};
+                            const textSettings = currentContent && typeof currentContent === 'object' && 'textSettings' in currentContent
+                              ? (currentContent as any).textSettings
+                              : {};
+                            const newContent = {
+                              ...currentContent,
+                              textSettings: { 
+                                ...textSettings, 
+                                fontFamily: option.value,
+                                googleFont: option.googleFont || null,
+                              },
+                            };
+                            
+                            // Update local store immediately for instant UI feedback
+                            updateNode(selectedNode.id, { content: newContent });
+                            
+                            if (workspaceId) {
+                              // Fire-and-forget API call - don't await to prevent UI blocking
+                              fetch('/api/nodes/update', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  nodeId: selectedNode.id,
+                                  content: newContent,
+                                }),
+                              }).catch((error) => {
+                                console.error('Error updating font family:', error);
+                              });
+                              // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
+                            }
+                            setOpenDropdown(null);
+                          }}
+                          style={{ fontFamily: option.font }}
+                          className={`w-full px-4 py-2.5 text-left border-2 rounded-lg transition-all mb-2 ${
+                            isSelected
+                              ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
+                              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -600,7 +648,7 @@ export default function FloatingNodeEditor() {
             </div>
 
             {/* Text Alignment Dropdown */}
-            <div className="relative" ref={(el) => (dropdownRefs.current['alignment'] = el)}>
+            <div className="relative" ref={setDropdownRef('alignment')}>
               <button
                 onClick={() => toggleDropdown('alignment')}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
@@ -644,9 +692,10 @@ export default function FloatingNodeEditor() {
                                 nodeId: selectedNode.id,
                                 content: newContent,
                               }),
-                            }).then(() => {
-                              window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+                            }).catch((error) => {
+                              console.error('Error updating alignment:', error);
                             });
+                            // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
                           }
                           setOpenDropdown(null);
                         }}
@@ -666,37 +715,10 @@ export default function FloatingNodeEditor() {
           </>
         )}
 
-        {/* Content Dropdown - for rich text editor */}
-        {!isChartNode(selectedNode) && !isImageNode(selectedNode) && (
-          <div className="relative" ref={(el) => (dropdownRefs.current['content'] = el)}>
-            <button
-              onClick={() => toggleDropdown('content')}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
-            >
-              <Type className="w-4 h-4" />
-              <span>Editor</span>
-              <ChevronDown className={`w-4 h-4 transition-transform ${openDropdown === 'content' ? 'rotate-180' : ''}`} />
-            </button>
-            
-            {openDropdown === 'content' && (
-              <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 p-4 w-[600px] max-h-[70vh] overflow-y-auto z-50">
-                <div className="relative border border-gray-200 rounded-lg min-h-[300px] focus-within:ring-2 focus-within:ring-blue-500">
-                  {editor && (
-                    <>
-                      <EditorContent editor={editor} className="prose prose-sm max-w-none p-3" />
-                      <FloatingFormatToolbar editor={editor} />
-                      <SlashCommandMenu editor={editor} />
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
         
         {/* Content Dropdown - for charts */}
         {isChartNode(selectedNode) && (
-          <div className="relative" ref={(el) => (dropdownRefs.current['content'] = el)}>
+            <div className="relative" ref={setDropdownRef('content')}>
             <button
               onClick={() => toggleDropdown('content')}
               className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
@@ -711,7 +733,24 @@ export default function FloatingNodeEditor() {
                 <ChartEditorPanel
                   node={selectedNode}
                   onUpdate={async (config) => {
-                    updateNode(selectedNode.id, { content: { chart: config } });
+                    // Only update if config actually changed
+                    const currentContent = selectedNode.content && typeof selectedNode.content === 'object' && 'chart' in selectedNode.content
+                      ? (selectedNode.content as any).chart
+                      : null;
+                    
+                    // Deep compare to avoid unnecessary updates
+                    if (JSON.stringify(currentContent) === JSON.stringify(config)) {
+                      return; // No change, skip update
+                    }
+                    
+                    // Preserve other content fields (like nodeMetadata)
+                    const updatedContent = {
+                      ...(selectedNode.content && typeof selectedNode.content === 'object' ? selectedNode.content : {}),
+                      chart: config,
+                    };
+                    
+                    updateNode(selectedNode.id, { content: updatedContent });
+                    
                     if (workspaceId) {
                       try {
                         const response = await fetch('/api/nodes/update', {
@@ -719,11 +758,12 @@ export default function FloatingNodeEditor() {
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
                             nodeId: selectedNode.id,
-                            content: { chart: config },
+                            content: updatedContent,
                           }),
                         });
                         if (response.ok) {
-                          window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+                          // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
+                          // Chart updates are already reflected in local store
                         }
                       } catch (error) {
                         console.error('Error updating chart:', error);
@@ -738,7 +778,7 @@ export default function FloatingNodeEditor() {
         
         {/* Content Dropdown - for images */}
         {isImageNode(selectedNode) && (
-          <div className="relative" ref={(el) => (dropdownRefs.current['content'] = el)}>
+            <div className="relative" ref={setDropdownRef('content')}>
             <button
               onClick={() => toggleDropdown('content')}
               className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
@@ -768,7 +808,7 @@ export default function FloatingNodeEditor() {
                           }),
                         });
                         if (response.ok) {
-                          window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+                          // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
                         }
                       } catch (error) {
                         console.error('Error updating image:', error);
@@ -783,7 +823,7 @@ export default function FloatingNodeEditor() {
 
         {/* Fill Dropdown - for emoji nodes */}
         {isEmojiNode(selectedNode) && (
-          <div className="relative" ref={(el) => (dropdownRefs.current['fill'] = el)}>
+            <div className="relative" ref={setDropdownRef('fill')}>
             <button
               onClick={() => toggleDropdown('fill')}
               className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
@@ -823,10 +863,11 @@ export default function FloatingNodeEditor() {
                               nodeId: selectedNode.id,
                               content: newContent,
                             }),
-                          }).then(() => {
-                            window.dispatchEvent(new CustomEvent('refreshWorkspace'));
-                            setOpenDropdown(null);
+                          }).catch((error) => {
+                            console.error('Error updating emoji fill:', error);
                           });
+                          // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
+                          setOpenDropdown(null);
                         } else {
                           setOpenDropdown(null);
                         }
@@ -896,9 +937,10 @@ export default function FloatingNodeEditor() {
                                       nodeId: selectedNode.id,
                                       content: newContent,
                                     }),
-                                  }).then(() => {
-                                    window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+                                  }).catch((error) => {
+                                    console.error('Error updating emoji color:', error);
                                   });
+                                  // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
                                 }
                               }}
                               className={`w-8 h-8 rounded border-2 transition-all ${
@@ -921,7 +963,7 @@ export default function FloatingNodeEditor() {
         )}
 
         {/* Layer/Layering Dropdown */}
-        <div className="relative" ref={(el) => (dropdownRefs.current['layer'] = el)}>
+            <div className="relative" ref={setDropdownRef('layer')}>
           <button
             onClick={() => toggleDropdown('layer')}
             className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
@@ -984,7 +1026,7 @@ export default function FloatingNodeEditor() {
         </div>
 
         {/* Tags Dropdown */}
-        <div className="relative" ref={(el) => (dropdownRefs.current['tags'] = el)}>
+            <div className="relative" ref={setDropdownRef('tags')}>
           <button
             onClick={() => toggleDropdown('tags')}
             className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
@@ -1024,7 +1066,7 @@ export default function FloatingNodeEditor() {
                                   tags: newTags,
                                 }),
                               });
-                              window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+                              // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
                             } catch (error) {
                               console.error('Error updating tags:', error);
                             }
@@ -1058,9 +1100,10 @@ export default function FloatingNodeEditor() {
                                 nodeId: selectedNode.id,
                                 tags: newTags,
                               }),
-                            }).then(() => {
-                              window.dispatchEvent(new CustomEvent('refreshWorkspace'));
+                            }).catch((error) => {
+                              console.error('Error updating alignment:', error);
                             });
+                            // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
                           }
                         }
                       }
@@ -1083,9 +1126,10 @@ export default function FloatingNodeEditor() {
                               nodeId: selectedNode.id,
                               tags: newTags,
                             }),
-                          }).then(() => {
-                            window.dispatchEvent(new CustomEvent('refreshWorkspace'));
-                          });
+                            }).catch((error) => {
+                              console.error('Error updating tags:', error);
+                            });
+                            // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
                         }
                       }
                     }}
@@ -1101,7 +1145,7 @@ export default function FloatingNodeEditor() {
 
         {/* Linked Nodes Dropdown */}
         {linkedNodes.length > 0 && (
-          <div className="relative" ref={(el) => (dropdownRefs.current['linked'] = el)}>
+            <div className="relative" ref={setDropdownRef('linked')}>
             <button
               onClick={() => toggleDropdown('linked')}
               className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
@@ -1117,33 +1161,73 @@ export default function FloatingNodeEditor() {
             {openDropdown === 'linked' && (
               <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 p-4 min-w-[300px] max-h-[400px] overflow-y-auto">
                 <div className="space-y-2">
-                  {linkedNodes.map((linkedNode) => (
-                    <button
-                      key={linkedNode.id}
-                      onClick={() => {
-                        useCanvasStore.getState().selectNode(linkedNode.id);
-                        window.dispatchEvent(new CustomEvent('zoom-to-node', {
-                          detail: { nodeId: linkedNode.id }
-                        }));
-                        setOpenDropdown(null);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
-                    >
-                      <div className="font-medium text-gray-900">{linkedNode.title || 'Untitled'}</div>
-                      {linkedNode.tags && linkedNode.tags.length > 0 && (
-                        <div className="flex gap-1 mt-1">
-                          {linkedNode.tags.slice(0, 3).map((tag, idx) => (
-                            <span
-                              key={idx}
-                              className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </button>
-                  ))}
+                  {linkedNodes.map((linkedNode) => {
+                    // Find the edge connecting this node
+                    const connectingEdge = edges.find(
+                      (edge) => 
+                        (edge.source === selectedNode.id && edge.target === linkedNode.id) ||
+                        (edge.source === linkedNode.id && edge.target === selectedNode.id)
+                    );
+                    
+                    return (
+                      <div
+                        key={linkedNode.id}
+                        className="group relative w-full px-3 py-2 text-sm bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+                      >
+                        <button
+                          onClick={() => {
+                            useCanvasStore.getState().selectNode(linkedNode.id);
+                            window.dispatchEvent(new CustomEvent('zoom-to-node', {
+                              detail: { nodeId: linkedNode.id }
+                            }));
+                            setOpenDropdown(null);
+                          }}
+                          className="w-full text-left pr-8"
+                        >
+                          <div className="font-medium text-gray-900">{linkedNode.title || 'Untitled'}</div>
+                          {linkedNode.tags && linkedNode.tags.length > 0 && (
+                            <div className="flex gap-1 mt-1">
+                              {linkedNode.tags.slice(0, 3).map((tag, idx) => (
+                                <span
+                                  key={idx}
+                                  className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </button>
+                        {connectingEdge && (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!workspaceId || !connectingEdge.id) return;
+                              
+                              try {
+                                const response = await fetch(`/api/edges?edgeId=${connectingEdge.id}&workspaceId=${workspaceId}`, {
+                                  method: 'DELETE',
+                                });
+                                
+                                if (response.ok) {
+                                  // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
+                                  // Update linked nodes list
+                                  const updatedLinked = linkedNodes.filter(n => n.id !== linkedNode.id);
+                                  setLinkedNodes(updatedLinked);
+                                }
+                              } catch (error) {
+                                console.error('Error deleting edge:', error);
+                              }
+                            }}
+                            className="absolute top-2 right-2 p-1 hover:bg-red-100 rounded transition-colors opacity-0 group-hover:opacity-100"
+                            title="Unlink"
+                          >
+                            <X className="w-4 h-4 text-red-600" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1151,7 +1235,7 @@ export default function FloatingNodeEditor() {
         )}
 
         {/* AI Actions Dropdown */}
-        <div className="relative" ref={(el) => (dropdownRefs.current['ai'] = el)}>
+            <div className="relative" ref={setDropdownRef('ai')}>
           <button
             onClick={() => toggleDropdown('ai')}
             className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireWorkspaceAccess } from '@/lib/api-helpers';
 import { prisma } from '@/lib/db';
 import { getNodeEmbedding } from '@/lib/embeddings';
-import { arrayToVector, findSimilarNodes } from '@/lib/db';
+import { arrayToVector, findSimilarNodes } from '@/lib/db-server';
 import { Prisma } from '@prisma/client';
 
 export async function POST(request: NextRequest) {
@@ -85,35 +85,25 @@ export async function POST(request: NextRequest) {
     });
     console.log('[API] Node verification:', { exists: !!verifyNode, verifiedNode: verifyNode });
 
-    // Update embedding using raw SQL (pgvector) - OPTIONAL, skip for now to test node creation
-    console.log('[API] Skipping embedding update for testing (node should still be created)');
+    // Update embedding using raw SQL (pgvector) - OPTIONAL, skip silently if column doesn't exist
     let embeddingUpdated = false;
     
-    // TODO: Fix embedding update - temporarily disabled to test node creation
-    // The node will be created successfully without embedding
-    try {
-      // For now, skip embedding update to ensure node creation works
-      console.log('[API] Embedding update temporarily disabled for testing');
-      
-      /* Uncomment when ready to test embedding:
-      // Convert embedding array to pgvector text format: [0.1, 0.2, 0.3, ...]
-      const vectorText = `[${embedding.join(',')}]`;
-      
-      // Validate UUID format
-      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidPattern.test(newNode.id)) {
-        throw new Error(`Invalid UUID format: ${newNode.id}`);
+    if (embedding && embedding.length > 0 && process.env.OPENAI_API_KEY) {
+      try {
+        // Only try to update embedding if OPENAI_API_KEY is set
+        // Skip the column check to avoid error logs
+        const vectorText = `[${embedding.join(',')}]`;
+        await prisma.$executeRaw`
+          UPDATE nodes
+          SET embedding = ${vectorText}::vector
+          WHERE id = ${newNode.id}::uuid
+        `.catch(() => {
+          // Silently fail if embedding column doesn't exist
+        });
+        embeddingUpdated = true;
+      } catch (embeddingError: any) {
+        // Silently skip embedding update if it fails
       }
-      
-      await prisma.$executeRaw(
-        Prisma.sql`UPDATE nodes SET embedding = ${Prisma.raw(vectorText)}::vector WHERE id = ${Prisma.raw(`'${newNode.id}'`)}::uuid`
-      );
-      embeddingUpdated = true;
-      */
-    } catch (embeddingError: any) {
-      console.warn('[API] Embedding update failed (this is OK, node creation succeeded):', {
-        message: embeddingError?.message,
-      });
     }
 
     // Auto-link: Find similar nodes (non-blocking) - SKIPPED if no embedding

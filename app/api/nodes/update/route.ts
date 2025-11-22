@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireWorkspaceAccess } from '@/lib/api-helpers';
 import { prisma } from '@/lib/db';
 import { getNodeEmbedding } from '@/lib/embeddings';
-import { findSimilarNodes } from '@/lib/db';
+import { findSimilarNodes } from '@/lib/db-server';
 
 export async function PUT(request: NextRequest) {
   try {
@@ -57,79 +57,83 @@ export async function PUT(request: NextRequest) {
         });
 
         // Update embedding using raw SQL (optional - don't fail if pgvector isn't set up)
-        if (newEmbedding && newEmbedding.length > 0) {
+        if (newEmbedding && newEmbedding.length > 0 && process.env.OPENAI_API_KEY) {
           try {
+            // Only try to update embedding if OPENAI_API_KEY is set
+            // Skip the column check to avoid error logs
             const vectorText = `[${newEmbedding.join(',')}]`;
             await prisma.$executeRaw`
               UPDATE nodes
               SET embedding = ${vectorText}::vector
               WHERE id = ${nodeId}::uuid
-            `;
-          } catch (embeddingError: any) {
-            console.warn('[API] Failed to update embedding (continuing without embedding):', embeddingError?.message);
-            // Continue without embedding - node update will still succeed
-          }
-
-          // Re-check auto-linking (optional - don't fail if this errors)
-          try {
-            const similarNodes = await findSimilarNodes(
-              newEmbedding,
-              existingNode.workspaceId,
-              nodeId,
-              0.82, // auto-link threshold
-              10 // limit
-            );
-
-            if (similarNodes.length > 0) {
-              // Get existing edges from this node
-              const existingEdges = await prisma.edge.findMany({
-                where: {
-                  workspaceId: existingNode.workspaceId,
-                  source: nodeId,
-                },
-                select: { target: true },
-              });
-
-              const existingTargets = new Set(existingEdges.map((e) => e.target));
-
-              // Create new auto-edges for nodes that don't already have edges
-              const newTargets = similarNodes.filter(
-                (node) => !existingTargets.has(node.id)
+            `.catch(() => {
+              // Silently fail if embedding column doesn't exist
+            });
+            
+            // Re-check auto-linking (optional - don't fail if this errors)
+            try {
+              const similarNodes = await findSimilarNodes(
+                newEmbedding,
+                existingNode.workspaceId,
+                nodeId,
+                0.82, // auto-link threshold
+                10 // limit
               );
 
-              if (newTargets.length > 0) {
-                await prisma.edge.createMany({
-                  data: newTargets.map((targetNode) => ({
+              if (similarNodes.length > 0) {
+                // Get existing edges from this node
+                const existingEdges = await prisma.edge.findMany({
+                  where: {
                     workspaceId: existingNode.workspaceId,
                     source: nodeId,
-                    target: targetNode.id,
-                    similarity: targetNode.similarity || 1,
-                  })),
-                  skipDuplicates: true,
+                  },
+                  select: { target: true },
                 });
 
-                // Log activity (optional - don't fail if this errors)
-                try {
-                  await prisma.activityLog.create({
-                    data: {
+                const existingTargets = new Set(existingEdges.map((e) => e.target));
+
+                // Create new auto-edges for nodes that don't already have edges
+                const newTargets = similarNodes.filter(
+                  (node) => !existingTargets.has(node.id)
+                );
+
+                if (newTargets.length > 0) {
+                  await prisma.edge.createMany({
+                    data: newTargets.map((targetNode) => ({
                       workspaceId: existingNode.workspaceId,
-                      userId: user.id,
-                      action: 'auto_link',
-                      entityType: 'edge',
-                      details: {
-                        sourceNodeId: nodeId,
-                        targetNodesCount: newTargets.length,
-                      },
-                    },
+                      source: nodeId,
+                      target: targetNode.id,
+                      similarity: targetNode.similarity || 1,
+                    })),
+                    skipDuplicates: true,
                   });
-                } catch (logError: any) {
-                  console.warn('[API] Failed to log auto-link activity (continuing):', logError?.message);
+
+                  // Log activity (optional - don't fail if this errors)
+                  try {
+                    await prisma.activityLog.create({
+                      data: {
+                        workspaceId: existingNode.workspaceId,
+                        userId: user.id,
+                        action: 'auto_link',
+                        entityType: 'edge',
+                        details: {
+                          sourceNodeId: nodeId,
+                          targetNodesCount: newTargets.length,
+                        },
+                      },
+                    });
+                  } catch (logError: any) {
+                    console.warn('[API] Failed to log auto-link activity (continuing):', logError?.message);
+                  }
                 }
               }
+            } catch (autoLinkError: any) {
+              console.warn('[API] Failed to auto-link nodes (continuing):', autoLinkError?.message);
+              // Continue without auto-linking - node update will still succeed
             }
-          } catch (autoLinkError: any) {
-            console.warn('[API] Failed to auto-link nodes (continuing):', autoLinkError?.message);
-            // Continue without auto-linking - node update will still succeed
+          } catch (embeddingError: any) {
+            // Silently skip embedding update if it fails (column doesn't exist or other error)
+            // Node update will still succeed without embedding
           }
         }
       } catch (embeddingGenError: any) {

@@ -1,26 +1,26 @@
 import { redirect } from 'next/navigation';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/api-helpers';
 import { prisma } from '@/lib/db';
 import WorkspaceShell from '@/components/WorkspaceShell';
 
 interface WorkspaceLayoutProps {
   children: React.ReactNode;
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default async function WorkspaceLayout({ children, params }: WorkspaceLayoutProps) {
-  const session = await getServerSession(authOptions);
+  const { id: workspaceId } = await params;
+  const user = await getCurrentUser();
 
-  if (!session?.user) {
+  if (!user) {
     redirect('/auth/login');
   }
 
-  const userId = session.user.id;
+  const userId = user.id;
 
   // Get workspace using Prisma
   const workspace = await prisma.workspace.findUnique({
-    where: { id: params.id },
+    where: { id: workspaceId },
     include: {
       owner: {
         select: {
@@ -46,7 +46,7 @@ export default async function WorkspaceLayout({ children, params }: WorkspaceLay
     const member = await prisma.workspaceMember.findUnique({
       where: {
         workspaceId_userId: {
-          workspaceId: params.id,
+          workspaceId: workspaceId,
           userId: userId,
         },
       },
@@ -60,7 +60,7 @@ export default async function WorkspaceLayout({ children, params }: WorkspaceLay
   }
 
   return (
-    <WorkspaceShell workspaceId={params.id} workspace={workspace} userRole={userRole}>
+    <WorkspaceShell workspaceId={workspaceId} workspace={workspace} userRole={userRole}>
       {children}
     </WorkspaceShell>
   );

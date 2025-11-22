@@ -4,13 +4,14 @@ import { useCallback, useState, useEffect } from 'react';
 import CanvasContainer from './CanvasContainer';
 import FloatingNodeEditor from './FloatingNodeEditor';
 import FloatingHorizontalBar from './FloatingHorizontalBar';
+import HistoryBar from './HistoryBar';
 import KeyboardShortcuts from './KeyboardShortcuts';
 import CanvasSidebar from './CanvasSidebar';
 import ToolbarSettingsPanel from './ToolbarSettingsPanel';
-import NodeEditorPanel from './NodeEditorPanel';
 import EmojiPickerPopup from './EmojiPickerPopup';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
+import { useHistoryStore } from '@/state/historyStore';
 import type { Node } from '@/types/Node';
 
 interface CanvasPageClientProps {
@@ -20,6 +21,7 @@ interface CanvasPageClientProps {
 export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps) {
   const { nodes, addNode, updateNode } = useWorkspaceStore();
   const { selectNode, selectedNodeId } = useCanvasStore();
+  const { undo, redo, canUndo, canRedo } = useHistoryStore();
   const [isCreating, setIsCreating] = useState(false);
   const [toolbarPosition, setToolbarPosition] = useState<{ x: number; y: number } | null>(null);
   const [selectedNodeType, setSelectedNodeType] = useState<string | null>(null);
@@ -277,6 +279,29 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         return;
       }
 
+      // Undo/Redo shortcuts: Ctrl+Z and Ctrl+Shift+Z
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo()) {
+          const entry = undo();
+          if (entry) {
+            window.dispatchEvent(new CustomEvent('history-undo', { detail: { entry } }));
+          }
+        }
+        return;
+      }
+      
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        if (canRedo()) {
+          const entry = redo();
+          if (entry) {
+            window.dispatchEvent(new CustomEvent('history-redo', { detail: { entry } }));
+          }
+        }
+        return;
+      }
+
       // Layer controls: Ctrl+] Bring to Front, Ctrl+[ Send to Back, Ctrl+↑ Move Forward, Ctrl+↓ Move Backward
       if ((e.metaKey || e.ctrlKey) && selectedNodeId && nodes.length > 0) {
         const selectedNode = nodes.find(n => n.id === selectedNodeId);
@@ -316,7 +341,10 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                 nodeId: selectedNodeId,
                 content: newContent,
               }),
-            }).then(() => window.dispatchEvent(new CustomEvent('refreshWorkspace')));
+            }).catch((error) => {
+              console.error('Error updating layer:', error);
+            });
+            // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
             return;
           } else if (e.key === '[') {
             e.preventDefault();
@@ -348,7 +376,10 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                 nodeId: selectedNodeId,
                 content: newContent,
               }),
-            }).then(() => window.dispatchEvent(new CustomEvent('refreshWorkspace')));
+            }).catch((error) => {
+              console.error('Error updating layer:', error);
+            });
+            // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
             return;
           } else if (e.key === 'ArrowUp') {
             e.preventDefault();
@@ -419,7 +450,10 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                   nodeId: selectedNodeId,
                   content: newContent,
                 }),
-              }).then(() => window.dispatchEvent(new CustomEvent('refreshWorkspace')));
+              }).catch((error) => {
+              console.error('Error updating layer:', error);
+            });
+            // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
             }
             return;
           } else if (e.key === 'ArrowDown') {
@@ -491,7 +525,10 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                   nodeId: selectedNodeId,
                   content: newContent,
                 }),
-              }).then(() => window.dispatchEvent(new CustomEvent('refreshWorkspace')));
+              }).catch((error) => {
+              console.error('Error updating layer:', error);
+            });
+            // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
             }
             return;
           }
@@ -550,8 +587,8 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       }
     };
 
-    window.addEventListener('deleteSelectedNode', handleDeleteNode as EventListener);
-    return () => window.removeEventListener('deleteSelectedNode', handleDeleteNode as EventListener);
+    window.addEventListener('deleteSelectedNode', handleDeleteNode as unknown as EventListener);
+    return () => window.removeEventListener('deleteSelectedNode', handleDeleteNode as unknown as EventListener);
   }, [selectNode]);
 
   // Listen for emoji picker open event
@@ -637,30 +674,34 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
             }}
           />
           
-          {/* Floating Horizontal Bar */}
-          <FloatingHorizontalBar
-            onCreateNode={handleCreateNode}
-            onDeleteNode={(nodeId) => {
-              window.dispatchEvent(new CustomEvent('deleteSelectedNode', { detail: { nodeId } }));
-            }}
-            onDuplicateNode={handleDuplicateNode}
-          />
+          {/* Floating Horizontal Bar - Only show when no node is selected */}
+          {!selectedNodeId && (
+            <FloatingHorizontalBar
+              onCreateNode={handleCreateNode}
+              onDeleteNode={(nodeId) => {
+                window.dispatchEvent(new CustomEvent('deleteSelectedNode', { detail: { nodeId } }));
+              }}
+              onDuplicateNode={handleDuplicateNode}
+            />
+          )}
         </div>
         
-        {/* Right Panel - Node Editor or Toolbar Settings - Only show when node is selected or creating */}
-        {selectedNodeId || selectedNodeType ? (
+        {/* Right Panel - Toolbar Settings - Only show when creating a new node */}
+        {selectedNodeType && !selectedNodeId ? (
           <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
-            {selectedNodeType && !selectedNodeId ? (
-              <ToolbarSettingsPanel 
-                selectedNodeType={selectedNodeType}
-                onClose={() => setSelectedNodeType(null)}
-              />
-            ) : selectedNodeId ? (
-              <NodeEditorPanel />
-            ) : null}
+            <ToolbarSettingsPanel 
+              selectedNodeType={selectedNodeType}
+              onClose={() => setSelectedNodeType(null)}
+            />
           </aside>
         ) : null}
       </div>
+      
+      {/* Floating Node Editor - Shows when a node is selected */}
+      {selectedNodeId && <FloatingNodeEditor />}
+      
+      {/* History Bar - Undo/Redo with history log */}
+      <HistoryBar />
       
       {/* Emoji Picker Popup */}
       {emojiPickerOpen && emojiPickerNode && (

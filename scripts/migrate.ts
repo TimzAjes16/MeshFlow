@@ -5,3 +5,4 @@ console.log('Tables created: workspaces, nodes, edges, workspace_shares');
 
 db.close();
 
+

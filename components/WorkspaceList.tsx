@@ -191,7 +191,7 @@ export default function WorkspaceList({
 
       {filteredWorkspaces.length === 0 && searchQuery && (
         <div className="p-12 text-center text-slate-500">
-          <p className="text-sm">No workspaces found matching "{searchQuery}"</p>
+          <p className="text-sm">No workspaces found matching &quot;{searchQuery}&quot;</p>
         </div>
       )}
     </div>

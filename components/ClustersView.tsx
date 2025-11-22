@@ -40,11 +40,20 @@ export default function ClustersView({ workspaceId }: ClustersViewProps) {
 
     // Convert to array and sort by size
     return Array.from(clustersMap.entries())
-      .map(([tag, clusterNodes]) => ({
-        tag: tag === '_untagged' ? 'Untagged' : tag,
-        nodes: clusterNodes,
-        color: tag === '_untagged' ? '#9CA3AF' : getNodeColor(clusterNodes[0]),
-      }))
+      .map(([tag, clusterNodes]) => {
+        const nodeColor = tag === '_untagged' ? '#9CA3AF' : getNodeColor(clusterNodes[0]);
+        // getNodeColor can return a string or an object with primary/secondary/name
+        // Extract the color string if it's an object
+        const colorString = typeof nodeColor === 'string' 
+          ? nodeColor 
+          : nodeColor?.primary || nodeColor?.secondary || '#9CA3AF';
+        
+        return {
+          tag: tag === '_untagged' ? 'Untagged' : tag,
+          nodes: clusterNodes,
+          color: colorString,
+        };
+      })
       .sort((a, b) => b.nodes.length - a.nodes.length);
   }, [nodes]);
 
@@ -101,7 +110,7 @@ export default function ClustersView({ workspaceId }: ClustersViewProps) {
                 >
                   <Tag
                     className="w-6 h-6"
-                    style={{ color: cluster.color }}
+                    style={{ color: cluster.color as string }}
                   />
                 </div>
                 <div>

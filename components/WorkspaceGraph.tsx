@@ -329,7 +329,7 @@ export default function WorkspaceGraph({ workspaces, searchQuery = '' }: Props) 
         </p>
         {!searchQuery && (
           <p className="text-slate-400 text-xs mt-1">
-            Click "New Workspace" to get started
+            Click &quot;New Workspace&quot; to get started
           </p>
         )}
       </div>

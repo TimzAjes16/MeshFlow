@@ -502,7 +502,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       <div className="border border-red-200 rounded-lg p-6 bg-red-50">
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">Cancel Subscription</h3>
                         <p className="text-sm text-gray-600 mb-4">
-                          Cancel your subscription at any time. You'll continue to have access until the end of your billing period.
+                          Cancel your subscription at any time. You&apos;ll continue to have access until the end of your billing period.
                         </p>
                         <button
                           type="button"

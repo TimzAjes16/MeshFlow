@@ -86,6 +86,33 @@ npm run dev
 
 Visit `http://localhost:3000` 🎉
 
+### 6. Stop the Development Server
+
+**Method 1: Keyboard shortcut (easiest)**
+- In the terminal where `npm run dev` is running, press **Ctrl+C** (or **Cmd+C** on Mac)
+- The server will stop gracefully
+
+**Method 2: Kill process by port**
+If the terminal is closed or Ctrl+C doesn't work, kill the process using the port:
+```bash
+# macOS/Linux
+lsof -ti:3000 | xargs kill -9
+
+# Or kill all Next.js processes
+pkill -f "next dev"
+```
+
+**Method 3: Find and kill process manually**
+```bash
+# Find the process
+lsof -i:3000
+
+# Kill using the PID shown above
+kill -9 <PID>
+```
+
+**Note**: If port 3000 is still in use after stopping, use Method 2 or 3 to force kill the process.
+
 ## ✨ Key Features to Try
 
 ### Dashboard Graph View
@@ -207,8 +234,13 @@ Switch between 4 different layouts in the top bar:
 
 **Development server won't start?**
 - Check that port 3000 is available
-- Try `lsof -ti:3000 | xargs kill` to free the port
+- Try `lsof -ti:3000 | xargs kill -9` to free the port (force kill)
+- Or use `pkill -f "next dev"` to kill all Next.js dev processes
 - Make sure Node.js 18+ is installed
+
+**Need to stop the dev server?**
+- Press **Ctrl+C** (or **Cmd+C** on Mac) in the terminal running `npm run dev`
+- Or use `lsof -ti:3000 | xargs kill -9` to force kill if terminal is closed
 
 ### Feature Issues
 

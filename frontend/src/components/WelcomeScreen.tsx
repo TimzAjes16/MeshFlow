@@ -85,3 +85,4 @@ Try creating more notes and watch them connect!`,
 
 export default WelcomeScreen;
 
+

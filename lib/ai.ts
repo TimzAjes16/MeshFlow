@@ -69,3 +69,4 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return denominator > 0 ? dotProduct / denominator : 0;
 }
 
+

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, memo } from 'react';
 
 interface ResizeHandleProps {
   nodeId: string;
@@ -10,13 +10,21 @@ interface ResizeHandleProps {
   onResize: (nodeId: string, width: number, height: number) => void;
 }
 
-export default function ResizeHandle({ nodeId, position, currentWidth, currentHeight, onResize }: ResizeHandleProps) {
+function ResizeHandle({ nodeId, position, currentWidth, currentHeight, onResize }: ResizeHandleProps) {
   const startPosRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
   const nodeRef = useRef<HTMLDivElement>(null);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
+      e.preventDefault();
+      
+      // Get the node element to calculate scale correctly
+      const nodeElement = (e.target as HTMLElement).closest('[data-id]') as HTMLElement;
+      if (!nodeElement) return;
+      
+      const nodeRect = nodeElement.getBoundingClientRect();
+      const aspectRatio = currentWidth / currentHeight;
       
       startPosRef.current = {
         x: e.clientX,
@@ -34,20 +42,49 @@ export default function ResizeHandle({ nodeId, position, currentWidth, currentHe
         let newWidth = startPosRef.current.width;
         let newHeight = startPosRef.current.height;
 
-        // Calculate new dimensions based on handle position
-        if (position.includes('right')) {
-          newWidth = Math.max(50, startPosRef.current.width + deltaX);
-        } else if (position.includes('left')) {
-          newWidth = Math.max(50, startPosRef.current.width - deltaX);
+        // Corner handles: scale linearly (maintain aspect ratio)
+        if (position === 'top-left' || position === 'top-right' || 
+            position === 'bottom-left' || position === 'bottom-right') {
+          // Calculate scale based on diagonal movement from corner
+          // Use the average of both deltas to scale proportionally
+          const scaleX = Math.abs(deltaX) / startPosRef.current.width;
+          const scaleY = Math.abs(deltaY) / startPosRef.current.height;
+          // Use the larger scale factor to maintain aspect ratio
+          const scaleFactor = Math.max(scaleX, scaleY);
+          
+          const signX = position.includes('right') ? 1 : -1;
+          const signY = position.includes('bottom') ? 1 : -1;
+          
+          // Apply scale factor to maintain aspect ratio
+          newWidth = Math.max(50, startPosRef.current.width * (1 + signX * scaleFactor));
+          newHeight = Math.max(50, startPosRef.current.height * (1 + signY * scaleFactor));
+          
+          // Ensure aspect ratio is maintained exactly
+          const newAspectRatio = newWidth / newHeight;
+          if (Math.abs(newAspectRatio - aspectRatio) > 0.01) {
+            // Recalculate to maintain exact aspect ratio
+            if (scaleX > scaleY) {
+              newHeight = newWidth / aspectRatio;
+            } else {
+              newWidth = newHeight * aspectRatio;
+            }
+          }
+        } else {
+          // Edge handles: resize only in that dimension
+          if (position.includes('right')) {
+            newWidth = Math.max(50, startPosRef.current.width + deltaX);
+          } else if (position.includes('left')) {
+            newWidth = Math.max(50, startPosRef.current.width - deltaX);
+          }
+
+          if (position.includes('bottom')) {
+            newHeight = Math.max(50, startPosRef.current.height + deltaY);
+          } else if (position.includes('top')) {
+            newHeight = Math.max(50, startPosRef.current.height - deltaY);
+          }
         }
 
-        if (position.includes('bottom')) {
-          newHeight = Math.max(50, startPosRef.current.height + deltaY);
-        } else if (position.includes('top')) {
-          newHeight = Math.max(50, startPosRef.current.height - deltaY);
-        }
-
-        onResize(nodeId, newWidth, newHeight);
+        onResize(nodeId, Math.round(newWidth), Math.round(newHeight));
       };
 
       const handleMouseUp = () => {
@@ -97,4 +134,7 @@ export default function ResizeHandle({ nodeId, position, currentWidth, currentHe
     />
   );
 }
+
+const MemoizedResizeHandle = memo(ResizeHandle);
+export default MemoizedResizeHandle;
 

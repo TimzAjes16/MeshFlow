@@ -4,10 +4,10 @@ import { prisma } from '@/lib/db';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const workspaceId = params.id;
+    const { id: workspaceId } = await params;
     await requireWorkspaceAccess(workspaceId, false);
 
     // Get workspace members with user info
@@ -54,10 +54,10 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const workspaceId = params.id;
+    const { id: workspaceId } = await params;
     const { role } = await requireWorkspaceAccess(workspaceId, true); // Need edit permission
     
     const body = await request.json();
@@ -153,10 +153,10 @@ export async function POST(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const workspaceId = params.id;
+    const { id: workspaceId } = await params;
     const { role } = await requireWorkspaceAccess(workspaceId, true);
     
     const body = await request.json();
@@ -237,10 +237,10 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const workspaceId = params.id;
+    const { id: workspaceId } = await params;
     const { role } = await requireWorkspaceAccess(workspaceId, true);
     
     const { searchParams } = new URL(request.url);

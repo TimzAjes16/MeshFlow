@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { Clock, FileText, Hash } from 'lucide-react';
 import type { Node } from '@/types/Node';
 import { useCanvasStore } from '@/state/canvasStore';
@@ -36,13 +36,37 @@ export default function NodesListView({ workspaceId }: NodesListViewProps) {
   }, [workspaceId]);
 
   // Update recently visited when a node is selected
+  // Use ref to track last selected node ID to prevent infinite loops
+  const lastSelectedNodeIdRef = useRef<string | null>(null);
+  
   useEffect(() => {
-    if (!selectedNodeId) return;
+    if (!selectedNodeId) {
+      lastSelectedNodeIdRef.current = null;
+      return;
+    }
+    
+    // Only update if selectedNodeId actually changed
+    if (lastSelectedNodeIdRef.current === selectedNodeId) {
+      return;
+    }
+    
+    lastSelectedNodeIdRef.current = selectedNodeId;
     
     const node = nodes.find((n) => n.id === selectedNodeId);
     if (!node) return;
 
     setRecentlyVisited((prev) => {
+      // Check if this node is already in the list with a recent timestamp
+      // If so, don't update (prevents loops)
+      const existing = prev.find((n) => n.id === node.id);
+      if (existing) {
+        const timeSinceLastVisit = Date.now() - existing.lastVisited.getTime();
+        // Only update if last visit was more than 1 second ago (prevents rapid updates)
+        if (timeSinceLastVisit < 1000) {
+          return prev;
+        }
+      }
+      
       // Remove if already exists
       const filtered = prev.filter((n) => n.id !== node.id);
       // Add to beginning
@@ -59,7 +83,7 @@ export default function NodesListView({ workspaceId }: NodesListViewProps) {
 
       return updated;
     });
-  }, [selectedNodeId, nodes, workspaceId]);
+  }, [selectedNodeId, workspaceId]); // Removed nodes from dependencies - only depend on selectedNodeId
 
   // Filter out recently visited from all nodes
   const allOtherNodes = useMemo(() => {

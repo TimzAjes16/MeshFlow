@@ -1,6 +1,7 @@
 'use client';
 
-import { memo, useEffect, useCallback } from 'react';
+import { memo, useEffect, useCallback, useState, useRef, type ReactNode } from 'react';
+import { useHistoryStore } from '@/state/historyStore';
 import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
 import { motion } from 'framer-motion';
 import type { Node as NodeType } from '@/types/Node';
@@ -115,6 +116,14 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
   const chartType = getChartType(node);
   const isChart = isChartNode(node);
   
+  // Inline editing state for text nodes
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingContent, setEditingContent] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const updateTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const editingStartContentRef = useRef<string>(''); // Store original content when editing starts
+  const historyStoreRef = useRef<ReturnType<typeof import('@/state/historyStore').useHistoryStore.getState> | null>(null);
+  
   // Use node.title directly for real-time updates (fallback to label if title not available)
   const displayLabel = node.title || label || 'Untitled';
   
@@ -153,21 +162,20 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
     
     updateNode(nodeId, { content: newContent });
     
-    // Persist to database
+    // Persist to database (async, non-blocking)
     if (workspaceId) {
-      try {
-        await fetch('/api/nodes/update', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nodeId,
-            content: newContent,
-          }),
-        });
-        window.dispatchEvent(new CustomEvent('refreshWorkspace'));
-      } catch (error) {
+      // Don't await - make it fire-and-forget to prevent UI blocking
+      fetch('/api/nodes/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId,
+          content: newContent,
+        }),
+      }).catch((error) => {
         console.error('Error updating node dimensions:', error);
-      }
+      });
+      // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
     }
   }, [node, nodeMetadata, updateNode, workspaceId]);
 
@@ -184,21 +192,20 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
     
     updateNode(nodeId, { content: newContent });
     
-    // Persist to database
+    // Persist to database (async, non-blocking)
     if (workspaceId) {
-      try {
-        await fetch('/api/nodes/update', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nodeId,
-            content: newContent,
-          }),
-        });
-        window.dispatchEvent(new CustomEvent('refreshWorkspace'));
-      } catch (error) {
+      // Don't await - make it fire-and-forget to prevent UI blocking
+      fetch('/api/nodes/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId,
+          content: newContent,
+        }),
+      }).catch((error) => {
         console.error('Error updating node rotation:', error);
-      }
+      });
+      // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
     }
   }, [node, nodeMetadata, updateNode, workspaceId]);
 
@@ -207,9 +214,119 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
     ? (node.content as any).chart
     : null;
 
+  // Handle inline editing for text nodes
+  const handleStartEditing = useCallback(() => {
+    if (isTextNode(node)) {
+      const textContent = extractTextFromContent(node.content);
+      setEditingContent(textContent);
+      // Store the original content when editing starts
+      editingStartContentRef.current = textContent;
+      // Store reference to history store and disable recording during editing
+      const historyStore = useHistoryStore.getState();
+      historyStoreRef.current = historyStore;
+      historyStore.setRecording(false); // Disable history recording during typing
+      setIsEditing(true);
+      // Focus textarea after state update
+      setTimeout(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.select();
+      }, 0);
+    }
+  }, [node]);
+
+  const handleStopEditing = useCallback(async () => {
+    setIsEditing(false);
+    
+    // Clear any pending debounced updates and immediately save on blur
+    if (updateTimerRef.current) {
+      clearTimeout(updateTimerRef.current);
+      updateTimerRef.current = null;
+    }
+    
+    // Re-enable history recording now that editing is complete
+    const historyStore = historyStoreRef.current || useHistoryStore.getState();
+    historyStore.setRecording(true);
+    
+    // Check if content actually changed before recording history and saving
+    const originalContent = editingStartContentRef.current;
+    const finalContent = editingContent;
+    
+    // Save immediately when user stops editing (blur event)
+    const currentContent = node.content || {};
+    const newContent = {
+      ...currentContent,
+      text: editingContent, // Use the current editing content
+    };
+    
+    // Only record history if content actually changed
+    if (originalContent !== finalContent) {
+      // Record a single history entry for the entire editing session
+      const beforeContent = {
+        ...currentContent,
+        text: originalContent,
+      };
+      historyStore.recordAction(
+        {
+          type: 'update_node',
+          nodeId: node.id,
+          before: { content: beforeContent },
+          after: { content: newContent },
+        },
+        `Updated node "${node.title}"`
+      );
+    }
+    
+    // Ensure local store is updated
+    updateNode(node.id, { content: newContent });
+    
+    // Save to API immediately on blur (async, non-blocking)
+    if (workspaceId) {
+      // Don't await - make it fire-and-forget to prevent UI blocking
+      fetch('/api/nodes/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId: node.id,
+          content: newContent,
+        }),
+      }).catch((error) => {
+        console.error('Error updating node content on blur:', error);
+      });
+      // DO NOT dispatch refreshWorkspace - it causes blocking data fetches
+      // The local store update is sufficient for UI, and polling will sync any server-side changes
+    }
+    
+    // Clear the refs
+    editingStartContentRef.current = '';
+    historyStoreRef.current = null;
+  }, [node, updateNode, workspaceId, editingContent]);
+
+  const handleContentChange = useCallback((value: string) => {
+    // CRITICAL: Only update local state during typing - DO NOT update workspace store
+    // This prevents blocking re-renders that freeze the UI
+    setEditingContent(value);
+    
+    // Do NOT call updateNode here - it causes synchronous store updates that block the UI
+    // The workspace store will be updated only when editing stops (on blur)
+    // The textarea uses editingContent (local state) which updates instantly and non-blocking
+  }, []);
+
+  // Cleanup timer and re-enable history recording on unmount or when component unmounts during editing
+  useEffect(() => {
+    return () => {
+      if (updateTimerRef.current) {
+        clearTimeout(updateTimerRef.current);
+      }
+      // Re-enable history recording if component unmounts while editing
+      if (isEditing && historyStoreRef.current) {
+        historyStoreRef.current.setRecording(true);
+      }
+    };
+  }, [isEditing]);
+
   // Helper component to wrap nodes with resize/rotate handles
   const NodeWrapper = ({ children, defaultWidth = 200, defaultHeight = 100, style = {} }: { 
-    children: React.ReactNode;
+    children: ReactNode;
     defaultWidth?: number;
     defaultHeight?: number;
     style?: React.CSSProperties;
@@ -227,6 +344,12 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
         style={{
           transform: `rotate(${rotation}deg)`,
           transformOrigin: 'center center',
+          width: `${width}px`,
+          height: `${height}px`,
+          overflow: 'visible', // Ensure handles are visible outside bounds
+          boxSizing: 'border-box',
+          minWidth: `${width}px`,
+          minHeight: `${height}px`,
         }}
       >
         {selected && (
@@ -242,7 +365,19 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
             <ResizeHandle nodeId={id} position="right" currentWidth={width} currentHeight={height} onResize={handleResize} />
           </>
         )}
-        <div style={{ width: `${width}px`, height: `${height}px`, ...style }}>
+        <div 
+          style={{ 
+            width: '100%', 
+            height: '100%',
+            position: 'relative',
+            pointerEvents: 'auto',
+            overflow: 'visible', // Allow content and borders to show fully
+            boxSizing: 'border-box',
+            minWidth: '100%',
+            minHeight: '100%',
+            ...style 
+          }}
+        >
           {children}
         </div>
       </motion.div>
@@ -291,18 +426,20 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
           <Handle
             type="target"
             position={Position.Top}
-            className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair"
+            className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair !z-[1000]"
             style={{
               boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)',
+              zIndex: 1000,
             }}
             title="Connect to this node"
           />
           <Handle
             type="source"
             position={Position.Bottom}
-            className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair"
+            className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair !z-[1000]"
             style={{
               boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)',
+              zIndex: 1000,
             }}
             title="Drag to connect to another node"
           />
@@ -348,7 +485,7 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
         >
           {imageUrl ? (
             <div
-              className={`${sizeClasses[imageSize]} ${alignmentClasses[alignment]}`}
+              className={`${sizeClasses[imageSize as keyof typeof sizeClasses]} ${alignmentClasses[alignment as keyof typeof alignmentClasses]}`}
               style={{ borderRadius: `${borderRadius}px`, overflow: 'hidden' }}
             >
               <img
@@ -487,6 +624,7 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
     const userRotation = nodeRotation || 0;
     const combinedRotation = baseRotation + userRotation;
     
+    // Use NodeWrapper but apply base rotation offset
     return (
       <motion.div
         initial={{ scale: 0.8, opacity: 0 }}
@@ -494,64 +632,53 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
         transition={{ duration: 0.3, ease: 'easeOut' }}
         className="relative"
         style={{
-          transform: `rotate(${combinedRotation}deg)`,
+          transform: `rotate(${baseRotation}deg)`,
           transformOrigin: 'center center',
         }}
       >
-        {selected && (
-          <>
-            <RotateHandle nodeId={id} rotation={userRotation} onRotate={handleRotate} />
-            <ResizeHandle nodeId={id} position="top-left" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
-            <ResizeHandle nodeId={id} position="top-right" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
-            <ResizeHandle nodeId={id} position="bottom-left" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
-            <ResizeHandle nodeId={id} position="bottom-right" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
-            <ResizeHandle nodeId={id} position="top" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
-            <ResizeHandle nodeId={id} position="bottom" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
-            <ResizeHandle nodeId={id} position="left" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
-            <ResizeHandle nodeId={id} position="right" currentWidth={nodeWidth || 250} currentHeight={nodeHeight || 180} onResize={handleResize} />
-          </>
-        )}
-        <motion.div
-          className={`relative bg-yellow-50 border-2 shadow-lg cursor-pointer transition-all duration-300 p-4 ${
-            selected ? 'ring-2 ring-blue-200' : ''
-          }`}
-          style={{
-            width: `${nodeWidth || 250}px`,
-            height: `${nodeHeight || 180}px`,
-            minWidth: '220px',
-            minHeight: '180px',
-            maxWidth: '280px',
-            boxShadow: '2px 2px 8px rgba(0,0,0,0.15), -2px -2px 8px rgba(0,0,0,0.05)',
-          }}
-        >
-          {/* Folded corner effect */}
-          <div
-            className="absolute top-0 right-0 w-0 h-0"
+        <NodeWrapper defaultWidth={250} defaultHeight={180}>
+          <motion.div
+            className={`relative bg-yellow-50 border-2 shadow-lg cursor-pointer transition-all duration-300 p-4 ${
+              selected ? 'ring-2 ring-blue-200' : ''
+            }`}
             style={{
-              borderLeft: '20px solid transparent',
-              borderTop: '20px solid #fbbf24',
-              borderTopRightRadius: '4px',
+              width: '100%',
+              height: '100%',
+              minWidth: '220px',
+              minHeight: '180px',
+              maxWidth: '280px',
+              boxShadow: '2px 2px 8px rgba(0,0,0,0.15), -2px -2px 8px rgba(0,0,0,0.05)',
             }}
-          />
-          <div
-            className="absolute top-0 right-0 w-0 h-0"
-            style={{
-              borderLeft: '18px solid transparent',
-              borderTop: '18px solid #fef3c7',
-            }}
-          />
-          
-          {displayLabel && (
-            <div className="text-base font-semibold text-gray-900 mb-2 pr-4">
-              {displayLabel}
+          >
+            {/* Folded corner effect */}
+            <div
+              className="absolute top-0 right-0 w-0 h-0"
+              style={{
+                borderLeft: '20px solid transparent',
+                borderTop: '20px solid #fbbf24',
+                borderTopRightRadius: '4px',
+              }}
+            />
+            <div
+              className="absolute top-0 right-0 w-0 h-0"
+              style={{
+                borderLeft: '18px solid transparent',
+                borderTop: '18px solid #fef3c7',
+              }}
+            />
+            
+            {displayLabel && (
+              <div className="text-base font-semibold text-gray-900 mb-2 pr-4">
+                {displayLabel}
+              </div>
+            )}
+            <div className="text-gray-800 whitespace-pre-wrap break-words text-sm">
+              {textContent || <span className="text-gray-500 italic">Write a note...</span>}
             </div>
-          )}
-          <div className="text-gray-800 whitespace-pre-wrap break-words text-sm">
-            {textContent || <span className="text-gray-500 italic">Write a note...</span>}
-          </div>
-          <Handle type="target" position={Position.Top} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Connect to this node" />
-          <Handle type="source" position={Position.Bottom} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Drag to connect to another node" />
-        </motion.div>
+            <Handle type="target" position={Position.Top} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Connect to this node" />
+            <Handle type="source" position={Position.Bottom} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Drag to connect to another node" />
+          </motion.div>
+        </NodeWrapper>
       </motion.div>
     );
   }
@@ -665,10 +792,13 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
             minHeight: `${minSize}px`,
             backgroundColor: fill ? fillColor : 'transparent',
             border: `${borderWidth}px solid ${borderColor}`,
+            boxSizing: 'border-box',
+            overflow: 'visible',
+            position: 'relative',
           }}
-          onClick={(e) => {
+          onDoubleClick={(e) => {
             e.stopPropagation();
-            // Dispatch event to open emoji picker
+            // Dispatch event to open emoji picker on double-click
             window.dispatchEvent(new CustomEvent('openEmojiPicker', {
               detail: { nodeId: node.id, position: { x: e.clientX, y: e.clientY } }
             }));
@@ -863,6 +993,7 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
       '3xl': '30px',
       '4xl': '36px',
       '5xl': '48px',
+      '6xl': '60px',
     };
 
     const fontStyleMap = {
@@ -871,10 +1002,34 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
       oblique: 'oblique',
     };
 
-    const fontFamilyMap = {
+    const fontFamilyMap: Record<string, string> = {
       sans: 'Inter, system-ui, sans-serif',
       serif: 'Georgia, serif',
       mono: 'Monaco, monospace',
+      roboto: '"Roboto", sans-serif',
+      'open-sans': '"Open Sans", sans-serif',
+      lato: '"Lato", sans-serif',
+      montserrat: '"Montserrat", sans-serif',
+      raleway: '"Raleway", sans-serif',
+      poppins: '"Poppins", sans-serif',
+      'source-sans': '"Source Sans Pro", sans-serif',
+      nunito: '"Nunito", sans-serif',
+      ubuntu: '"Ubuntu", sans-serif',
+      'playfair-display': '"Playfair Display", serif',
+      merriweather: '"Merriweather", serif',
+      lora: '"Lora", serif',
+      'crimson-text': '"Crimson Text", serif',
+      'libre-baskerville': '"Libre Baskerville", serif',
+      'pt-serif': '"PT Serif", serif',
+      cormorant: '"Cormorant", serif',
+      'roboto-mono': '"Roboto Mono", monospace',
+      'source-code-pro': '"Source Code Pro", monospace',
+      'fira-code': '"Fira Code", monospace',
+      'jetbrains-mono': '"JetBrains Mono", monospace',
+      inconsolata: '"Inconsolata", monospace',
+      oswald: '"Oswald", sans-serif',
+      'bebas-neue': '"Bebas Neue", sans-serif',
+      'dancing-script': '"Dancing Script", cursive',
     };
 
     const fontSize = textSettings?.fontSize || 'base';
@@ -934,33 +1089,84 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
     return (
       <NodeWrapper defaultWidth={400} defaultHeight={150}>
         <motion.div
-          className={`relative bg-white border border-gray-300 shadow-md cursor-pointer transition-all duration-300 p-4 ${
+          className={`relative bg-white border border-gray-300 shadow-md cursor-pointer transition-all duration-300 ${
             selected ? 'border-blue-500 ring-2 ring-blue-200' : ''
           }`}
           style={{
             width: '100%',
             height: '100%',
-            minWidth: '300px',
-            maxWidth: '500px',
-            minHeight: '100px',
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'relative',
+            overflow: 'visible',
           }}
         >
-          {/* Markdown-style text content */}
-          <div
-            className="prose prose-sm max-w-none text-gray-800"
-            style={{
-              fontSize: fontSizeMap[fontSize] || fontSizeMap.base,
-              fontFamily: getFontFamily(),
-              fontStyle: fontStyleMap[fontStyle] || 'normal',
-              textAlign: textAlign,
-              lineHeight: lineHeight,
-              letterSpacing: `${letterSpacing}px`,
-            }}
-          >
-            {textContent ? renderMarkdownText(textContent) : (
-              <span className="text-gray-400 italic">Start typing markdown...</span>
-            )}
-          </div>
+          {/* Inline editable text content */}
+          {isEditing ? (
+            <textarea
+              ref={textareaRef}
+              value={editingContent}
+              onChange={(e) => handleContentChange(e.target.value)}
+              onBlur={handleStopEditing}
+              onKeyDown={(e) => {
+                // Escape to cancel, Ctrl+Enter or Cmd+Enter to save and exit
+                if (e.key === 'Escape') {
+                  handleStopEditing();
+                } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                  handleStopEditing();
+                }
+                // Prevent node dragging while editing
+                e.stopPropagation();
+              }}
+              className="w-full h-full p-4 border-none outline-none resize-none bg-transparent text-gray-800"
+              style={{
+                fontSize: fontSizeMap[fontSize as keyof typeof fontSizeMap] || fontSizeMap.base,
+                fontFamily: getFontFamily(),
+                fontStyle: fontStyleMap[fontStyle as keyof typeof fontStyleMap] || 'normal',
+                textAlign: textAlign,
+                lineHeight: lineHeight,
+                letterSpacing: `${letterSpacing}px`,
+                boxSizing: 'border-box',
+              }}
+              placeholder="Start typing markdown..."
+            />
+          ) : (
+            <div
+              className="prose prose-sm max-w-none text-gray-800 flex-1 overflow-auto p-4 cursor-text"
+              style={{
+                fontSize: fontSizeMap[fontSize as keyof typeof fontSizeMap] || fontSizeMap.base,
+                fontFamily: getFontFamily(),
+                fontStyle: fontStyleMap[fontStyle as keyof typeof fontStyleMap] || 'normal',
+                textAlign: textAlign,
+                lineHeight: lineHeight,
+                letterSpacing: `${letterSpacing}px`,
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: '100%',
+                height: '100%',
+                boxSizing: 'border-box',
+              }}
+              onClick={(e) => {
+                // Start editing on click (but not on handles)
+                if (!(e.target as HTMLElement).closest('button, [data-handle]')) {
+                  handleStartEditing();
+                }
+              }}
+              onDoubleClick={(e) => {
+                // Also support double-click
+                e.stopPropagation();
+                handleStartEditing();
+              }}
+            >
+              {textContent ? renderMarkdownText(textContent) : (
+                <span className="text-gray-400 italic">Start typing markdown...</span>
+              )}
+            </div>
+          )}
 
           <Handle type="target" position={Position.Top} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Connect to this node" />
           <Handle type="source" position={Position.Bottom} className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full opacity-60 hover:opacity-100 hover:scale-125 transition-all cursor-crosshair" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }} title="Drag to connect to another node" />
@@ -983,12 +1189,37 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
     '3xl': '30px',
     '4xl': '36px',
     '5xl': '48px',
+    '6xl': '60px',
   };
 
-  const fontFamilyMap = {
+  const fontFamilyMap: Record<string, string> = {
     sans: 'Inter, system-ui, sans-serif',
     serif: 'Georgia, serif',
     mono: 'Monaco, monospace',
+    roboto: '"Roboto", sans-serif',
+    'open-sans': '"Open Sans", sans-serif',
+    lato: '"Lato", sans-serif',
+    montserrat: '"Montserrat", sans-serif',
+    raleway: '"Raleway", sans-serif',
+    poppins: '"Poppins", sans-serif',
+    'source-sans': '"Source Sans Pro", sans-serif',
+    nunito: '"Nunito", sans-serif',
+    ubuntu: '"Ubuntu", sans-serif',
+    'playfair-display': '"Playfair Display", serif',
+    merriweather: '"Merriweather", serif',
+    lora: '"Lora", serif',
+    'crimson-text': '"Crimson Text", serif',
+    'libre-baskerville': '"Libre Baskerville", serif',
+    'pt-serif': '"PT Serif", serif',
+    cormorant: '"Cormorant", serif',
+    'roboto-mono': '"Roboto Mono", monospace',
+    'source-code-pro': '"Source Code Pro", monospace',
+    'fira-code': '"Fira Code", monospace',
+    'jetbrains-mono': '"JetBrains Mono", monospace',
+    inconsolata: '"Inconsolata", monospace',
+    oswald: '"Oswald", sans-serif',
+    'bebas-neue': '"Bebas Neue", sans-serif',
+    'dancing-script': '"Dancing Script", cursive',
   };
 
   const fontStyleMap = {
@@ -1023,25 +1254,25 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
         style={{
           width: '100%',
           height: '100%',
-          minWidth: '200px',
-          maxWidth: '400px',
-          minHeight: '100px',
+          boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         {/* Title */}
         {displayLabel && (
-          <div className="text-lg font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-200">
+          <div className="text-lg font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-200 shrink-0">
             {displayLabel}
           </div>
         )}
 
         {/* Text Content */}
         <div
-          className="text-gray-700 whitespace-pre-wrap break-words"
+          className="text-gray-700 whitespace-pre-wrap break-words flex-1 overflow-auto"
           style={{
-            fontSize: fontSizeMap[fontSize] || fontSizeMap.base,
+            fontSize: fontSizeMap[fontSize as keyof typeof fontSizeMap] || fontSizeMap.base,
             fontFamily: getFontFamily(),
-            fontStyle: fontStyleMap[fontStyle] || 'normal',
+            fontStyle: fontStyleMap[fontStyle as keyof typeof fontStyleMap] || 'normal',
             textAlign: textAlign,
             lineHeight: lineHeight,
             letterSpacing: `${letterSpacing}px`,
@@ -1090,7 +1321,7 @@ export default memo(function NodeComponent({ data, selected, id }: NodeProps<Nod
         }}
           title="Drag to connect to another node"
       />
-      </motion.div>
+    </motion.div>
     </NodeWrapper>
   );
 }, (prevProps, nextProps) => {

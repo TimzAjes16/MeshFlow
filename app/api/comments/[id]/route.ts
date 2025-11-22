@@ -4,11 +4,11 @@ import { prisma } from '@/lib/db';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await requireAuth();
-    const commentId = params.id;
+    const { id: commentId } = await params;
 
     // Get comment to check ownership and workspace access
     const comment = await prisma.comment.findUnique({

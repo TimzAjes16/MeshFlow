@@ -58,12 +58,24 @@ export async function GET(request: NextRequest) {
     }
 
     // Apply text search if query provided
-    let results = nodes;
+    let results: Array<{
+      id: string;
+      workspaceId: string;
+      title: string;
+      content: any;
+      tags: string[];
+      x: number;
+      y: number;
+      createdAt: string;
+      updatedAt: string;
+    }>;
+    
     if (query) {
       const searchResults = searchNodes(
         query,
         nodes.map((n) => ({
           id: n.id,
+          workspaceId: n.workspaceId,
           title: n.title,
           content: n.content,
           tags: n.tags,
@@ -78,6 +90,7 @@ export async function GET(request: NextRequest) {
     } else {
       results = nodes.map((n) => ({
         id: n.id,
+        workspaceId: n.workspaceId,
         title: n.title,
         content: n.content,
         tags: n.tags,

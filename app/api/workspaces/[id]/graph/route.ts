@@ -1,27 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { prisma } from '@/lib/db';
+import { requireWorkspaceAccess } from '@/lib/api-helpers';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const workspaceId = params.id;
+    const { id: workspaceId } = await params;
 
-    const nodes = db
-      .prepare('SELECT * FROM nodes WHERE workspace_id = ?')
-      .all(workspaceId);
+    // Check workspace access
+    await requireWorkspaceAccess(workspaceId, false);
 
-    const edges = db
-      .prepare('SELECT * FROM edges WHERE workspace_id = ?')
-      .all(workspaceId);
+    // Get nodes
+    const nodes = await prisma.node.findMany({
+      where: { workspaceId },
+      select: {
+        id: true,
+        workspaceId: true,
+        title: true,
+        content: true,
+        tags: true,
+        x: true,
+        y: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    // Get edges
+    const edges = await prisma.edge.findMany({
+      where: { workspaceId },
+      select: {
+        id: true,
+        workspaceId: true,
+        source: true,
+        target: true,
+        label: true,
+        similarity: true,
+        createdAt: true,
+      },
+    });
 
     return NextResponse.json({
-      nodes: nodes.map((n: any) => ({
+      nodes: nodes.map((n) => ({
         ...n,
-        embedding: n.embedding ? JSON.parse(n.embedding) : null,
+        createdAt: n.createdAt.toISOString(),
+        updatedAt: n.updatedAt.toISOString(),
       })),
-      edges,
+      edges: edges.map((e) => ({
+        ...e,
+        createdAt: e.createdAt.toISOString(),
+      })),
     });
   } catch (error) {
     console.error('Error fetching graph:', error);
