@@ -175,7 +175,8 @@ function BaseWidget({
       {/* Resize Handle */}
       {canResize && !isMinimized && (
         <div
-          className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 transition-colors z-10"
+          data-resize-handle
+          className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 transition-colors z-50"
           style={{
             clipPath: 'polygon(100% 0, 0 100%, 100% 100%)',
           }}
@@ -183,6 +184,10 @@ function BaseWidget({
             e.preventDefault();
             e.stopPropagation();
             handleResizeStart(e);
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
           }}
         />
       )}
