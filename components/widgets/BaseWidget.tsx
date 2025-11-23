@@ -68,9 +68,15 @@ function BaseWidget({
     e.preventDefault();
     e.stopPropagation();
     
-    // Use React Flow node dimensions if available, otherwise get from DOM
-    const currentWidth = width || resizeRef.current.getBoundingClientRect().width;
-    const currentHeight = height || resizeRef.current.getBoundingClientRect().height;
+    // Get the React Flow node wrapper (parent of BaseWidget)
+    // React Flow structure: .react-flow__node > .react-flow__node-wrapper > BaseWidget
+    const nodeWrapper = resizeRef.current.closest('.react-flow__node') as HTMLElement;
+    if (!nodeWrapper) return;
+    
+    // Get actual node dimensions from React Flow wrapper
+    const rect = nodeWrapper.getBoundingClientRect();
+    const currentWidth = width || rect.width;
+    const currentHeight = height || rect.height;
     
     setIsResizing(true);
     setResizeStart({
@@ -82,11 +88,26 @@ function BaseWidget({
   }, [canResize, width, height]);
 
   const handleResizeMove = useCallback((e: MouseEvent) => {
-    if (!isResizing || !resizeStart) return;
+    if (!isResizing || !resizeStart) {
+      return;
+    }
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Calculate new dimensions based on mouse movement
     const deltaX = e.clientX - resizeStart.x;
     const deltaY = e.clientY - resizeStart.y;
-    const newWidth = Math.max(200, resizeStart.width + deltaX);
-    const newHeight = Math.max(150, resizeStart.height + deltaY);
+    
+    // Minimum dimensions
+    const minWidth = 200;
+    const minHeight = 150;
+    
+    // Calculate new dimensions
+    const newWidth = Math.max(minWidth, resizeStart.width + deltaX);
+    const newHeight = Math.max(minHeight, resizeStart.height + deltaY);
+    
+    // Call resize handler
     onResize?.(newWidth, newHeight);
   }, [isResizing, resizeStart, onResize]);
 
@@ -98,11 +119,19 @@ function BaseWidget({
   // Handle resize mouse events
   React.useEffect(() => {
     if (isResizing) {
-      document.addEventListener('mousemove', handleResizeMove);
-      document.addEventListener('mouseup', handleResizeEnd);
+      // Add event listeners with capture phase to ensure we catch events first
+      document.addEventListener('mousemove', handleResizeMove, { passive: false });
+      document.addEventListener('mouseup', handleResizeEnd, { passive: false });
+      
+      // Prevent text selection during resize
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'nwse-resize';
+      
       return () => {
         document.removeEventListener('mousemove', handleResizeMove);
         document.removeEventListener('mouseup', handleResizeEnd);
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
       };
     }
   }, [isResizing, handleResizeMove, handleResizeEnd]);

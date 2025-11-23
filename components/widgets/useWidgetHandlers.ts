@@ -51,51 +51,57 @@ export function useWidgetHandlers(nodeId: string) {
     
     // Get current node from React Flow
     const currentNode = getNode(nodeId);
-    if (!currentNode) return;
+    if (!currentNode) {
+      console.warn(`[useWidgetHandlers] Node ${nodeId} not found for resize`);
+      return;
+    }
     
     // Update React Flow node dimensions immediately
     setNodes((nodes) =>
-      nodes.map((node) =>
-        node.id === nodeId
-          ? {
-              ...node,
-              width,
-              height,
-              style: {
-                ...node.style,
-                width,
-                height,
-              },
-            }
-          : node
-      )
+      nodes.map((node) => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            width: Math.round(width),
+            height: Math.round(height),
+            style: {
+              ...node.style,
+              width: Math.round(width),
+              height: Math.round(height),
+            },
+          };
+        }
+        return node;
+      })
     );
     
     // Update workspace store
     updateWorkspaceNode(nodeId, {
-      width,
-      height,
+      width: Math.round(width),
+      height: Math.round(height),
     });
     
     // Persist to API (debounced to avoid too many requests)
     if (workspaceId) {
+      // Clear any existing timeout
+      if ((handleResize as any).timeoutId) {
+        clearTimeout((handleResize as any).timeoutId);
+      }
+      
       // Use a small delay to batch resize updates
-      const timeoutId = setTimeout(() => {
+      (handleResize as any).timeoutId = setTimeout(() => {
         fetch(`/api/nodes/update`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             nodeId,
-            width,
-            height,
+            width: Math.round(width),
+            height: Math.round(height),
           }),
         }).catch((error) => {
           console.error('Error updating node size:', error);
         });
       }, 300);
-      
-      // Return cleanup function
-      return () => clearTimeout(timeoutId);
     }
   }, [nodeId, workspaceId, getNode, setNodes, updateWorkspaceNode]);
 
