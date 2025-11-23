@@ -815,6 +815,41 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     hasFittedView.current = false;
   }, [workspaceId]);
 
+  // Handle Control + Mouse Wheel for zoom
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      // Check if Control key is pressed
+      if (!e.ctrlKey && !e.metaKey) return;
+      
+      // Only handle if we're over the canvas area
+      const target = e.target as HTMLElement;
+      const reactFlowPane = target.closest('.react-flow__pane');
+      if (!reactFlowPane) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const currentViewport = reactFlowInstance.getViewport();
+      const zoomFactor = 0.1; // Zoom step size
+      const newZoom = e.deltaY > 0 
+        ? Math.max(0.1, currentViewport.zoom - zoomFactor) // Zoom out
+        : Math.min(2, currentViewport.zoom + zoomFactor);  // Zoom in
+      
+      // Update zoom while maintaining current pan position
+      reactFlowInstance.setViewport(
+        {
+          x: currentViewport.x,
+          y: currentViewport.y,
+          zoom: newZoom,
+        },
+        { duration: 0 }
+      );
+    };
+
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    return () => window.removeEventListener('wheel', handleWheel);
+  }, [reactFlowInstance]);
+
   // Throttle viewport updates during movement to prevent excessive re-renders
   const viewportUpdateTimer = useRef<NodeJS.Timeout | null>(null);
   const lastViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(null);

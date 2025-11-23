@@ -23,7 +23,12 @@ export default function KeyboardShortcuts() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const shortcuts: Array<{ keys: string[]; description: string }> = [];
+  const shortcuts: Array<{ keys: string[]; description: string }> = [
+    {
+      keys: ['Ctrl', 'Scroll Up/Down'],
+      description: 'Zoom in/out on canvas',
+    },
+  ];
 
   return (
     <>
