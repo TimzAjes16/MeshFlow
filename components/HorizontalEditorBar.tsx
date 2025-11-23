@@ -309,14 +309,40 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   }, [selectedNodeId, isLiveCaptureNode, selectedNode, updateWorkspaceNode]);
 
   // Handle crop area confirmation (used by both React component and Electron overlay)
+  // Use a ref to track if we're already handling a crop area confirmation
+  const isHandlingCropAreaConfirmRef = useRef(false);
+  
   const handleCropAreaConfirm = useCallback(async (area: { x: number; y: number; width: number; height: number }) => {
+    // Prevent duplicate confirmations
+    if (isHandlingCropAreaConfirmRef.current) {
+      console.warn('[HorizontalEditorBar] Already handling crop area confirmation, ignoring duplicate');
+      return;
+    }
+    
     console.log('[HorizontalEditorBar] handleCropAreaConfirm called with area:', area);
+    isHandlingCropAreaConfirmRef.current = true;
+    
+    // Close the crop area overlay first to prevent focus issues
     setShowFloatingCropArea(false);
     
-    // Start screen capture for the entire screen (we'll crop to area in the node)
+    // Close Electron overlay if it's open
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.closeCropAreaOverlay) {
+      try {
+        await (window as any).electronAPI.closeCropAreaOverlay();
+      } catch (error) {
+        console.warn('[HorizontalEditorBar] Error closing crop area overlay:', error);
+      }
+    }
+    
+    // Small delay to ensure overlay is closed before starting capture
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Start screen capture - user will select which screen/application contains the highlighted area
+    // We capture the entire selected screen/window, then crop to show only the highlighted area
     try {
       const { getScreenCaptureStream, requestScreenRecordingPermission, checkScreenRecordingPermission } = await import('@/lib/electronUtils');
       console.log('[HorizontalEditorBar] Starting screen capture for area:', area);
+      console.log('[HorizontalEditorBar] Note: Please select the screen/application that contains the highlighted area when prompted');
       
       // Check and request permissions before attempting capture
       const permissionStatus = await checkScreenRecordingPermission();
@@ -336,8 +362,18 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
         console.log('[HorizontalEditorBar] Screen recording permission granted:', permissionResult.message);
       }
       
-      // Get screen capture stream (permissions are also checked inside this function)
+      // Get screen capture stream - this will show a picker for user to select screen/window
+      // IMPORTANT: User should select the screen/application that contains the highlighted area
+      // Show alert to guide user on which window to select
       console.log('[HorizontalEditorBar] Getting screen capture stream...');
+      
+      // Show helpful message to guide user selection
+      const userMessage = `When the screen capture picker appears, please:\n\n1. Look for the window/application that contains your highlighted area\n2. Select that specific window (e.g., Safari, if you highlighted an area in Safari)\n3. Do NOT select "Entire Screen" or the wrong application\n\nClick OK to show the picker.`;
+      
+      // Don't block with alert - just log for now
+      console.log('[HorizontalEditorBar] User guidance:', userMessage);
+      console.log('[HorizontalEditorBar] When the picker appears, select the screen/application that contains the highlighted area');
+      
       const stream = await getScreenCaptureStream({ requestPermissions: true, includeAudio: false });
       
       // Verify stream has video tracks
@@ -346,17 +382,22 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
         throw new Error('Screen capture stream has no video tracks');
       }
       
+      // Get track settings to determine what was captured
+      const trackSettings = tracks[0].getSettings();
       console.log('[HorizontalEditorBar] Screen capture stream obtained:', {
         streamId: stream.id,
         trackCount: tracks.length,
-        readyStates: tracks.map(t => t.readyState)
+        readyStates: tracks.map(t => t.readyState),
+        trackSettings: trackSettings,
+        // Note: getSettings() may not always provide width/height, so we'll check video element later
       });
       
       // Store stream globally for immediate access
       (window as any).currentScreenStream = stream;
       
       // Dispatch event to create live capture node with the area and stream
-      // The area coordinates are in screen space (absolute screen coordinates)
+      // The area coordinates are in absolute screen space
+      // The video stream will be cropped to show only this area
       console.log('[HorizontalEditorBar] Dispatching create-live-capture-from-area event with area:', area);
       const event = new CustomEvent('create-live-capture-from-area', {
         detail: { 
@@ -371,9 +412,15 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
       });
       window.dispatchEvent(event);
       console.log('[HorizontalEditorBar] Event dispatched successfully');
+      
+      // Reset flag after a delay to allow event to be processed
+      setTimeout(() => {
+        isHandlingCropAreaConfirmRef.current = false;
+      }, 2000);
     } catch (error: any) {
       console.error('[HorizontalEditorBar] Error starting screen capture:', error);
       console.error('[HorizontalEditorBar] Error stack:', error.stack);
+      isHandlingCropAreaConfirmRef.current = false;
       alert(`Failed to start screen capture: ${error.message || 'Unknown error'}. Please try again.`);
     }
   }, []);

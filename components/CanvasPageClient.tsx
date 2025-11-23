@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import CanvasContainer from './CanvasContainer';
 import VerticalToolbar from './VerticalToolbar';
 import HorizontalEditorBar from './HorizontalEditorBar';
@@ -33,6 +33,9 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
   const [captureModalOpen, setCaptureModalOpen] = useState(false);
   const [captureNodeId, setCaptureNodeId] = useState<string | null>(null); // For updating existing nodes
   const [activeCaptureNodes, setActiveCaptureNodes] = useState<Set<string>>(new Set()); // Nodes with auto-refresh enabled
+  
+  // Use a ref to track if we're currently creating a node to prevent duplicates
+  const isCreatingLiveCaptureRef = useRef(false);
 
   // Clear selectedNodeType when node is deselected
   useEffect(() => {
@@ -204,11 +207,19 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       console.log('[CanvasPageClient] handleCreateLiveCaptureFromArea called with:', event.detail);
       const { area, stream } = event.detail;
       
+      // Prevent duplicate creation - if already creating, ignore this event
+      if (isCreatingLiveCaptureRef.current) {
+        console.warn('[CanvasPageClient] Already creating live capture node, ignoring duplicate event');
+        return;
+      }
+      
       if (!stream || !area) {
         console.error('[CanvasPageClient] Missing stream or area for live capture:', { stream: !!stream, area: !!area });
         return;
       }
 
+      // Set flag to prevent duplicate creation
+      isCreatingLiveCaptureRef.current = true;
       console.log('[CanvasPageClient] Creating live capture node with area:', area, 'and stream:', stream.id);
 
       try {
@@ -254,13 +265,59 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           cropArea: area
         });
         
-        // Draw cropped region (for thumbnail)
-        // Ensure crop coordinates are within video bounds
-        const cropX = Math.max(0, Math.min(area.x, videoWidth));
-        const cropY = Math.max(0, Math.min(area.y, videoHeight));
-        const cropW = Math.min(area.width, videoWidth - cropX);
-        const cropH = Math.min(area.height, videoHeight - cropY);
+        // The cropArea is in absolute screen coordinates
+        // The video stream represents the entire screen/window that was selected
+        // We need to determine if the video is:
+        // 1. The full primary screen (videoWidth = screen.width)
+        // 2. A specific window (videoWidth < screen.width)
+        // 3. A secondary monitor (different dimensions)
         
+        // For now, assume the video represents the screen that contains the crop area
+        // Calculate which screen the area is on by checking screen bounds
+        // In a multi-monitor setup, we'd need to determine which monitor contains the area
+        // For simplicity, if video matches screen dimensions, assume it's the primary screen
+        const isFullScreen = (videoWidth === window.screen.width && videoHeight === window.screen.height);
+        
+        // Store screen bounds for coordinate conversion in LiveCaptureNode
+        // screenBounds should represent the screen area that the video stream covers
+        // If it's full screen, use screen dimensions
+        // Otherwise, assume the video is positioned at (0,0) of the selected screen/window
+        const screenBounds = isFullScreen ? {
+          x: 0,
+          y: 0,
+          width: window.screen.width,
+          height: window.screen.height
+        } : {
+          x: 0,
+          y: 0,
+          width: videoWidth,  // Use actual video dimensions for window/app captures
+          height: videoHeight
+        };
+        
+        // Convert cropArea from absolute screen coordinates to video coordinates
+        // If the video is full screen, cropArea is already in screen coordinates
+        // If the video is a window/app, we need to adjust coordinates
+        let cropX, cropY, cropW, cropH;
+        
+        if (isFullScreen) {
+          // Full screen capture - use cropArea directly
+          cropX = Math.max(0, Math.min(area.x, videoWidth));
+          cropY = Math.max(0, Math.min(area.y, videoHeight));
+          cropW = Math.min(area.width, videoWidth - cropX);
+          cropH = Math.min(area.height, videoHeight - cropY);
+        } else {
+          // Window/app capture - assume the video starts at the window's position
+          // The cropArea is in screen coordinates, but the video starts at (0,0)
+          // So we need to check if the cropArea is within the video bounds
+          // For now, assume the selected window contains the crop area
+          // This is a simplification - in practice, the user should select the window that contains the area
+          cropX = Math.max(0, Math.min(area.x, videoWidth));
+          cropY = Math.max(0, Math.min(area.y, videoHeight));
+          cropW = Math.min(area.width, videoWidth - cropX);
+          cropH = Math.min(area.height, videoHeight - cropY);
+        }
+        
+        // Draw cropped region (for thumbnail) - only draw what's in the selected area
         ctx.drawImage(
           video,
           cropX, cropY, cropW, cropH,
@@ -271,15 +328,6 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         
         // Create new live capture node
         const storedFlowPos = (window as any).lastFlowPosition || { x: 500, y: 400 };
-        
-        // Store screen bounds for coordinate conversion in LiveCaptureNode
-        // The video stream dimensions represent what was captured
-        const screenBounds = {
-          x: 0,
-          y: 0,
-          width: videoWidth,  // Use actual video dimensions
-          height: videoHeight
-        };
         
         console.log('[CanvasPageClient] Storing screen bounds:', screenBounds);
         
@@ -325,17 +373,12 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
               }
               
               // Store screen bounds for coordinate conversion
-              const screenBoundsForStream = {
-                x: 0,
-                y: 0,
-                width: window.screen.width,
-                height: window.screen.height
-              };
-              
+              // Use the same screenBounds that were stored in the node
+              // These represent the actual video stream dimensions
               (window as any).liveCaptureStreams.set(data.node.id, {
                 stream,
                 cropArea: area,
-                screenBounds: screenBoundsForStream,
+                screenBounds: screenBounds, // Use the screenBounds calculated above
               });
               
               console.log('[CanvasPageClient] Stream stored in registry for node:', data.node.id);
@@ -368,9 +411,12 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       } catch (error) {
         console.error('Error creating live capture from area:', error);
         alert('Failed to create live capture. Please try again.');
+      } finally {
+        // Reset flag after creation completes (success or failure)
+        isCreatingLiveCaptureRef.current = false;
       }
     };
-    
+
     window.addEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
     window.addEventListener('open-live-capture-modal', handleOpenLiveCaptureModal as EventListener);
     window.addEventListener('recrop-live-capture', handleRecropLiveCapture as EventListener);
@@ -382,7 +428,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       window.removeEventListener('recrop-live-capture', handleRecropLiveCapture as EventListener);
       window.removeEventListener('create-live-capture-from-area', handleCreateLiveCaptureFromArea as EventListener);
     };
-  }, []); // Empty dependency array since we access nodes from store directly
+  }, []); // No dependencies needed - handlers access store directly
 
   // Handle clipboard image detection for live capture nodes
   const handleClipboardImage = useCallback(
@@ -569,8 +615,45 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           'area-chart': 'Area Chart',
         };
 
-        // Default chart data for chart nodes
-        const getDefaultChartContent = (type: string) => {
+        // Get default content based on node type
+        const getDefaultContent = (type: string) => {
+          // Widget types
+          if (type === 'iframe-widget') {
+            return {
+              type: 'iframe-widget',
+              url: '',
+              allowFullScreen: true,
+              sandbox: 'allow-same-origin allow-scripts allow-popups allow-forms',
+            };
+          }
+          if (type === 'webview-widget') {
+            return {
+              type: 'webview-widget',
+              url: '',
+              allowFullScreen: true,
+            };
+          }
+          if (type === 'live-capture-widget') {
+            return {
+              type: 'live-capture-widget',
+              imageUrl: '',
+              cropArea: { x: 0, y: 0, width: 0, height: 0 },
+              sourceUrl: '',
+              captureHistory: [],
+              isLiveStream: true,
+              interactive: false,
+            };
+          }
+          if (type === 'native-window-widget') {
+            return {
+              type: 'native-window-widget',
+              processName: '',
+              windowTitle: '',
+              windowHandle: undefined,
+            };
+          }
+          
+          // Chart types
           if (type === 'bar-chart' || type === 'line-chart' || type === 'area-chart') {
             return {
               chart: {
@@ -615,9 +698,9 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           },
           body: JSON.stringify({
             workspaceId,
-            title: getDefaultNodeTitle(type as any),
+            title: titles[type] || 'New Widget',
             type: type, // Explicit type (following Miro/Notion pattern)
-            content: getDefaultNodeContent(type as any),
+            content: getDefaultContent(type),
             tags: [type], // Keep for backwards compatibility
             x: storedFlowPos.x,
             y: storedFlowPos.y,
@@ -746,6 +829,26 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       console.error('Error duplicating node:', error);
     }
   }, [workspaceId, nodes, addNode, selectNode]);
+
+  // Listen for widget creation events (must be after handleCreateNode is defined)
+  useEffect(() => {
+    const handleCreateWidget = async (event: CustomEvent) => {
+      const { type } = event.detail;
+      const position = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      
+      // Try to get reactFlowInstance from window or use position directly
+      const reactFlowInstance = (window as any).reactFlowInstance;
+      const flowPosition = reactFlowInstance?.screenToFlowPosition?.(position) || position;
+      
+      await handleCreateNode(type, flowPosition);
+    };
+
+    window.addEventListener('create-widget', handleCreateWidget as EventListener);
+    
+    return () => {
+      window.removeEventListener('create-widget', handleCreateWidget as EventListener);
+    };
+  }, [handleCreateNode]);
 
   // Handle keyboard shortcuts
   useEffect(() => {

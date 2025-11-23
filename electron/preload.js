@@ -97,6 +97,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onCropAreaCancelled: (callback) => {
     ipcRenderer.on('crop-area-cancelled', () => callback());
   },
+  // Native window embedding (requires C++ addon)
+  embedNativeWindow: async (options) => {
+    return await ipcRenderer.invoke('embed-native-window', options);
+  },
+  unembedNativeWindow: async (options) => {
+    return await ipcRenderer.invoke('unembed-native-window', options);
+  },
+  // Input injection for interactive live capture
+  sendMouseEvent: async (event) => {
+    return await ipcRenderer.invoke('send-mouse-event', event);
+  },
+  sendKeyboardEvent: async (event) => {
+    return await ipcRenderer.invoke('send-keyboard-event', event);
+  },
 });
 
 

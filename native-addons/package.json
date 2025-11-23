@@ -1,0 +1,19 @@
+{
+  "name": "meshflow-native-addons",
+  "version": "1.0.0",
+  "description": "Native addons for MeshFlow - Input injection and window embedding",
+  "main": "index.js",
+  "scripts": {
+    "build": "node-gyp rebuild",
+    "clean": "node-gyp clean",
+    "install": "node-gyp rebuild"
+  },
+  "gypfile": true,
+  "dependencies": {
+    "node-addon-api": "^7.0.0"
+  },
+  "devDependencies": {
+    "electron-rebuild": "^3.2.9",
+    "node-gyp": "^10.0.0"
+  }
+}

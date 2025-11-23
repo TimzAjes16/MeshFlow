@@ -216,12 +216,17 @@ async function getElectronScreenCapture(includeAudio: boolean = false): Promise<
     // Using MDN-recommended options structure per https://developer.mozilla.org/en-US/docs/Web/API/Screen_Capture_API/Using_Screen_Capture
     if (navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function') {
       try {
+        // Don't restrict displaySurface - let user choose screen/window/application
+        // Removing displaySurface constraint allows full flexibility to select any screen or application
+        // Note: The picker will show all available windows/apps, user should select the one containing their highlighted area
         const displayMediaOptions = {
-          video: {
-            displaySurface: "browser" as const, // Can be "browser", "window", or "monitor"
-          },
+          video: true, // Let user select any screen, window, or application
           audio: includeAudio, // Request audio if needed
         } as MediaStreamConstraints;
+        
+        console.log('[electronUtils] Requesting screen capture with options:', displayMediaOptions);
+        console.log('[electronUtils] IMPORTANT: When the picker appears, select the specific window/application that contains your highlighted area');
+        console.log('[electronUtils] For example, if you highlighted an area in Safari, select "Safari" from the picker, NOT "Entire Screen" or "Cursor"');
         
         const stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
         
@@ -340,14 +345,17 @@ async function getBrowserScreenCapture(includeAudio: boolean = false): Promise<M
   try {
     // Use MDN-recommended options structure
     // Using MediaStreamConstraints as per TypeScript definitions
+        // Don't restrict displaySurface - let user choose screen/window/application
+        // Removing displaySurface constraint allows full flexibility
+        // Note: The picker will show all available windows/apps, user should select the one containing their highlighted area
         const displayMediaOptions: MediaStreamConstraints = {
-      video: {
-        displaySurface: "browser" as const, // Can be "browser", "window", or "monitor"
-      } as any, // displaySurface is a valid constraint but may not be in all TS definitions
-      audio: includeAudio, // Request audio if needed
-    };
+          video: true, // Let user select any screen, window, or application
+          audio: includeAudio, // Request audio if needed
+        };
     
-    console.log('Requesting screen capture with options:', displayMediaOptions);
+    console.log('[electronUtils] Requesting screen capture with options:', displayMediaOptions);
+    console.log('[electronUtils] IMPORTANT: When the picker appears, select the specific window/application that contains your highlighted area');
+    console.log('[electronUtils] For example, if you highlighted an area in Safari, select "Safari" from the picker, NOT "Entire Screen" or "Cursor"');
     const stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
     
     // Verify stream has video tracks

@@ -21,7 +21,12 @@ export type NodeTypeId =
   | 'area-chart'
   | 'emoji'
   | 'arrow'
-  | 'live-capture';
+  | 'live-capture'
+  // Widget types for modular workspace
+  | 'iframe-widget'
+  | 'webview-widget'
+  | 'live-capture-widget'
+  | 'native-window-widget';
 
 // Node type definition (inspired by Notion's block structure)
 export interface NodeTypeDefinition {
@@ -195,6 +200,61 @@ export const NODE_TYPE_REGISTRY: Record<NodeTypeId, NodeTypeDefinition> = {
       cropArea: { x: 0, y: 0, width: 0, height: 0 },
       sourceUrl: '',
       captureHistory: [],
+    },
+  },
+  // Widget types for modular workspace
+  'iframe-widget': {
+    id: 'iframe-widget',
+    label: 'Web App (iframe)',
+    category: 'media',
+    hasEditableText: false,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      url: '',
+      allowFullScreen: true,
+      sandbox: 'allow-same-origin allow-scripts allow-popups allow-forms',
+    },
+  },
+  'webview-widget': {
+    id: 'webview-widget',
+    label: 'Web App (webview)',
+    category: 'media',
+    hasEditableText: false,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      url: '',
+      allowFullScreen: true,
+    },
+  },
+  'live-capture-widget': {
+    id: 'live-capture-widget',
+    label: 'Live Capture Widget',
+    category: 'media',
+    hasEditableText: false,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      imageUrl: '',
+      cropArea: { x: 0, y: 0, width: 0, height: 0 },
+      sourceUrl: '',
+      captureHistory: [],
+      isLiveStream: true,
+      interactive: false,
+    },
+  },
+  'native-window-widget': {
+    id: 'native-window-widget',
+    label: 'Native App Widget',
+    category: 'media',
+    hasEditableText: false,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      processName: '',
+      windowTitle: '',
+      windowHandle: undefined,
     },
   },
 };

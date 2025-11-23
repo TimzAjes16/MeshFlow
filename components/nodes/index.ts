@@ -10,6 +10,8 @@ import ShapeNode from './ShapeNode';
 import ChartNode from './ChartNode';
 import LiveCaptureNode from './LiveCaptureNode';
 import ArrowNode from './ArrowNode';
+// Import widget components
+import { IframeWidget, WebViewWidget, LiveCaptureWidget, NativeWindowWidget } from '../widgets';
 import type { ComponentType } from 'react';
 import type { NodeProps } from 'reactflow';
 import type { NodeTypeId } from '@/lib/nodeTypes';
@@ -35,6 +37,11 @@ export const NODE_RENDERERS: Record<NodeTypeId, ComponentType<NodeRendererProps>
   'emoji': NoteNode, // Emoji uses note renderer for now
   'arrow': ArrowNode,
   'live-capture': LiveCaptureNode,
+  // Widget types for modular workspace
+  'iframe-widget': IframeWidget,
+  'webview-widget': WebViewWidget,
+  'live-capture-widget': LiveCaptureWidget,
+  'native-window-widget': NativeWindowWidget,
 };
 
 // Export individual components

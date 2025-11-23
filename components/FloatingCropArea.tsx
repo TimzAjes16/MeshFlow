@@ -24,15 +24,8 @@ export default function FloatingCropArea({
   defaultWidth = 779,
   defaultHeight = 513 
 }: FloatingCropAreaProps) {
-  const [position, setPosition] = useState<{ x: number; y: number }>(() => {
-    if (typeof window !== 'undefined') {
-      return { 
-        x: window.innerWidth / 2 - defaultWidth / 2, 
-        y: window.innerHeight / 2 - defaultHeight / 2 
-      };
-    }
-    return { x: 0, y: 0 };
-  });
+  // Initialize with empty position - will be set by useEffect to ensure screen coordinates
+  const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [size, setSize] = useState<{ width: number; height: number }>({ 
     width: defaultWidth, 
     height: defaultHeight 
@@ -46,7 +39,8 @@ export default function FloatingCropArea({
   // Initialize position to center of screen (using screen coordinates)
   useEffect(() => {
     if (isOpen && typeof window !== 'undefined') {
-      // Center on the viewport (visible area), accounting for window position
+      // Reset position to center of viewport (visible area), accounting for window position
+      // Use screen coordinates for consistent positioning
       const centerX = window.screenX + (window.innerWidth / 2);
       const centerY = window.screenY + (window.innerHeight / 2);
       setPosition({
@@ -54,6 +48,10 @@ export default function FloatingCropArea({
         y: centerY - (defaultHeight / 2),
       });
       setSize({ width: defaultWidth, height: defaultHeight });
+      // Reset drag state to ensure clean state
+      setIsDragging(false);
+      setIsResizing(false);
+      setResizeHandle(null);
     }
   }, [isOpen, defaultWidth, defaultHeight]);
 
@@ -183,7 +181,11 @@ export default function FloatingCropArea({
   }, [isDragging, isResizing, handleMouseMove, handleMouseUp]);
 
   // Handle confirm
-  const handleConfirm = useCallback(() => {
+  const handleConfirm = useCallback((e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const rect = containerRef.current?.getBoundingClientRect();
     if (rect) {
       // Convert screen coordinates to relative coordinates
@@ -231,34 +233,36 @@ export default function FloatingCropArea({
 
   if (!isOpen) return null;
 
-  // Convert screen coordinates to window-relative coordinates for positioning
-  const getWindowRelativePosition = () => {
+  // Use screen coordinates directly for positioning outside window bounds
+  // Convert to viewport coordinates for CSS positioning
+  const getViewportPosition = () => {
     if (typeof window === 'undefined') return { x: 0, y: 0 };
+    // Use screen coordinates directly - the element should be positioned relative to viewport
+    // but we calculate the offset from screen origin
     return {
       x: position.x - window.screenX,
       y: position.y - window.screenY,
     };
   };
 
-  const windowPos = getWindowRelativePosition();
+  const viewportPos = getViewportPosition();
 
   return (
     <div
       ref={containerRef}
-      className="fixed z-[99999]"
+      className="fixed z-[99999] pointer-events-none"
       style={{
-        left: `${windowPos.x}px`,
-        top: `${windowPos.y}px`,
+        left: `${viewportPos.x}px`,
+        top: `${viewportPos.y}px`,
         width: `${size.width}px`,
         height: `${size.height}px`,
-        pointerEvents: 'auto',
         // Ensure it can be positioned outside window bounds
         position: 'fixed',
       }}
     >
       {/* Crop area border - make entire area draggable */}
       <div
-        className="absolute inset-0 border-2 border-blue-500 bg-blue-500/10 backdrop-blur-sm rounded-lg shadow-2xl"
+        className="absolute inset-0 border-2 border-blue-500 bg-blue-500/10 backdrop-blur-sm rounded-lg shadow-2xl pointer-events-auto"
         style={{
           cursor: isDragging ? 'grabbing' : 'grab',
           userSelect: 'none',
@@ -273,16 +277,26 @@ export default function FloatingCropArea({
           </div>
           <div className="flex items-center gap-1">
             <button
-              onClick={handleConfirm}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleConfirm();
+              }}
               className="p-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg shadow-lg transition-colors"
               title="Confirm selection"
+              type="button"
             >
               <Check className="w-4 h-4" />
             </button>
             <button
-              onClick={onClose}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose();
+              }}
               className="p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-lg transition-colors"
               title="Cancel"
+              type="button"
             >
               <X className="w-4 h-4" />
             </button>

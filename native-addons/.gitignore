@@ -1,0 +1,7 @@
+build/
+node_modules/
+*.node
+*.o
+*.a
+.DS_Store
+

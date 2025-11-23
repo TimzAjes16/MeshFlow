@@ -17,6 +17,9 @@
     "setup:env": "tsx scripts/setup-env.ts",
     "setup:db": "./scripts/setup-database.sh",
     "setup:full": "npm run setup:env && npm run setup:db",
+    "native:build": "cd native-addons && npm install && npm run build",
+    "native:clean": "cd native-addons && npm run clean",
+    "native:rebuild": "npm run native:clean && npm run native:build",
     "electron:dev": "concurrently \"cross-env NODE_ENV=development next dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
     "icons:generate": "node scripts/generate-icons.js",
     "electron:build": "rm -rf .next && npm run icons:generate && cross-env NODE_ENV=production ELECTRON_STANDALONE=1 next build",
@@ -24,7 +27,7 @@
     "electron:package:mac": "npm run electron:build && electron-builder --mac",
     "electron:package:win": "npm run electron:build && electron-builder --win",
     "electron:package:all": "npm run electron:build && electron-builder --mac --win",
-    "electron:postinstall": "electron-builder install-app-deps"
+    "electron:postinstall": "electron-builder install-app-deps && npm run native:build"
   },
   "dependencies": {
     "@prisma/client": "^5.7.0",
@@ -71,6 +74,8 @@
     "electron-builder": "^26.0.12",
     "eslint": "^9.39.1",
     "eslint-config-next": "^16.0.3",
+    "node-addon-api": "^7.0.0",
+    "node-gyp": "^10.0.0",
     "postcss": "^8.4.35",
     "prisma": "^5.7.0",
     "sharp": "^0.34.5",
@@ -91,6 +96,7 @@
       ".next/static/**/*",
       "public/**/*",
       "prisma/**/*",
+      "native-addons/**/*",
       "package.json",
       "!node_modules/**/{README.md,README,readme.md,readme,CHANGELOG.md,LICENSE}",
       "!node_modules/**/{test,__tests__,tests,powered-test,example,examples}",
@@ -103,7 +109,10 @@
       "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
       "!**/{appveyor.yml,.travis.yml,circle.yml}",
       "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}",
-      "!node_modules/better-sqlite3/**"
+      "!node_modules/better-sqlite3/**",
+      "!native-addons/node_modules/**",
+      "!native-addons/build/**/*.o",
+      "!native-addons/build/**/*.a"
     ],
     "mac": {
       "category": "public.app-category.productivity",

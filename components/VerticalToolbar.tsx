@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { GripVertical, Paintbrush, Eraser, Video } from 'lucide-react';
+import { GripVertical, Paintbrush, Eraser, Video, Globe, Globe2, Monitor, Plus } from 'lucide-react';
 
 interface VerticalToolbarProps {
   // Tools will be added later
@@ -264,6 +264,91 @@ const VerticalToolbar = ({}: VerticalToolbarProps) => {
           >
             <Video className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* Divider */}
+        <div className="w-8 h-px bg-gradient-to-r from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+
+        {/* Widget Creation Tools */}
+        <div className="flex flex-col gap-2 min-h-[60px] min-w-[48px] justify-center items-center">
+          {/* Add Widget Menu Button */}
+          <div className="relative group/widget-menu">
+            <button
+              className="p-2 rounded-lg transition-all duration-150 text-gray-600 dark:text-gray-400 hover:bg-gray-100/60 dark:hover:bg-gray-700/60"
+              title="Add Widget"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+            
+            {/* Widget Menu Dropdown */}
+            <div className="absolute left-full ml-2 top-0 opacity-0 invisible group-hover/widget-menu:opacity-100 group-hover/widget-menu:visible transition-all duration-200 z-50">
+              <div className="backdrop-blur-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200/50 dark:border-gray-700/50 rounded-xl shadow-xl p-2 min-w-[200px]">
+                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 px-2 py-1 mb-1">
+                  Add Widget
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.dispatchEvent(new CustomEvent('create-widget', { 
+                      detail: { type: 'iframe-widget' } 
+                    }));
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100/60 dark:hover:bg-gray-700/60 transition-colors text-left"
+                >
+                  <Globe className="w-4 h-4 text-blue-500" />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-gray-900 dark:text-white">Web App (iframe)</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Discord, YouTube, etc.</div>
+                  </div>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.dispatchEvent(new CustomEvent('create-widget', { 
+                      detail: { type: 'webview-widget' } 
+                    }));
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100/60 dark:hover:bg-gray-700/60 transition-colors text-left"
+                >
+                  <Globe2 className="w-4 h-4 text-green-500" />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-gray-900 dark:text-white">Web App (webview)</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Bypass CORS restrictions</div>
+                  </div>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.dispatchEvent(new CustomEvent('create-widget', { 
+                      detail: { type: 'live-capture-widget' } 
+                    }));
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100/60 dark:hover:bg-gray-700/60 transition-colors text-left"
+                >
+                  <Video className="w-4 h-4 text-purple-500" />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-gray-900 dark:text-white">Live Capture</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Screen area capture</div>
+                  </div>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.dispatchEvent(new CustomEvent('create-widget', { 
+                      detail: { type: 'native-window-widget' } 
+                    }));
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100/60 dark:hover:bg-gray-700/60 transition-colors text-left"
+                >
+                  <Monitor className="w-4 h-4 text-orange-500" />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-gray-900 dark:text-white">Native App</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Embed desktop app</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Subtle glow effect */}

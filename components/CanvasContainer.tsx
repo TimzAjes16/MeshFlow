@@ -17,6 +17,7 @@ import ReactFlow, {
   BackgroundVariant,
   useReactFlow,
 } from 'reactflow';
+import WorkspaceSwitcher from './WorkspaceSwitcher';
 import 'reactflow/dist/style.css';
 import { useCanvasStore } from '@/state/canvasStore';
 import { useWorkspaceStore } from '@/state/workspaceStore';
@@ -165,20 +166,69 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
     
     // Only hash properties that affect React Flow rendering
     // Exclude content from hash to prevent re-renders on content-only changes
-    const nodesHash = JSON.stringify(sortedNodes.map(n => ({ 
-      id: n.id, 
-      x: n.x, 
-      y: n.y, 
-      title: n.title, 
-      width: n.width,
-      height: n.height,
-      tags: n.tags ? [...n.tags].sort() : [],
-      // Only include content type, not full content, to detect node type changes
-      contentType: n.content && typeof n.content === 'object' && 'type' in n.content 
-        ? (n.content as any).type 
-        : null,
-    })));
-    const edgesHash = JSON.stringify(sortedEdges.map(e => ({ id: e.id, source: e.source, target: e.target })));
+    // Wrap in try-catch to handle cases where content might be extremely large
+    let nodesHash: string;
+    let edgesHash: string;
+    
+    try {
+      nodesHash = JSON.stringify(sortedNodes.map(n => {
+        try {
+          // Safely extract content type without accessing large content objects
+          let contentType: string | null = null;
+          if (n.content && typeof n.content === 'object') {
+            try {
+              contentType = 'type' in n.content && typeof (n.content as any).type === 'string' 
+                ? (n.content as any).type 
+                : null;
+            } catch {
+              // If accessing type fails, just skip it
+              contentType = null;
+            }
+          }
+          
+          return {
+            id: n.id || '',
+            x: n.x || 0,
+            y: n.y || 0,
+            title: n.title || '',
+            width: n.width || undefined,
+            height: n.height || undefined,
+            tags: n.tags && Array.isArray(n.tags) ? [...n.tags].sort() : [],
+            contentType,
+          };
+        } catch (error) {
+          // If node processing fails, return minimal data
+          console.warn('[CanvasContainer] Error processing node for hash:', n.id, error);
+          return {
+            id: n.id || '',
+            x: n.x || 0,
+            y: n.y || 0,
+            title: '',
+            tags: [],
+            contentType: null,
+          };
+        }
+      }));
+    } catch (error) {
+      console.error('[CanvasContainer] Error creating nodes hash:', error);
+      // Fallback to simple hash based on IDs and positions only
+      nodesHash = JSON.stringify(sortedNodes.map(n => ({ 
+        id: n.id || '', 
+        x: n.x || 0, 
+        y: n.y || 0,
+      })));
+    }
+    
+    try {
+      edgesHash = JSON.stringify(sortedEdges.map(e => ({ 
+        id: e.id || '', 
+        source: e.source || '', 
+        target: e.target || '' 
+      })));
+    } catch (error) {
+      console.error('[CanvasContainer] Error creating edges hash:', error);
+      edgesHash = JSON.stringify(sortedEdges.map(e => ({ id: e.id || '' })));
+    }
     
     // Only sync if nodes or edges actually changed (by value, not reference)
     if (nodesHash === lastSyncedNodesRef.current && edgesHash === lastSyncedEdgesRef.current) {
@@ -479,9 +529,10 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
       // Check if this node overlaps with any other node using distance-based detection
       // This works at any zoom level because we're using flow coordinates
       const overlappingNode = nodes.find((n) => {
-        if (n.id === node.id) return false;
+        if (!n || n.id === node.id) return false;
         
         const otherPosition = n.position;
+        if (!otherPosition) return false;
         
         // Get other node's dimensions from DOM
         const otherNodeElement = document.querySelector(`[data-id="${n.id}"]`) as HTMLElement;
@@ -540,8 +591,8 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             nodeId: node.id,
-            x: node.position.x,
-            y: node.position.y,
+            x: node.position?.x !== undefined ? Math.round(node.position.x * 100) / 100 : 0,
+            y: node.position?.y !== undefined ? Math.round(node.position.y * 100) / 100 : 0,
           }),
         });
 
@@ -549,8 +600,8 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
           // Update workspace store with new position
           const { updateNode } = useWorkspaceStore.getState();
           updateNode(node.id, {
-            x: node.position.x,
-            y: node.position.y,
+            x: node.position?.x !== undefined ? Math.round(node.position.x * 100) / 100 : 0,
+            y: node.position?.y !== undefined ? Math.round(node.position.y * 100) / 100 : 0,
           });
         } else {
           console.error('[CanvasContainer] Failed to update node position:', response.statusText);
@@ -776,6 +827,14 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         return;
       }
       
+      // Show workspace switcher when zoomed out beyond threshold (pinch-to-zoom out)
+      // Threshold: zoom < 0.3 indicates user has zoomed out significantly
+      if (newViewport.zoom < 0.3 && !showWorkspaceSwitcher) {
+        setShowWorkspaceSwitcher(true);
+      } else if (newViewport.zoom >= 0.3 && showWorkspaceSwitcher) {
+        setShowWorkspaceSwitcher(false);
+      }
+      
       // Skip if viewport hasn't changed significantly
       if (lastViewportRef.current) {
         const dx = Math.abs(newViewport.x - lastViewportRef.current.x);
@@ -799,7 +858,7 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         setViewport(newViewport);
       }, 50); // Update every 50ms max during move for smooth minimap sync
     },
-    [setViewport]
+    [setViewport, showWorkspaceSwitcher]
   );
 
   const onMoveEnd = useCallback(
@@ -967,6 +1026,19 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
               {isAnimating ? 'Organizing...' : 'Auto-Organize'}
             </button>
           )}
+          
+          {/* Workspace Switcher - appears when zoomed out (pinch-to-zoom) */}
+          <WorkspaceSwitcher
+            isVisible={showWorkspaceSwitcher}
+            currentWorkspaceId={workspaceId}
+            onClose={() => {
+              setShowWorkspaceSwitcher(false);
+              // Zoom back in slightly when closing switcher
+              if (reactFlowInstance) {
+                reactFlowInstance.zoomTo(0.5, { duration: 300 });
+              }
+            }}
+          />
         </div>
       );
     }

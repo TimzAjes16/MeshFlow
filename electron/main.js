@@ -1509,7 +1509,9 @@ ipcMain.handle('open-crop-area-overlay', async (event, options = {}) => {
         });
         
         // Buttons
-        confirmBtn.addEventListener('click', () => {
+        confirmBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
           if (window.electronAPI?.confirmCropArea) {
             window.electronAPI.confirmCropArea({
               x: position.x,
@@ -1520,7 +1522,9 @@ ipcMain.handle('open-crop-area-overlay', async (event, options = {}) => {
           }
         });
         
-        cancelBtn.addEventListener('click', () => {
+        cancelBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
           if (window.electronAPI?.cancelCropArea) {
             window.electronAPI.cancelCropArea();
           }
@@ -1568,6 +1572,185 @@ ipcMain.handle('cancel-crop-area', () => {
     mainWindow.webContents.send('crop-area-cancelled');
     cropAreaOverlay.close();
     cropAreaOverlay = null;
+  }
+});
+
+// Native window embedding
+ipcMain.handle('embed-native-window', async (event, options) => {
+  const { containerId, processName, windowTitle } = options;
+  
+  try {
+    if (!nativeAddon) {
+      return {
+        success: false,
+        error: 'Native addon not loaded. Run: npm run native:build',
+      };
+    }
+    
+    // Get the parent window handle (Electron BrowserWindow)
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    if (!parentWindow) {
+      return {
+        success: false,
+        error: 'Parent window not found',
+      };
+    }
+    
+    // Get native window handle
+    // On Windows: HWND
+    // On macOS: NSWindow*
+    let parentWindowHandle = null;
+    if (process.platform === 'win32') {
+      parentWindowHandle = parentWindow.getNativeWindowHandle();
+    } else if (process.platform === 'darwin') {
+      // On macOS, we need to get the NSWindow from the BrowserWindow
+      // This requires accessing the internal _getNativeWindowHandle or using a different approach
+      // For now, we'll pass the BrowserWindow ID and handle it differently
+      parentWindowHandle = parentWindow.id;
+    }
+    
+    console.log('[Native Window Embed] Request to embed:', { containerId, processName, windowTitle });
+    
+    // Find the child window first
+    const findResult = nativeAddon.findWindow({ processName, windowTitle });
+    if (!findResult.found) {
+      return {
+        success: false,
+        error: `Window not found: ${processName || windowTitle || 'unknown'}`,
+      };
+    }
+    
+    // Embed the window
+    const result = nativeAddon.embedWindow({
+      containerId,
+      processName,
+      windowTitle,
+      parentWindowHandle: process.platform === 'win32' 
+        ? parentWindowHandle.readUInt32LE(0) 
+        : parentWindowHandle,
+    });
+    
+    return result;
+  } catch (error) {
+    console.error('[Native Window Embed] Error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to embed native window',
+    };
+  }
+});
+
+ipcMain.handle('unembed-native-window', async (event, options) => {
+  const { containerId } = options;
+  
+  try {
+    if (!nativeAddon) {
+      return {
+        success: false,
+        error: 'Native addon not loaded. Run: npm run native:build',
+      };
+    }
+    
+    console.log('[Native Window Embed] Request to unembed:', { containerId });
+    
+    const result = nativeAddon.unembedWindow({ containerId });
+    return result;
+  } catch (error) {
+    console.error('[Native Window Embed] Error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to unembed native window',
+    };
+  }
+});
+
+// Load native addon for input injection and window embedding
+let nativeAddon = null;
+try {
+  const path = require('path');
+  // Try to load from the native-addons directory
+  const nativeAddonPath = path.join(__dirname, '..', 'native-addons');
+  nativeAddon = require(nativeAddonPath);
+  console.log('[Electron] Native addon loaded successfully');
+} catch (error) {
+  console.warn('[Electron] Native addon not available:', error.message);
+  console.warn('[Electron] Some features (input injection, window embedding) will not work');
+  console.warn('[Electron] Run: npm run native:build');
+  console.warn('[Electron] Error details:', error.stack);
+}
+
+// Input injection for interactive live capture
+ipcMain.handle('send-mouse-event', async (event, mouseEvent) => {
+  try {
+    if (!nativeAddon) {
+      return {
+        success: false,
+        error: 'Native addon not loaded. Run: npm run native:build',
+      };
+    }
+    
+    const { type, x, y, button, buttons, shiftKey, ctrlKey, altKey, metaKey } = mouseEvent;
+    
+    console.log('[Input Injection] Mouse event:', { type, x, y, button });
+    
+    const success = nativeAddon.injectMouseEvent({
+      type,
+      x,
+      y,
+      button,
+      buttons,
+      shiftKey,
+      ctrlKey,
+      altKey,
+      metaKey,
+    });
+    
+    return {
+      success,
+      error: success ? null : 'Failed to inject mouse event',
+    };
+  } catch (error) {
+    console.error('[Input Injection] Error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to inject mouse event',
+    };
+  }
+});
+
+ipcMain.handle('send-keyboard-event', async (event, keyboardEvent) => {
+  try {
+    if (!nativeAddon) {
+      return {
+        success: false,
+        error: 'Native addon not loaded. Run: npm run native:build',
+      };
+    }
+    
+    const { type, key, code, shiftKey, ctrlKey, altKey, metaKey } = keyboardEvent;
+    
+    console.log('[Input Injection] Keyboard event:', { type, key, code });
+    
+    const success = nativeAddon.injectKeyboardEvent({
+      type,
+      key,
+      code,
+      shiftKey,
+      ctrlKey,
+      altKey,
+      metaKey,
+    });
+    
+    return {
+      success,
+      error: success ? null : 'Failed to inject keyboard event',
+    };
+  } catch (error) {
+    console.error('[Input Injection] Error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to inject keyboard event',
+    };
   }
 });
 
