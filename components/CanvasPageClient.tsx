@@ -34,6 +34,8 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
   const [captureModalOpen, setCaptureModalOpen] = useState(false);
   const [captureNodeId, setCaptureNodeId] = useState<string | null>(null); // For updating existing nodes
   const [activeCaptureNodes, setActiveCaptureNodes] = useState<Set<string>>(new Set()); // Nodes with auto-refresh enabled
+  const [nativeWindowConfigOpen, setNativeWindowConfigOpen] = useState(false);
+  const [pendingNativeWindowType, setPendingNativeWindowType] = useState<{ type: string; position?: { x: number; y: number } } | null>(null);
   
   // Use a ref to track if we're currently creating a node to prevent duplicates
   const isCreatingLiveCaptureRef = useRef(false);
