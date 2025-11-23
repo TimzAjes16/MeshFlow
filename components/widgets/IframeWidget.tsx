@@ -43,7 +43,50 @@ function IframeWidget(props: IframeWidgetProps) {
   const previousUrlRef = useRef<string>('');
   const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Reload iframe when URL changes
+  // Listen for immediate URL update events
+  useEffect(() => {
+    const handleUrlUpdate = (event: CustomEvent) => {
+      if (event.detail?.nodeId === node.id && event.detail?.widgetType === 'iframe-widget') {
+        const newUrl = event.detail.url;
+        if (newUrl && iframeRef.current) {
+          // Force immediate reload
+          previousUrlRef.current = newUrl;
+          setIsLoading(true);
+          setHasError(false);
+          setErrorMessage('');
+          
+          // Clear any existing timeout
+          if (loadTimeoutRef.current) {
+            clearTimeout(loadTimeoutRef.current);
+          }
+          
+          // Immediately set the src
+          iframeRef.current.src = newUrl;
+          
+          // Set timeout for error detection
+          loadTimeoutRef.current = setTimeout(() => {
+            try {
+              const iframe = iframeRef.current;
+              if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.location.href;
+              }
+            } catch (e: any) {
+              setIsLoading(false);
+              setHasError(true);
+              setErrorMessage('This website cannot be embedded in an iframe due to security restrictions (X-Frame-Options). Try using the WebView widget instead, which can bypass some restrictions.');
+            }
+          }, 3000);
+        }
+      }
+    };
+
+    window.addEventListener('widget-url-updated', handleUrlUpdate as EventListener);
+    return () => {
+      window.removeEventListener('widget-url-updated', handleUrlUpdate as EventListener);
+    };
+  }, [node.id]);
+
+  // Reload iframe when URL changes - immediate loading
   useEffect(() => {
     const currentUrl = iframeConfig.url || '';
     if (currentUrl && currentUrl !== previousUrlRef.current && iframeRef.current) {
@@ -57,18 +100,15 @@ function IframeWidget(props: IframeWidgetProps) {
         clearTimeout(loadTimeoutRef.current);
       }
       
-      // Force iframe reload by setting src to empty and then back to URL
-      iframeRef.current.src = '';
-      setTimeout(() => {
-        if (iframeRef.current) {
-          iframeRef.current.src = currentUrl;
-        }
-      }, 10);
+      // Immediately set the src - no artificial delay
+      if (iframeRef.current) {
+        iframeRef.current.src = currentUrl;
+      }
       
       // Set a timeout to detect if the iframe fails to load (e.g., X-Frame-Options)
       loadTimeoutRef.current = setTimeout(() => {
-        if (isLoading) {
-          // Check if iframe content is accessible
+        // Use a ref to check current loading state
+        const checkLoading = () => {
           try {
             const iframe = iframeRef.current;
             if (iframe && iframe.contentWindow) {
@@ -81,7 +121,8 @@ function IframeWidget(props: IframeWidgetProps) {
             setHasError(true);
             setErrorMessage('This website cannot be embedded in an iframe due to security restrictions (X-Frame-Options). Try using the WebView widget instead, which can bypass some restrictions.');
           }
-        }
+        };
+        checkLoading();
       }, 3000); // 3 second timeout
     }
     
@@ -90,7 +131,7 @@ function IframeWidget(props: IframeWidgetProps) {
         clearTimeout(loadTimeoutRef.current);
       }
     };
-  }, [iframeConfig.url, isLoading]);
+  }, [iframeConfig.url]);
 
   const handleLoad = useCallback(() => {
     if (loadTimeoutRef.current) {

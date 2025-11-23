@@ -546,6 +546,15 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
       content: updatedContent,
     });
     
+    // Dispatch custom event to force immediate widget reload
+    window.dispatchEvent(new CustomEvent('widget-url-updated', {
+      detail: {
+        nodeId: selectedNodeId,
+        url: normalizedUrl,
+        widgetType: isIframeWidget ? 'iframe-widget' : 'webview-widget',
+      }
+    }));
+    
     // Persist to API
     try {
       const response = await fetch('/api/nodes/update', {
@@ -1043,6 +1052,12 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
                       handleSaveWidgetUrl();
                     }
                   }}
+                  onBlur={() => {
+                    // Auto-save on blur (when widget is deselected or input loses focus)
+                    if (widgetUrl && isValidUrl(widgetUrl)) {
+                      handleSaveWidgetUrl();
+                    }
+                  }}
                   onClick={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
                   placeholder="Enter URL (e.g., https://discord.com)"
@@ -1077,6 +1092,12 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
                   onKeyDown={(e) => {
                     e.stopPropagation();
                     if (e.key === 'Enter') {
+                      handleSaveWidgetUrl();
+                    }
+                  }}
+                  onBlur={() => {
+                    // Auto-save on blur (when widget is deselected or input loses focus)
+                    if (widgetUrl && isValidUrl(widgetUrl)) {
                       handleSaveWidgetUrl();
                     }
                   }}

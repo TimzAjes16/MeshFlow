@@ -42,6 +42,53 @@ function WebViewWidget(props: WebViewWidgetProps) {
   const previousUrlRef = useRef<string>('');
   const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Listen for immediate URL update events
+  useEffect(() => {
+    const handleUrlUpdate = (event: CustomEvent) => {
+      if (event.detail?.nodeId === node.id && event.detail?.widgetType === 'webview-widget') {
+        const newUrl = event.detail.url;
+        if (newUrl && webviewRef.current && isElectron) {
+          // Force immediate reload
+          previousUrlRef.current = newUrl;
+          setIsLoading(true);
+          setHasError(false);
+          setErrorMessage('');
+          
+          // Clear any existing timeout
+          if (loadTimeoutRef.current) {
+            clearTimeout(loadTimeoutRef.current);
+          }
+          
+          const webview = webviewRef.current;
+          
+          // Immediately set the src
+          if (webview.src !== newUrl) {
+            webview.src = newUrl;
+          } else {
+            webview.reload();
+          }
+          
+          // Set timeout for error detection
+          loadTimeoutRef.current = setTimeout(() => {
+            setIsLoading((prevLoading) => {
+              if (prevLoading) {
+                setHasError(true);
+                setErrorMessage('Website took too long to load. It may be blocked or unreachable.');
+                return false;
+              }
+              return prevLoading;
+            });
+          }, 10000);
+        }
+      }
+    };
+
+    window.addEventListener('widget-url-updated', handleUrlUpdate as EventListener);
+    return () => {
+      window.removeEventListener('widget-url-updated', handleUrlUpdate as EventListener);
+    };
+  }, [node.id, isElectron]);
+
   // Check if we're in Electron environment
   const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
 
@@ -68,7 +115,7 @@ function WebViewWidget(props: WebViewWidgetProps) {
     setErrorMessage(errorMsg);
   }, []);
 
-  // Reload webview when URL changes
+  // Reload webview when URL changes - immediate loading
   useEffect(() => {
     const currentUrl = webviewConfig.url || '';
     if (currentUrl && currentUrl !== previousUrlRef.current && webviewRef.current && isElectron) {
@@ -84,21 +131,25 @@ function WebViewWidget(props: WebViewWidgetProps) {
       
       const webview = webviewRef.current;
       
-      // Set the src to trigger reload
+      // Immediately set the src to trigger reload - no delay
       if (webview.src !== currentUrl) {
         webview.src = currentUrl;
       } else {
-        // If src is already set, reload it
+        // If src is already set, reload it immediately
         webview.reload();
       }
       
       // Set a timeout to detect if the webview fails to load
       loadTimeoutRef.current = setTimeout(() => {
-        if (isLoading) {
-          setIsLoading(false);
-          setHasError(true);
-          setErrorMessage('Website took too long to load. It may be blocked or unreachable.');
-        }
+        // Check if still loading after timeout
+        setIsLoading((prevLoading) => {
+          if (prevLoading) {
+            setHasError(true);
+            setErrorMessage('Website took too long to load. It may be blocked or unreachable.');
+            return false;
+          }
+          return prevLoading;
+        });
       }, 10000); // 10 second timeout
     }
     
@@ -107,7 +158,7 @@ function WebViewWidget(props: WebViewWidgetProps) {
         clearTimeout(loadTimeoutRef.current);
       }
     };
-  }, [webviewConfig.url, isElectron, isLoading]);
+  }, [webviewConfig.url, isElectron]);
 
   // Setup webview event listeners (Electron webview uses DOM events, not React props)
   useEffect(() => {
