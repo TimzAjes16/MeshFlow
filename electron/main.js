@@ -1671,8 +1671,21 @@ try {
   const path = require('path');
   // Try to load from the native-addons directory
   const nativeAddonPath = path.join(__dirname, '..', 'native-addons');
+  console.log('[Electron] Attempting to load native addon from:', nativeAddonPath);
   nativeAddon = require(nativeAddonPath);
   console.log('[Electron] Native addon loaded successfully');
+  console.log('[Electron] Available methods:', Object.keys(nativeAddon));
+  console.log('[Electron] getWindowList type:', typeof nativeAddon.getWindowList);
+  
+  // Test getWindowList if available
+  if (typeof nativeAddon.getWindowList === 'function') {
+    try {
+      const testWindows = nativeAddon.getWindowList();
+      console.log('[Electron] Test getWindowList result:', testWindows ? testWindows.length : 0, 'windows');
+    } catch (testError) {
+      console.error('[Electron] Error testing getWindowList:', testError);
+    }
+  }
 } catch (error) {
   console.warn('[Electron] Native addon not available:', error.message);
   console.warn('[Electron] Some features (input injection, window embedding) will not work');
