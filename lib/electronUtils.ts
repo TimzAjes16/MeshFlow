@@ -142,6 +142,112 @@ export async function checkMicrophonePermission(): Promise<{ granted: boolean | 
 }
 
 /**
+ * Get screen capture stream for a specific window by process name and window title
+ * Works in Electron only - uses desktopCapturer to find and capture the specific window
+ */
+export async function getWindowCaptureStream(options: {
+  processName: string;
+  windowTitle?: string;
+  requestPermissions?: boolean;
+  includeAudio?: boolean;
+}): Promise<MediaStream> {
+  const { processName, windowTitle, requestPermissions = true, includeAudio = false } = options;
+  
+  if (!isElectron() || !window.electronAPI?.getDesktopSources) {
+    throw new Error('Window-specific capture requires Electron with desktopCapturer');
+  }
+  
+  // Request permissions if needed
+  if (requestPermissions) {
+    try {
+      const permissionStatus = await checkScreenRecordingPermission();
+      if (permissionStatus.granted === false || permissionStatus.granted === null) {
+        console.log('[electronUtils] Requesting screen recording permission...');
+        const permissionResult = await requestScreenRecordingPermission();
+        if (!permissionResult.granted) {
+          throw new Error(permissionResult.message || 'Screen recording permission denied');
+        }
+        console.log('[electronUtils] Screen recording permission granted');
+      }
+    } catch (permissionError: any) {
+      console.error('[electronUtils] Error requesting permissions:', permissionError);
+    }
+  }
+  
+  // Get all desktop sources
+  let sources;
+  try {
+    sources = await window.electronAPI.getDesktopSources({
+      types: ['window'],
+      thumbnailSize: { width: 1920, height: 1080 }
+    });
+  } catch (error: any) {
+    console.error('Error getting desktop sources:', error);
+    throw new Error(`Failed to get screen sources: ${error.message || 'Unknown error'}`);
+  }
+  
+  if (!sources || sources.length === 0) {
+    throw new Error('No window sources available');
+  }
+  
+  // Find the window that matches process name and window title
+  const matchingSource = sources.find(source => {
+    const name = source.name || '';
+    // Match by process name (usually appears in the source name)
+    const matchesProcess = name.toLowerCase().includes(processName.toLowerCase());
+    
+    // If window title is provided, also match by title
+    if (windowTitle) {
+      const matchesTitle = name.toLowerCase().includes(windowTitle.toLowerCase());
+      return matchesProcess && matchesTitle;
+    }
+    
+    return matchesProcess;
+  });
+  
+  if (!matchingSource) {
+    console.warn('[electronUtils] Could not find exact match, available sources:', sources.map(s => s.name));
+    // Try to find a partial match
+    const partialMatch = sources.find(source => {
+      const name = source.name || '';
+      return name.toLowerCase().includes(processName.toLowerCase());
+    });
+    
+    if (!partialMatch) {
+      throw new Error(`Window not found: ${processName}${windowTitle ? ` - ${windowTitle}` : ''}`);
+    }
+    
+    console.log('[electronUtils] Using partial match:', partialMatch.name);
+    return captureSource(partialMatch.id, includeAudio);
+  }
+  
+  console.log('[electronUtils] Found matching window:', matchingSource.name);
+  return captureSource(matchingSource.id, includeAudio);
+}
+
+/**
+ * Capture a specific source by ID
+ */
+async function captureSource(sourceId: string, includeAudio: boolean): Promise<MediaStream> {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: {
+      // @ts-ignore - Electron-specific constraints
+      mandatory: {
+        chromeMediaSource: 'desktop',
+        chromeMediaSourceId: sourceId,
+        minWidth: 1280,
+        maxWidth: 1920,
+        minHeight: 720,
+        maxHeight: 1080,
+      },
+    } as any,
+  });
+  
+  return stream;
+}
+
+/**
  * Get screen capture stream - works in both Electron and browser
  * Automatically requests permissions if needed
  */

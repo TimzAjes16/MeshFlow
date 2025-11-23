@@ -74,9 +74,16 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
     try {
       console.log('[NativeWindowWidget] Setting up screen capture for window:', { windowID, processName, windowTitle });
       
-      // Request screen capture stream
-      // The user will need to select the window in the picker
-      const stream = await getScreenCaptureStream({ requestPermissions: true, includeAudio: false });
+      // Import the window-specific capture function
+      const { getWindowCaptureStream } = await import('@/lib/electronUtils');
+      
+      // Request screen capture stream for the specific window
+      const stream = await getWindowCaptureStream({
+        processName,
+        windowTitle,
+        requestPermissions: true,
+        includeAudio: false,
+      });
       
       if (!stream) {
         throw new Error('Failed to get screen capture stream');
