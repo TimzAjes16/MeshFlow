@@ -57,7 +57,18 @@ namespace WindowEmbedding {
       return result;
     }
     
-    // Embed the window
+    // On macOS, window embedding across applications is not supported
+    // due to security restrictions. The childWindow handle is a CGWindowID,
+    // not an NSWindow pointer, so we cannot embed it directly.
+    // Return an error indicating that screen capture should be used instead.
+    #ifdef __APPLE__
+    Napi::Object macResult = Napi::Object::New(env);
+    macResult.Set("success", Napi::Boolean::New(env, false));
+    macResult.Set("error", Napi::String::New(env, "Window embedding across applications is not supported on macOS. Please use the Live Capture widget instead to capture and interact with the window."));
+    return macResult;
+    #endif
+    
+    // Embed the window (Windows only)
     bool success = EmbedWindowNative(childWindow, parentWindow);
     
     if (success && !containerId.empty()) {

@@ -9,37 +9,110 @@
 namespace WindowEmbedding {
   
   void* FindWindowNative(const char* processName, const char* windowTitle) {
-    NSArray* windows = [NSApplication sharedApplication].windows;
     std::string processNameStr = processName ? processName : "";
     std::string windowTitleStr = windowTitle ? windowTitle : "";
     
-    for (NSWindow* window in windows) {
-      if (!window.visible) continue;
-      
-      NSString* title = window.title ? window.title : @"";
-      std::string titleStr = [title UTF8String];
-      
-      // Get process name
-      NSRunningApplication* app = [window valueForKey:@"_runningApplication"];
-      NSString* appName = app ? app.localizedName : @"";
-      std::string appNameStr = [appName UTF8String];
-      
-      bool matchProcess = processNameStr.empty() || 
-                         appNameStr.find(processNameStr) != std::string::npos;
-      bool matchTitle = windowTitleStr.empty() ||
-                       titleStr.find(windowTitleStr) != std::string::npos;
-      
-      if (matchProcess && matchTitle) {
-        // Retain the window object for the caller
-        CFRetain((__bridge CFTypeRef)window);
-        return (__bridge void*)window;
+    // Use CGWindowListCopyWindowInfo to get all windows (same approach as GetWindowListNative)
+    CFArrayRef windowList = CGWindowListCopyWindowInfo(
+      kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+      kCGNullWindowID
+    );
+    
+    if (!windowList) {
+      return nullptr;
+    }
+    
+    NSArray* windowsArray = (__bridge NSArray*)windowList;
+    NSRunningApplication* targetApp = nil;
+    
+    // If process name is provided, find the running application first
+    if (!processNameStr.empty()) {
+      NSArray* runningApps = [[NSWorkspace sharedWorkspace] runningApplications];
+      for (NSRunningApplication* app in runningApps) {
+        NSString* appName = app.localizedName ? app.localizedName : @"";
+        std::string appNameStr = [appName UTF8String];
+        if (appNameStr.find(processNameStr) != std::string::npos) {
+          targetApp = app;
+          break;
+        }
       }
     }
     
+    // Search through windows
+    for (NSDictionary* windowInfo in windowsArray) {
+      // Get window owner PID
+      NSNumber* ownerPID = windowInfo[(id)kCGWindowOwnerPID];
+      if (!ownerPID) continue;
+      
+      // If we have a target app, check if this window belongs to it
+      if (targetApp && ownerPID.integerValue != targetApp.processIdentifier) {
+        continue;
+      }
+      
+      // Get window name
+      NSString* windowName = windowInfo[(id)kCGWindowName];
+      if (!windowName || windowName.length == 0) {
+        continue;
+      }
+      
+      std::string titleStr = [windowName UTF8String];
+      
+      // Check if window title matches
+      bool matchTitle = windowTitleStr.empty() ||
+                       titleStr.find(windowTitleStr) != std::string::npos;
+      
+      if (!matchTitle) {
+        continue;
+      }
+      
+      // If we don't have a target app but process name was provided, check the process name
+      if (!targetApp && !processNameStr.empty()) {
+        NSRunningApplication* app = [NSRunningApplication runningApplicationWithProcessIdentifier:ownerPID.integerValue];
+        if (app) {
+          NSString* appName = app.localizedName ? app.localizedName : @"";
+          std::string appNameStr = [appName UTF8String];
+          if (appNameStr.find(processNameStr) == std::string::npos) {
+            continue;
+          }
+        } else {
+          continue;
+        }
+      }
+      
+      // Found a matching window - return the window ID (we'll need to find the actual NSWindow later if needed)
+      NSNumber* windowID = windowInfo[(id)kCGWindowNumber];
+      CFRelease(windowList);
+      return reinterpret_cast<void*>(windowID ? windowID.unsignedLongValue : 0);
+    }
+    
+    CFRelease(windowList);
     return nullptr;
   }
   
   bool EmbedWindowNative(void* childWindow, void* parentWindow) {
+    // On macOS, we cannot directly embed windows from other applications
+    // due to security restrictions. The childWindow handle is actually a CGWindowID,
+    // not an NSWindow pointer.
+    // 
+    // For true window embedding on macOS, we would need to:
+    // 1. Use screen capture/streaming to display the window content
+    // 2. Use input injection to forward events to the original window
+    // 
+    // For now, return false to indicate embedding is not supported
+    // The application should use screen capture instead
+    
+    // Check if childWindow is actually a window ID (small number) vs NSWindow pointer
+    uintptr_t windowId = reinterpret_cast<uintptr_t>(childWindow);
+    
+    // If it's a small number (< 1 million), it's likely a CGWindowID, not a pointer
+    // NSWindow pointers are typically much larger memory addresses
+    if (windowId < 1000000) {
+      // This is a CGWindowID, not an NSWindow pointer
+      // macOS doesn't support embedding windows from other applications
+      return false;
+    }
+    
+    // Try to treat it as an NSWindow pointer (for same-application embedding)
     NSWindow* child = (__bridge NSWindow*)childWindow;
     NSView* parentView = (__bridge NSView*)parentWindow;
     
