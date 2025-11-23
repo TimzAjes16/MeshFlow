@@ -1508,6 +1508,16 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         onNewImage={handleClipboardImage}
       />
       
+      {/* Native Window Configuration Modal */}
+      <NativeWindowConfigModal
+        isOpen={nativeWindowConfigOpen}
+        onClose={() => {
+          setNativeWindowConfigOpen(false);
+          setPendingNativeWindowType(null);
+        }}
+        onConfirm={handleNativeWindowConfigConfirm}
+      />
+      
       {/* Keyboard Shortcuts */}
       <KeyboardShortcuts />
     </div>
