@@ -6,7 +6,7 @@
 
 'use client';
 
-import { memo, useState, useEffect, useCallback } from 'react';
+import { memo, useState, useEffect, useCallback, useRef } from 'react';
 import BaseWidget, { WidgetProps } from './BaseWidget';
 import { Monitor, AlertCircle, RefreshCw } from 'lucide-react';
 
