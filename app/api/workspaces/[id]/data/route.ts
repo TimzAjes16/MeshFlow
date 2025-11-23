@@ -50,10 +50,31 @@ export async function GET(
       // If it's already a plain object/array, return as-is (NextResponse.json will handle serialization)
       // If it's a Prisma JsonValue type, it should already be serializable
       try {
+        // Check if content is too large before stringifying
+        // Large content (like base64 images, video streams) can cause "Invalid string length" errors
+        const testStringify = JSON.stringify(content);
+        if (testStringify.length > 50 * 1024 * 1024) { // 50MB limit
+          console.warn('[API] Content too large to serialize, returning minimal object');
+          // Return a minimal representation for very large content
+          return {
+            type: typeof content === 'object' && content !== null ? (content as any).type || 'large-object' : typeof content,
+            _truncated: true,
+            _size: testStringify.length,
+          };
+        }
         // Ensure it's a plain serializable object by parsing and stringifying
         // This handles any edge cases with Prisma's JsonValue type
-        return JSON.parse(JSON.stringify(content));
-      } catch (error) {
+        return JSON.parse(testStringify);
+      } catch (error: any) {
+        // Handle "Invalid string length" and other JSON errors
+        if (error.message?.includes('Invalid string length') || error.message?.includes('string length')) {
+          console.warn('[API] Content too large to serialize (Invalid string length), using minimal object');
+          return {
+            type: typeof content === 'object' && content !== null ? (content as any).type || 'large-object' : typeof content,
+            _truncated: true,
+            _error: 'content-too-large',
+          };
+        }
         console.warn('[API] Failed to serialize node content, using empty object:', error);
         return {};
       }

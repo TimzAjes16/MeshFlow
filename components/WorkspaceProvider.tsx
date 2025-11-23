@@ -24,22 +24,52 @@ export default function WorkspaceProvider({ workspaceId, children }: WorkspacePr
 
     // Helper to create a stable hash of nodes/edges for comparison
     function createNodesHash(nodes: Node[]): string {
-      return JSON.stringify(
-        nodes
-          .map((n: Node) => {
-            const contentStr = n.content ? JSON.stringify(n.content) : '';
-            return {
-              id: n.id,
-              x: n.x,
-              y: n.y,
-              title: n.title,
-              contentLength: contentStr.length,
-              contentStart: contentStr.substring(0, 100), // First 100 chars for change detection
-              tags: n.tags?.slice().sort().join(',') || '',
-            };
-          })
-          .sort((a, b) => a.id.localeCompare(b.id)) // Sort by ID for consistent comparison
-      );
+      try {
+        return JSON.stringify(
+          nodes
+            .map((n: Node) => {
+              // Safely get content info without stringifying large objects
+              let contentInfo = '';
+              if (n.content) {
+                try {
+                  // Only stringify if content is small enough (less than 10KB when stringified)
+                  const contentStr = JSON.stringify(n.content);
+                  if (contentStr.length < 10000) {
+                    contentInfo = contentStr.substring(0, 100); // First 100 chars
+                  } else {
+                    // For large content, just use a hash of the content type/structure
+                    const contentType = typeof n.content === 'object' && n.content !== null
+                      ? (n.content as any).type || 'large-object'
+                      : typeof n.content;
+                    contentInfo = `${contentType}-${contentStr.length}`;
+                  }
+                } catch (e) {
+                  // If stringify fails (too large), use a fallback
+                  const contentType = typeof n.content === 'object' && n.content !== null
+                    ? (n.content as any).type || 'large-object'
+                    : typeof n.content;
+                  contentInfo = `${contentType}-large`;
+                }
+              }
+              return {
+                id: n.id,
+                x: n.x,
+                y: n.y,
+                title: n.title,
+                contentInfo: contentInfo.substring(0, 100), // Limit to 100 chars
+                tags: n.tags?.slice().sort().join(',') || '',
+              };
+            })
+            .sort((a, b) => a.id.localeCompare(b.id)) // Sort by ID for consistent comparison
+        );
+      } catch (error) {
+        // Fallback: use a simple hash based on node IDs and counts
+        console.warn('[WorkspaceProvider] Failed to create nodes hash, using fallback:', error);
+        return JSON.stringify({
+          count: nodes.length,
+          ids: nodes.map(n => n.id).sort().join(','),
+        });
+      }
     }
 
     function createEdgesHash(edges: Edge[]): string {
