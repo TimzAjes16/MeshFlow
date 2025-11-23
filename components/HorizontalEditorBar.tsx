@@ -941,15 +941,18 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
           )}
 
           {/* Capture Button - Show when no tools active and no live capture node selected */}
-          {(!isBrushActive && !isEraserActive && !isLiveCaptureActive && !isLiveCaptureNode) && (
+          {(!isBrushActive && !isEraserActive && !isLiveCaptureActive && !isLiveCaptureNode && !isIframeWidget && !isWebViewWidget && !isNativeWindowWidget) && (
             <>
-              {(selectedNodeId && !isBrushActive && !isLiveCaptureNode) && (
+              {selectedNodeId && (
                 <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
               )}
               <button
-                onClick={() => {
-                  window.dispatchEvent(new CustomEvent('open-live-capture-modal', {
-                    detail: { nodeId: null }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Activate live capture tool to show area selection
+                  setIsLiveCaptureActive(true);
+                  window.dispatchEvent(new CustomEvent('toggle-live-capture-mode', { 
+                    detail: { enabled: true } 
                   }));
                 }}
                 className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/capture flex items-center gap-1.5"
@@ -974,12 +977,18 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
                 <input
                   type="text"
                   value={widgetUrl}
-                  onChange={(e) => setWidgetUrl(e.target.value)}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setWidgetUrl(e.target.value);
+                  }}
                   onKeyDown={(e) => {
+                    e.stopPropagation();
                     if (e.key === 'Enter') {
                       handleSaveWidgetUrl();
                     }
                   }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   placeholder="Enter URL (e.g., https://discord.com)"
                   className="bg-transparent border-0 outline-none text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 min-w-[200px] max-w-[300px]"
                 />
@@ -1005,12 +1014,18 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
                 <input
                   type="text"
                   value={widgetUrl}
-                  onChange={(e) => setWidgetUrl(e.target.value)}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setWidgetUrl(e.target.value);
+                  }}
                   onKeyDown={(e) => {
+                    e.stopPropagation();
                     if (e.key === 'Enter') {
                       handleSaveWidgetUrl();
                     }
                   }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   placeholder="Enter URL (bypasses CORS)"
                   className="bg-transparent border-0 outline-none text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 min-w-[200px] max-w-[300px]"
                 />
@@ -1036,24 +1051,36 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
                 <input
                   type="text"
                   value={widgetProcessName}
-                  onChange={(e) => setWidgetProcessName(e.target.value)}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setWidgetProcessName(e.target.value);
+                  }}
                   onKeyDown={(e) => {
+                    e.stopPropagation();
                     if (e.key === 'Enter') {
                       handleSaveNativeWindowConfig();
                     }
                   }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   placeholder="Process name (e.g., Discord)"
                   className="bg-transparent border-0 outline-none text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 min-w-[120px] max-w-[150px]"
                 />
                 <input
                   type="text"
                   value={widgetWindowTitle}
-                  onChange={(e) => setWidgetWindowTitle(e.target.value)}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setWidgetWindowTitle(e.target.value);
+                  }}
                   onKeyDown={(e) => {
+                    e.stopPropagation();
                     if (e.key === 'Enter') {
                       handleSaveNativeWindowConfig();
                     }
                   }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   placeholder="Window title (optional)"
                   className="bg-transparent border-0 outline-none text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 min-w-[120px] max-w-[150px]"
                 />

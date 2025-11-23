@@ -275,6 +275,9 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
     }
   }, [isPaused]);
 
+  // Check if widget is configured (has stream or valid crop area)
+  const isConfigured = liveStream || (cropArea && cropArea.width > 0 && cropArea.height > 0);
+
   return (
     <BaseWidget
       {...props}
@@ -282,62 +285,102 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
       icon={<Camera className="w-4 h-4" />}
       className="live-capture-widget"
     >
-      <div
-        ref={containerRef}
-        className="relative w-full h-full bg-black rounded-b-lg overflow-hidden"
-        style={{
-          pointerEvents: captureData.interactive ? 'auto' : 'none',
-        }}
-        onClick={handleInteractiveClick}
-        onMouseMove={handleInteractiveMouseMove}
-      >
-        {/* Hidden video element for stream */}
-        <video
-          ref={videoRef}
-          className="hidden"
-          playsInline
-          muted={isMuted}
-        />
-        
-        {/* Canvas for cropped display */}
-        <canvas
-          ref={canvasRef}
-          className="w-full h-full object-contain"
-        />
-        
-        {/* Controls overlay */}
-        <div className="absolute bottom-2 right-2 flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-lg p-1">
+      {!isConfigured ? (
+        <div className="flex flex-col items-center justify-center h-full p-4 text-center bg-gray-100 dark:bg-gray-900">
+          <Camera className="w-12 h-12 text-gray-400 mb-3" />
+          <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+            No capture area configured
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">
+            Select this widget and use "Area Highlight" to configure
+          </p>
           <button
-            onClick={handleTogglePause}
-            className="p-1.5 hover:bg-white/20 rounded transition-colors"
-            title={isPaused ? 'Play' : 'Pause'}
+            onClick={(e) => {
+              e.stopPropagation();
+              // Trigger area selection
+              window.dispatchEvent(new CustomEvent('open-live-capture-modal', {
+                detail: { nodeId: node.id }
+              }));
+            }}
+            className="px-3 py-1.5 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors text-sm"
           >
-            {isPaused ? (
-              <Play className="w-4 h-4 text-white" />
-            ) : (
-              <Pause className="w-4 h-4 text-white" />
-            )}
-          </button>
-          <button
-            onClick={handleToggleMute}
-            className="p-1.5 hover:bg-white/20 rounded transition-colors"
-            title={isMuted ? 'Unmute' : 'Mute'}
-          >
-            {isMuted ? (
-              <VolumeX className="w-4 h-4 text-white" />
-            ) : (
-              <Volume2 className="w-4 h-4 text-white" />
-            )}
+            Configure Capture Area
           </button>
         </div>
-        
-        {/* Interactive mode indicator */}
-        {captureData.interactive && (
-          <div className="absolute top-2 left-2 bg-blue-500/80 backdrop-blur-sm text-white text-xs px-2 py-1 rounded">
-            Interactive Mode
+      ) : (
+        <div
+          ref={containerRef}
+          className="relative w-full h-full bg-black rounded-b-lg overflow-hidden"
+          style={{
+            pointerEvents: captureData.interactive ? 'auto' : 'none',
+          }}
+          onClick={handleInteractiveClick}
+          onMouseMove={handleInteractiveMouseMove}
+        >
+          {/* Hidden video element for stream */}
+          <video
+            ref={videoRef}
+            className="hidden"
+            playsInline
+            muted={isMuted}
+          />
+          
+          {/* Canvas for cropped display */}
+          <canvas
+            ref={canvasRef}
+            className="w-full h-full object-contain"
+          />
+          
+          {/* Loading indicator if stream is not ready */}
+          {!liveStream && captureData.isLiveStream && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+              <div className="flex flex-col items-center gap-2">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                <p className="text-xs text-white">Loading stream...</p>
+              </div>
+            </div>
+          )}
+          
+          {/* Controls overlay */}
+          <div className="absolute bottom-2 right-2 flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-lg p-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleTogglePause();
+              }}
+              className="p-1.5 hover:bg-white/20 rounded transition-colors"
+              title={isPaused ? 'Play' : 'Pause'}
+            >
+              {isPaused ? (
+                <Play className="w-4 h-4 text-white" />
+              ) : (
+                <Pause className="w-4 h-4 text-white" />
+              )}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleMute();
+              }}
+              className="p-1.5 hover:bg-white/20 rounded transition-colors"
+              title={isMuted ? 'Unmute' : 'Mute'}
+            >
+              {isMuted ? (
+                <VolumeX className="w-4 h-4 text-white" />
+              ) : (
+                <Volume2 className="w-4 h-4 text-white" />
+              )}
+            </button>
           </div>
-        )}
-      </div>
+          
+          {/* Interactive mode indicator */}
+          {captureData.interactive && (
+            <div className="absolute top-2 left-2 bg-blue-500/80 backdrop-blur-sm text-white text-xs px-2 py-1 rounded">
+              Interactive Mode
+            </div>
+          )}
+        </div>
+      )}
     </BaseWidget>
   );
 }
