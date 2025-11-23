@@ -11,7 +11,7 @@ import { memo, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import BaseWidget, { WidgetProps } from './BaseWidget';
 import { Monitor, AlertCircle, RefreshCw } from 'lucide-react';
 import { useWidgetHandlers } from './useWidgetHandlers';
-import { getScreenCaptureStream } from '@/lib/electronUtils';
+import { getWindowCaptureStream } from '@/lib/electronUtils';
 
 interface NativeWindowWidgetProps extends WidgetProps {
   // Native window specific props
@@ -73,9 +73,6 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
   const setupScreenCapture = useCallback(async (windowID: number, processName: string, windowTitle: string) => {
     try {
       console.log('[NativeWindowWidget] Setting up screen capture for window:', { windowID, processName, windowTitle });
-      
-      // Import the window-specific capture function
-      const { getWindowCaptureStream } = await import('@/lib/electronUtils');
       
       // Request screen capture stream for the specific window
       const stream = await getWindowCaptureStream({
