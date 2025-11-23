@@ -53,7 +53,7 @@ export function useWidgetHandlers(nodeId: string) {
     const currentNode = getNode(nodeId);
     if (!currentNode) return;
     
-    // Update React Flow node dimensions
+    // Update React Flow node dimensions immediately
     setNodes((nodes) =>
       nodes.map((node) =>
         node.id === nodeId
@@ -77,19 +77,25 @@ export function useWidgetHandlers(nodeId: string) {
       height,
     });
     
-    // Persist to API
+    // Persist to API (debounced to avoid too many requests)
     if (workspaceId) {
-      fetch(`/api/nodes/update`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nodeId,
-          width,
-          height,
-        }),
-      }).catch((error) => {
-        console.error('Error updating node size:', error);
-      });
+      // Use a small delay to batch resize updates
+      const timeoutId = setTimeout(() => {
+        fetch(`/api/nodes/update`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nodeId,
+            width,
+            height,
+          }),
+        }).catch((error) => {
+          console.error('Error updating node size:', error);
+        });
+      }, 300);
+      
+      // Return cleanup function
+      return () => clearTimeout(timeoutId);
     }
   }, [nodeId, workspaceId, getNode, setNodes, updateWorkspaceNode]);
 
