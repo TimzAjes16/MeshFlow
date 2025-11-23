@@ -7,7 +7,7 @@
 
 'use client';
 
-import { memo, useState, useEffect, useCallback, useRef } from 'react';
+import { memo, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import BaseWidget, { WidgetProps } from './BaseWidget';
 import { Monitor, AlertCircle, RefreshCw } from 'lucide-react';
 import { useWidgetHandlers } from './useWidgetHandlers';
@@ -28,22 +28,25 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { handleClose, handleResize, handleTitleChange } = useWidgetHandlers(node.id);
   
-  // Extract native window config from node content
-  const windowConfig = typeof node.content === 'object' && node.content?.type === 'native-window-widget'
-    ? {
+  // Extract native window config from node content - memoize to prevent infinite loops
+  const windowConfig = useMemo(() => {
+    if (typeof node.content === 'object' && node.content?.type === 'native-window-widget') {
+      return {
         processName: node.content.processName || '',
         windowTitle: node.content.windowTitle || '',
         windowHandle: node.content.windowHandle,
         windowID: node.content.windowID, // CGWindowID on macOS
         windowBounds: node.content.windowBounds, // Window bounds for coordinate mapping
-      }
-    : {
-        processName: '',
-        windowTitle: '',
-        windowHandle: undefined,
-        windowID: undefined,
-        windowBounds: undefined,
       };
+    }
+    return {
+      processName: '',
+      windowTitle: '',
+      windowHandle: undefined,
+      windowID: undefined,
+      windowBounds: undefined,
+    };
+  }, [node.content]);
 
   const [isEmbedded, setIsEmbedded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +54,16 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
   const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
   const [isInteractive, setIsInteractive] = useState(true);
   const [windowBounds, setWindowBounds] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  
+  // Use refs for cleanup values to prevent dependency issues
+  const liveStreamRef = useRef<MediaStream | null>(null);
+  const isEmbeddedRef = useRef(false);
+  
+  // Update refs when state changes
+  useEffect(() => {
+    liveStreamRef.current = liveStream;
+    isEmbeddedRef.current = isEmbedded;
+  }, [liveStream, isEmbedded]);
 
   // Check if native window embedding is available
   const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
@@ -76,16 +89,29 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
       });
       
       setLiveStream(stream);
+      liveStreamRef.current = stream;
       
-      // Get window bounds for coordinate mapping
-      // We'll need to get this from the native addon or use the window dimensions
-      // For now, we'll use the video stream dimensions
+      // Wait for video element to be ready before setting up
+      // Use a small delay to ensure the element is mounted
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       if (videoRef.current) {
         const video = videoRef.current;
-        video.srcObject = stream;
-        video.play().catch(err => console.error('[NativeWindowWidget] Error playing video:', err));
         
-        video.addEventListener('loadedmetadata', () => {
+        // Clear any existing stream first
+        if (video.srcObject) {
+          const oldStream = video.srcObject as MediaStream;
+          oldStream.getTracks().forEach(track => track.stop());
+        }
+        
+        // Set up video element
+        video.srcObject = stream;
+        video.muted = true;
+        video.playsInline = true;
+        video.autoplay = true;
+        
+        // Wait for metadata to load before playing
+        const handleLoadedMetadata = () => {
           if (video.videoWidth > 0 && video.videoHeight > 0) {
             setWindowBounds({
               x: 0,
@@ -93,8 +119,24 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
               width: video.videoWidth,
               height: video.videoHeight,
             });
+            
+            // Play video after metadata is loaded
+            video.play().catch(err => {
+              // Only log if it's not an abort error (which is expected during cleanup)
+              if (err.name !== 'AbortError') {
+                console.error('[NativeWindowWidget] Error playing video:', err);
+              }
+            });
           }
-        });
+          video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        };
+        
+        video.addEventListener('loadedmetadata', handleLoadedMetadata);
+        
+        // If metadata is already loaded, trigger immediately
+        if (video.readyState >= 1) {
+          handleLoadedMetadata();
+        }
       }
       
       return stream;
@@ -166,13 +208,15 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
       return;
     }
 
+    let isMounted = true;
+
     // Attempt to embed the native window
     const embedWindow = async () => {
       setIsLoading(true);
       setError(null);
       
       try {
-        if (containerRef.current) {
+        if (containerRef.current && isMounted) {
           const containerId = `native-window-${node.id}`;
           containerRef.current.setAttribute('data-container-id', containerId);
           
@@ -183,8 +227,11 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
             windowHandle: windowConfig.windowHandle,
           });
           
+          if (!isMounted) return;
+          
           if (result.success) {
             setIsEmbedded(true);
+            isEmbeddedRef.current = true;
             
             // On macOS, use screen capture
             if (result.method === 'screen-capture' && result.windowID) {
@@ -199,10 +246,13 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
           }
         }
       } catch (err: any) {
+        if (!isMounted) return;
         console.error('[NativeWindowWidget] Error embedding window:', err);
         setError(err.message || 'Failed to embed native window');
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
@@ -210,37 +260,53 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
 
     // Cleanup on unmount
     return () => {
+      isMounted = false;
+      
       // Stop screen capture stream
-      if (liveStream) {
-        liveStream.getTracks().forEach(track => track.stop());
+      const stream = liveStreamRef.current;
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        liveStreamRef.current = null;
         setLiveStream(null);
       }
       
+      // Clear video element
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      
       // Unembed window
-      if (isEmbedded && containerRef.current) {
+      if (isEmbeddedRef.current && containerRef.current) {
         const containerId = containerRef.current.getAttribute('data-container-id');
         if (containerId && (window as any).electronAPI?.unembedNativeWindow) {
           (window as any).electronAPI.unembedNativeWindow({ containerId });
         }
       }
     };
-  }, [hasNativeEmbedding, windowConfig, node.id]);
+  }, [hasNativeEmbedding, windowConfig.processName, windowConfig.windowTitle, windowConfig.windowHandle, node.id, setupScreenCapture]);
 
   const handleRefresh = useCallback(() => {
     setIsEmbedded(false);
+    isEmbeddedRef.current = false;
     setError(null);
+    
+    // Stop existing stream
+    const stream = liveStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      liveStreamRef.current = null;
+    }
     setLiveStream(null);
     setWindowBounds(null);
     
-    // Stop existing stream
-    if (liveStream) {
-      liveStream.getTracks().forEach(track => track.stop());
+    // Clear video element
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     
-    // Trigger re-embed
-    const event = new CustomEvent('refresh-native-window', { detail: { nodeId: node.id } });
-    window.dispatchEvent(event);
-  }, [node.id, liveStream]);
+    // Trigger re-embed by resetting state
+    // The useEffect will run again when dependencies change
+  }, [node.id]);
 
   return (
     <BaseWidget
