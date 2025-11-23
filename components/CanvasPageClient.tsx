@@ -368,8 +368,8 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           if (data.node) {
             // Verify stream is still active before storing
             const tracks = stream.getVideoTracks();
-            console.log('[CanvasPageClient] Stream tracks:', tracks.length, 'ready states:', tracks.map(t => t.readyState));
-            if (tracks.length > 0 && tracks.some(t => t.readyState === 'live' || t.readyState === 'ended')) {
+            console.log('[CanvasPageClient] Stream tracks:', tracks.length, 'ready states:', tracks.map((t: MediaStreamTrack) => t.readyState));
+            if (tracks.length > 0 && tracks.some((t: MediaStreamTrack) => t.readyState === 'live' || t.readyState === 'ended')) {
               // Store stream in global registry
               if (!(window as any).liveCaptureStreams) {
                 (window as any).liveCaptureStreams = new Map();
@@ -401,7 +401,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
               
               (window as any).lastFlowPosition = null;
             } else {
-              console.warn('[CanvasPageClient] Stream tracks not in valid state:', tracks.map(t => ({ state: t.readyState, enabled: t.enabled })));
+              console.warn('[CanvasPageClient] Stream tracks not in valid state:', tracks.map((t: MediaStreamTrack) => ({ state: t.readyState, enabled: t.enabled })));
             }
           } else {
             console.error('[CanvasPageClient] No node in response:', data);

@@ -497,7 +497,35 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
 
   // Handle node drag start
   const onNodeDragStart = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
+    (event: React.MouseEvent, node: Node) => {
+      // Prevent dragging if node is being resized
+      // Check global resizing set
+      const globalResizingNodes = (window as any).__resizingNodes as Set<string> | undefined;
+      if (globalResizingNodes && globalResizingNodes.has(node.id)) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.nativeEvent.stopImmediatePropagation();
+        console.log('[CanvasContainer] Prevented drag on resizing node:', node.id);
+        return;
+      }
+      
+      // Also check DOM attribute as fallback
+      if (typeof window !== 'undefined') {
+        try {
+          const nodeElement = document.querySelector(`.react-flow__node[data-id="${node.id}"]`) as HTMLElement;
+          if (nodeElement && nodeElement.hasAttribute('data-resizing')) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.nativeEvent.stopImmediatePropagation();
+            console.log('[CanvasContainer] Prevented drag on resizing node (DOM check):', node.id);
+            return;
+          }
+        } catch (error) {
+          // Continue with normal drag if check fails
+        }
+      }
+      
+      // Normal drag behavior
       setDraggedNodeId(node.id);
       dragStartPosition.current = node.position;
     },

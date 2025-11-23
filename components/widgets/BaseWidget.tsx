@@ -11,6 +11,19 @@ import { X, Minimize2, Maximize2 } from 'lucide-react';
 import type { Node as NodeType } from '@/types/Node';
 import { NodeProps } from 'reactflow';
 
+// Global tracking of nodes being resized (more reliable than DOM attributes)
+const resizingNodes = new Set<string>();
+
+// Expose to window for CanvasContainer to access
+if (typeof window !== 'undefined') {
+  (window as any).__resizingNodes = resizingNodes;
+}
+
+// Export function to check if a node is being resized
+export function isNodeResizing(nodeId: string): boolean {
+  return resizingNodes.has(nodeId);
+}
+
 export interface WidgetProps extends NodeProps {
   data: {
     node: NodeType;
@@ -60,102 +73,205 @@ function BaseWidget({
   const [editingTitle, setEditingTitle] = useState('');
   const titleInputRef = useRef<HTMLInputElement>(null);
   const resizeRef = useRef<HTMLDivElement>(null);
+  const resizeHandleRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
-  const [resizeStart, setResizeStart] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const resizeStateRef = useRef<{
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+    nodeElement: HTMLElement | null;
+  } | null>(null);
 
   const handleMinimize = useCallback(() => {
     setIsMinimized(!isMinimized);
     onMinimize?.();
   }, [isMinimized, onMinimize]);
 
+  // Handle resize start - completely prevent React Flow from interfering
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     if (!canResize || !resizeRef.current) return;
+    
+    // CRITICAL: Stop all event propagation immediately
     e.preventDefault();
     e.stopPropagation();
+    e.nativeEvent.stopImmediatePropagation();
     
-    // Get the React Flow node wrapper (parent of BaseWidget)
-    // React Flow structure: .react-flow__node > .react-flow__node-wrapper > BaseWidget
+    // Find the React Flow node wrapper
     const nodeWrapper = resizeRef.current.closest('.react-flow__node') as HTMLElement;
-    if (!nodeWrapper) return;
-    
-    // Get actual node dimensions from React Flow wrapper
-    const rect = nodeWrapper.getBoundingClientRect();
-    const currentWidth = width || rect.width;
-    const currentHeight = height || rect.height;
-    
-    setIsResizing(true);
-    setResizeStart({
-      x: e.clientX,
-      y: e.clientY,
-      width: currentWidth,
-      height: currentHeight,
-    });
-  }, [canResize, width, height]);
-
-  const handleResizeMove = useCallback((e: MouseEvent) => {
-    if (!isResizing || !resizeStart) {
+    if (!nodeWrapper) {
+      console.warn('[BaseWidget] Could not find React Flow node wrapper');
       return;
     }
     
+    // Get current dimensions - use width/height props if available, otherwise use DOM
+    const rect = nodeWrapper.getBoundingClientRect();
+    const currentWidth = width && width > 0 ? width : rect.width;
+    const currentHeight = height && height > 0 ? height : rect.height;
+    
+    // Store resize state
+    resizeStateRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth: currentWidth,
+      startHeight: currentHeight,
+      nodeElement: nodeWrapper,
+    };
+    
+    // Mark as resizing
+    setIsResizing(true);
+    
+    // CRITICAL: Track this node as resizing globally
+    resizingNodes.add(node.id);
+    
+    // CRITICAL: Disable React Flow dragging on this specific node
+    // Add a data attribute that we can check in nodeDraggable
+    nodeWrapper.setAttribute('data-resizing', 'true');
+    nodeWrapper.style.pointerEvents = 'none';
+    
+    // Re-enable pointer events only on the resize handle
+    if (resizeHandleRef.current) {
+      resizeHandleRef.current.style.pointerEvents = 'auto';
+    }
+    
+    // Prevent default browser behaviors
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'nwse-resize';
+    document.body.style.pointerEvents = 'auto';
+    
+    console.log('[BaseWidget] Resize started', {
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth: currentWidth,
+      startHeight: currentHeight,
+    });
+  }, [canResize, width, height]);
+
+  // Handle resize move - update dimensions in real-time
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizing || !resizeStateRef.current) {
+      return;
+    }
+    
+    // CRITICAL: Prevent all default behaviors
     e.preventDefault();
     e.stopPropagation();
+    e.stopImmediatePropagation();
     
-    // Calculate new dimensions based on mouse movement
-    const deltaX = e.clientX - resizeStart.x;
-    const deltaY = e.clientY - resizeStart.y;
+    const state = resizeStateRef.current;
+    
+    // Calculate mouse movement delta
+    const deltaX = e.clientX - state.startX;
+    const deltaY = e.clientY - state.startY;
     
     // Minimum dimensions
     const minWidth = 200;
     const minHeight = 150;
     
-    // Calculate new dimensions
-    const newWidth = Math.max(minWidth, resizeStart.width + deltaX);
-    const newHeight = Math.max(minHeight, resizeStart.height + deltaY);
+    // Calculate new dimensions (bottom-right corner resize)
+    const newWidth = Math.max(minWidth, state.startWidth + deltaX);
+    const newHeight = Math.max(minHeight, state.startHeight + deltaY);
     
-    // Call resize handler
-    onResize?.(newWidth, newHeight);
-  }, [isResizing, resizeStart, onResize]);
+    // Round to avoid fractional pixels
+    const roundedWidth = Math.round(newWidth);
+    const roundedHeight = Math.round(newHeight);
+    
+    // Call resize handler immediately for real-time updates
+    onResize?.(roundedWidth, roundedHeight);
+    
+    console.log('[BaseWidget] Resizing', {
+      deltaX,
+      deltaY,
+      newWidth: roundedWidth,
+      newHeight: roundedHeight,
+    });
+  }, [isResizing, onResize]);
 
-  const handleResizeEnd = useCallback(() => {
+  // Handle resize end - cleanup
+  const handleResizeEnd = useCallback((e?: MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }
+    
+    if (!isResizing || !resizeStateRef.current) {
+      return;
+    }
+    
+    const state = resizeStateRef.current;
+    
+    // Re-enable React Flow dragging
+    if (state.nodeElement) {
+      state.nodeElement.removeAttribute('data-resizing');
+      state.nodeElement.style.pointerEvents = '';
+    }
+    
+    // Remove from global resizing set
+    resizingNodes.delete(node.id);
+    
+    // Reset body styles
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+    
+    // Clear resize state
+    resizeStateRef.current = null;
     setIsResizing(false);
-    setResizeStart(null);
-  }, []);
+    
+    console.log('[BaseWidget] Resize ended');
+  }, [isResizing, node.id]);
 
-  // Handle resize mouse events
-  React.useEffect(() => {
+  // Set up global mouse event listeners for resize
+  useEffect(() => {
     if (isResizing) {
-      // Disable React Flow node dragging during resize
-      const nodeWrapper = resizeRef.current?.closest('.react-flow__node') as HTMLElement;
-      if (nodeWrapper) {
-        nodeWrapper.style.pointerEvents = 'none';
-        // Re-enable pointer events on the resize handle itself
-        const resizeHandle = nodeWrapper.querySelector('[data-resize-handle]') as HTMLElement;
-        if (resizeHandle) {
-          resizeHandle.style.pointerEvents = 'auto';
-        }
-      }
+      // Use capture phase to intercept events before React Flow
+      const options = { capture: true, passive: false };
       
-      // Add event listeners with capture phase to ensure we catch events first
-      document.addEventListener('mousemove', handleResizeMove, { passive: false, capture: true });
-      document.addEventListener('mouseup', handleResizeEnd, { passive: false, capture: true });
+      const handleMove = (e: MouseEvent) => {
+        handleResizeMove(e);
+      };
       
-      // Prevent text selection during resize
-      document.body.style.userSelect = 'none';
-      document.body.style.cursor = 'nwse-resize';
+      const handleEnd = (e: MouseEvent) => {
+        handleResizeEnd(e);
+      };
       
-      return () => {
-        document.removeEventListener('mousemove', handleResizeMove, { capture: true });
-        document.removeEventListener('mouseup', handleResizeEnd, { capture: true });
-        document.body.style.userSelect = '';
-        document.body.style.cursor = '';
-        
-        // Re-enable React Flow node dragging after resize
-        if (nodeWrapper) {
-          nodeWrapper.style.pointerEvents = '';
+      // Add listeners with highest priority (capture phase)
+      document.addEventListener('mousemove', handleMove, options);
+      document.addEventListener('mouseup', handleEnd, options);
+      document.addEventListener('mouseleave', handleEnd, options);
+      
+      // Also prevent React Flow from handling these events
+      const preventReactFlowDrag = (e: Event) => {
+        if (isResizing) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
         }
       };
+      
+      // Prevent React Flow's drag handlers
+      window.addEventListener('mousemove', preventReactFlowDrag, { capture: true, passive: false });
+      window.addEventListener('mouseup', preventReactFlowDrag, { capture: true, passive: false });
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMove, options);
+        document.removeEventListener('mouseup', handleEnd, options);
+        document.removeEventListener('mouseleave', handleEnd, options);
+        window.removeEventListener('mousemove', preventReactFlowDrag, { capture: true });
+        window.removeEventListener('mouseup', preventReactFlowDrag, { capture: true });
+        
+        // Final cleanup
+        if (resizeStateRef.current?.nodeElement) {
+          resizeStateRef.current.nodeElement.removeAttribute('data-resizing');
+          resizeStateRef.current.nodeElement.style.pointerEvents = '';
+          // Remove from global resizing set
+          resizingNodes.delete(node.id);
+        }
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+      };
     }
-  }, [isResizing, handleResizeMove, handleResizeEnd]);
+  }, [isResizing, handleResizeMove, handleResizeEnd, node.id]);
 
   const displayTitle = title || node.title || 'New Widget';
   const displayIcon = icon;
@@ -226,10 +342,19 @@ function BaseWidget({
         // Prevent React Flow from handling drag when clicking on widget content
         // Only allow dragging from header (which has data-widget-header attribute)
         // OR if we're resizing
-        if (!(e.target as HTMLElement).closest('[data-widget-header]') && 
-            !(e.target as HTMLElement).closest('[data-resize-handle]') &&
+        const target = e.target as HTMLElement;
+        if (!target.closest('[data-widget-header]') && 
+            !target.closest('[data-resize-handle]') &&
+            !target.closest('[data-no-drag]') &&
             !isResizing) {
           e.stopPropagation();
+        }
+        
+        // If resizing, prevent all drag events
+        if (isResizing) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.nativeEvent.stopImmediatePropagation();
         }
       }}
     >
@@ -307,19 +432,26 @@ function BaseWidget({
       {/* Resize Handle */}
       {canResize && !isMinimized && (
         <div
+          ref={resizeHandleRef}
           data-resize-handle
+          data-no-drag
           className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-50"
           style={{
             background: 'linear-gradient(135deg, transparent 0%, transparent 40%, rgba(59, 130, 246, 0.5) 40%, rgba(59, 130, 246, 0.5) 100%)',
             clipPath: 'polygon(100% 0, 0 100%, 100% 100%)',
+            pointerEvents: 'auto',
           }}
           onMouseDown={(e) => {
+            // CRITICAL: Stop all propagation immediately
             e.preventDefault();
             e.stopPropagation();
+            e.nativeEvent.stopImmediatePropagation();
             handleResizeStart(e);
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'linear-gradient(135deg, transparent 0%, transparent 40%, rgba(59, 130, 246, 0.8) 40%, rgba(59, 130, 246, 0.8) 100%)';
+            if (!isResizing) {
+              (e.currentTarget as HTMLElement).style.background = 'linear-gradient(135deg, transparent 0%, transparent 40%, rgba(59, 130, 246, 0.8) 40%, rgba(59, 130, 246, 0.8) 100%)';
+            }
           }}
           onMouseLeave={(e) => {
             if (!isResizing) {
@@ -329,6 +461,14 @@ function BaseWidget({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            e.nativeEvent.stopImmediatePropagation();
+          }}
+          onMouseMove={(e) => {
+            if (isResizing) {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+            }
           }}
         />
       )}
