@@ -37,31 +37,81 @@ function WebViewWidget(props: WebViewWidgetProps) {
       };
 
   const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+  const previousUrlRef = useRef<string>('');
+  const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check if we're in Electron environment
   const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
 
-  useEffect(() => {
-    if (!isElectron && webviewConfig.url) {
-      // Fallback to iframe if not in Electron
-      console.warn('WebView widget requires Electron environment, falling back to iframe');
-    }
-  }, [isElectron, webviewConfig.url]);
-
   const handleLoad = useCallback(() => {
+    if (loadTimeoutRef.current) {
+      clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = null;
+    }
     setIsLoading(false);
     setHasError(false);
+    setErrorMessage('');
   }, []);
 
-  const handleError = useCallback(() => {
+  const handleError = useCallback((event?: any) => {
+    if (loadTimeoutRef.current) {
+      clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = null;
+    }
     setIsLoading(false);
     setHasError(true);
+    const errorMsg = event?.errorDescription || event?.errorCode 
+      ? `Failed to load: ${event.errorDescription || `Error code ${event.errorCode}`}`
+      : 'Failed to load the website';
+    setErrorMessage(errorMsg);
   }, []);
+
+  // Reload webview when URL changes
+  useEffect(() => {
+    const currentUrl = webviewConfig.url || '';
+    if (currentUrl && currentUrl !== previousUrlRef.current && webviewRef.current && isElectron) {
+      previousUrlRef.current = currentUrl;
+      setIsLoading(true);
+      setHasError(false);
+      setErrorMessage('');
+      
+      // Clear any existing timeout
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+      }
+      
+      const webview = webviewRef.current;
+      
+      // Set the src to trigger reload
+      if (webview.src !== currentUrl) {
+        webview.src = currentUrl;
+      } else {
+        // If src is already set, reload it
+        webview.reload();
+      }
+      
+      // Set a timeout to detect if the webview fails to load
+      loadTimeoutRef.current = setTimeout(() => {
+        if (isLoading) {
+          setIsLoading(false);
+          setHasError(true);
+          setErrorMessage('Website took too long to load. It may be blocked or unreachable.');
+        }
+      }, 10000); // 10 second timeout
+    }
+    
+    return () => {
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+      }
+    };
+  }, [webviewConfig.url, isElectron, isLoading]);
 
   // Setup webview event listeners (Electron webview uses DOM events, not React props)
   useEffect(() => {
-    if (!isElectron || !webviewRef.current || !webviewConfig.url) return;
+    if (!isElectron || !webviewRef.current) return;
 
     const webview = webviewRef.current;
     
@@ -69,19 +119,26 @@ function WebViewWidget(props: WebViewWidgetProps) {
       handleLoad();
     };
     
-    const handleDidFailLoad = () => {
-      handleError();
+    const handleDidFailLoad = (event: any) => {
+      handleError(event);
+    };
+    
+    const handleDidStartLoading = () => {
+      setIsLoading(true);
+      setHasError(false);
     };
 
     // Use addEventListener for Electron webview events
     webview.addEventListener('did-finish-load', handleDidFinishLoad);
     webview.addEventListener('did-fail-load', handleDidFailLoad);
+    webview.addEventListener('did-start-loading', handleDidStartLoading);
 
     return () => {
       webview.removeEventListener('did-finish-load', handleDidFinishLoad);
       webview.removeEventListener('did-fail-load', handleDidFailLoad);
+      webview.removeEventListener('did-start-loading', handleDidStartLoading);
     };
-  }, [isElectron, webviewConfig.url, handleLoad, handleError]);
+  }, [isElectron, handleLoad, handleError]);
 
   // If not in Electron, fallback to iframe
   if (!isElectron) {
@@ -138,12 +195,15 @@ function WebViewWidget(props: WebViewWidgetProps) {
     >
       {hasError ? (
         <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-          <AlertCircle className="w-8 h-8 text-red-500 mb-2" />
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Failed to load content
+          <AlertCircle className="w-8 h-8 text-red-500 mb-3" />
+          <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+            Failed to Load Website
           </p>
-          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-            {webviewConfig.url}
+          <p className="text-xs text-gray-600 dark:text-gray-400 mb-3 max-w-sm">
+            {errorMessage || 'Failed to load the website. Please check the URL and try again.'}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500">
+            URL: {webviewConfig.url}
           </p>
         </div>
       ) : !webviewConfig.url ? (
@@ -168,9 +228,13 @@ function WebViewWidget(props: WebViewWidgetProps) {
             ref={webviewRef}
             src={webviewConfig.url || undefined}
             className="w-full h-full"
-            allowpopups={webviewConfig.allowFullScreen ? 'true' : 'false'}
-            preload={webviewConfig.preloadScript}
-            style={{ display: isLoading ? 'none' : 'block' }}
+            allowpopups="true"
+            webpreferences="allowRunningInsecureContent, javascript=yes"
+            style={{ 
+              display: isLoading || hasError ? 'none' : 'block',
+              width: '100%',
+              height: '100%',
+            }}
           />
         </div>
       )}

@@ -110,6 +110,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
+      webviewTag: true, // Enable <webview> tag for embedding websites
       preload: path.join(__dirname, 'preload.js'),
     },
     icon: path.join(__dirname, '../build/icon.icns'),
