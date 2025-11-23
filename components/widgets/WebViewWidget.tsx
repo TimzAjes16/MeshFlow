@@ -42,6 +42,9 @@ function WebViewWidget(props: WebViewWidgetProps) {
   const previousUrlRef = useRef<string>('');
   const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Check if we're in Electron environment (must be declared before useEffects that use it)
+  const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+
   // Listen for immediate URL update events
   useEffect(() => {
     const handleUrlUpdate = (event: CustomEvent) => {
@@ -88,9 +91,6 @@ function WebViewWidget(props: WebViewWidgetProps) {
       window.removeEventListener('widget-url-updated', handleUrlUpdate as EventListener);
     };
   }, [node.id, isElectron]);
-
-  // Check if we're in Electron environment
-  const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
 
   const handleLoad = useCallback(() => {
     if (loadTimeoutRef.current) {
