@@ -25,6 +25,11 @@ const DrawingCanvas = ({ workspaceId }: DrawingCanvasProps) => {
   const [history, setHistory] = useState<DrawingPath[][]>([]); // History for undo
   const [historyIndex, setHistoryIndex] = useState(-1); // Current position in history
   const [drawingMode, setDrawingMode] = useState(false);
+  const [eraserMode, setEraserMode] = useState(false);
+  const [eraserType, setEraserType] = useState<'partial' | 'full'>('partial');
+  const [eraserSize, setEraserSize] = useState(10);
+  const [isErasing, setIsErasing] = useState(false);
+  const [currentEraseArea, setCurrentEraseArea] = useState<{ x: number; y: number; radius: number } | null>(null);
   const { viewport } = useCanvasStore();
   const [color, setColor] = useState('#000000');
   const [strokeWidth, setStrokeWidth] = useState(2);
@@ -42,6 +47,35 @@ const DrawingCanvas = ({ workspaceId }: DrawingCanvasProps) => {
     window.addEventListener('toggle-drawing-mode', handleToggleDrawing as EventListener);
     return () => {
       window.removeEventListener('toggle-drawing-mode', handleToggleDrawing as EventListener);
+    };
+  }, []);
+
+  // Listen for eraser mode toggle
+  useEffect(() => {
+    const handleToggleEraser = (event: CustomEvent) => {
+      setEraserMode(event.detail.enabled);
+      if (!event.detail.enabled) {
+        setIsErasing(false);
+        setCurrentEraseArea(null);
+      }
+    };
+
+    window.addEventListener('toggle-eraser-mode', handleToggleEraser as EventListener);
+    return () => {
+      window.removeEventListener('toggle-eraser-mode', handleToggleEraser as EventListener);
+    };
+  }, []);
+
+  // Listen for eraser settings updates
+  useEffect(() => {
+    const handleUpdateEraserSettings = (event: CustomEvent) => {
+      if (event.detail.eraserType) setEraserType(event.detail.eraserType);
+      if (event.detail.eraserSize) setEraserSize(event.detail.eraserSize);
+    };
+
+    window.addEventListener('update-eraser-settings', handleUpdateEraserSettings as EventListener);
+    return () => {
+      window.removeEventListener('update-eraser-settings', handleUpdateEraserSettings as EventListener);
     };
   }, []);
 
@@ -204,79 +238,204 @@ const DrawingCanvas = ({ workspaceId }: DrawingCanvasProps) => {
 
         ctx.stroke();
       }
-    }, [paths, currentPath, isDrawing, color, strokeWidth, viewport, reactFlowInstance]);
+
+      // Draw eraser area indicator when erasing
+      if (currentEraseArea && isErasing && eraserMode) {
+        const currentViewport = reactFlowInstance.getViewport();
+        const screenX = (currentEraseArea.x * currentViewport.zoom) + currentViewport.x;
+        const screenY = (currentEraseArea.y * currentViewport.zoom) + currentViewport.y;
+        const canvasRect = canvas.getBoundingClientRect();
+        const relX = screenX - canvasRect.left;
+        const relY = screenY - canvasRect.top;
+        const radius = currentEraseArea.radius * currentViewport.zoom;
+
+        ctx.beginPath();
+        ctx.arc(relX, relY, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.1)';
+        ctx.fill();
+      }
+    }, [paths, currentPath, isDrawing, color, strokeWidth, viewport, reactFlowInstance, currentEraseArea, isErasing, eraserMode]);
 
   // Redraw when paths or viewport changes
   useEffect(() => {
     drawPaths();
   }, [drawPaths]);
 
+  // Helper function to check if a point is within eraser radius
+  const isPointInEraserRange = useCallback((point: { x: number; y: number }, eraseCenter: { x: number; y: number }, radius: number): boolean => {
+    const dx = point.x - eraseCenter.x;
+    const dy = point.y - eraseCenter.y;
+    return Math.sqrt(dx * dx + dy * dy) <= radius;
+  }, []);
+
   // Handle mouse down
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!drawingMode) return;
-    
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (eraserMode) {
+      // Eraser mode
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const canvas = canvasRef.current;
+      if (!canvas) return;
 
-    const canvasPoint = screenToCanvas(e.clientX, e.clientY);
-    setIsDrawing(true);
-    setCurrentPath([canvasPoint]);
-  }, [drawingMode, screenToCanvas]);
+      const canvasPoint = screenToCanvas(e.clientX, e.clientY);
+      setIsErasing(true);
+      
+      if (eraserType === 'full') {
+        // Find and remove paths that intersect with eraser
+        const updatedPaths = paths.filter((path) => {
+          // Check if any point in the path is within eraser radius
+          return !path.points.some(point => isPointInEraserRange(point, canvasPoint, eraserSize));
+        });
+        
+        if (updatedPaths.length !== paths.length) {
+          // Paths were removed, update history
+          const newHistory = history.slice(0, historyIndex + 1);
+          newHistory.push(updatedPaths);
+          
+          if (newHistory.length > 50) {
+            const limited = newHistory.slice(-50);
+            setHistoryIndex(limited.length - 1);
+            setHistory(limited);
+          } else {
+            setHistoryIndex(newHistory.length - 1);
+            setHistory(newHistory);
+          }
+          
+          setPaths(updatedPaths);
+        }
+      } else {
+        // Partial erase mode - will handle during mouse move
+        setCurrentEraseArea({ x: canvasPoint.x, y: canvasPoint.y, radius: eraserSize });
+      }
+    } else if (drawingMode) {
+      // Drawing mode
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const canvasPoint = screenToCanvas(e.clientX, e.clientY);
+      setIsDrawing(true);
+      setCurrentPath([canvasPoint]);
+    }
+  }, [drawingMode, eraserMode, eraserType, eraserSize, paths, history, historyIndex, screenToCanvas, isPointInEraserRange]);
 
   // Handle mouse move
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDrawing || !drawingMode) return;
+    if (isErasing && eraserMode) {
+      // Eraser mode
+      const canvas = canvasRef.current;
+      if (!canvas) return;
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+      const canvasPoint = screenToCanvas(e.clientX, e.clientY);
+      
+      if (eraserType === 'partial') {
+        // Partial erase: remove points within eraser radius from all paths
+        setCurrentEraseArea({ x: canvasPoint.x, y: canvasPoint.y, radius: eraserSize });
+        
+        const updatedPaths = paths.map((path) => {
+          // Filter out points that are within eraser radius
+          const filteredPoints = path.points.filter(
+            point => !isPointInEraserRange(point, canvasPoint, eraserSize)
+          );
+          
+          // Only keep path if it has at least 2 points
+          if (filteredPoints.length >= 2) {
+            return { ...path, points: filteredPoints };
+          }
+          return null;
+        }).filter((path): path is DrawingPath => path !== null);
+        
+        // Update if paths changed
+        if (updatedPaths.length !== paths.length || updatedPaths.some((path, idx) => path.points.length !== paths[idx]?.points.length)) {
+          setPaths(updatedPaths);
+        }
+      } else {
+        // Full erase: remove entire paths that intersect with eraser
+        const updatedPaths = paths.filter((path) => {
+          return !path.points.some(point => isPointInEraserRange(point, canvasPoint, eraserSize));
+        });
+        
+        if (updatedPaths.length !== paths.length) {
+          setPaths(updatedPaths);
+        }
+      }
+    } else if (isDrawing && drawingMode) {
+      // Drawing mode
+      const canvas = canvasRef.current;
+      if (!canvas) return;
 
-    const canvasPoint = screenToCanvas(e.clientX, e.clientY);
-    setCurrentPath((prev) => [...prev, canvasPoint]);
-  }, [isDrawing, drawingMode, screenToCanvas]);
+      const canvasPoint = screenToCanvas(e.clientX, e.clientY);
+      setCurrentPath((prev) => [...prev, canvasPoint]);
+    }
+  }, [isDrawing, drawingMode, isErasing, eraserMode, eraserType, eraserSize, paths, screenToCanvas, isPointInEraserRange]);
 
   // Handle mouse up
   const handleMouseUp = useCallback(() => {
-    if (!isDrawing) return;
-
-    if (currentPath.length > 1) {
-      const newPath: DrawingPath = {
-        id: `drawing-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        points: [...currentPath],
-        color,
-        strokeWidth,
-      };
-      
-      // Add to paths
-      const newPaths = [...paths, newPath];
-      setPaths(newPaths);
-      
-      // Update history - remove any "future" history when new action is performed
-      setHistory((prevHistory) => {
-        const newHistory = prevHistory.slice(0, historyIndex + 1);
-        newHistory.push(newPaths);
+    if (isErasing && eraserMode) {
+      // Eraser mode - save state to history
+      if (paths.length > 0) {
+        const newHistory = history.slice(0, historyIndex + 1);
+        newHistory.push([...paths]);
         
-        // Limit history to 50 actions
         if (newHistory.length > 50) {
           const limited = newHistory.slice(-50);
           setHistoryIndex(limited.length - 1);
-          return limited;
+          setHistory(limited);
         } else {
           setHistoryIndex(newHistory.length - 1);
-          return newHistory;
+          setHistory(newHistory);
         }
-      });
-    }
+      }
+      
+      setIsErasing(false);
+      setCurrentEraseArea(null);
+    } else if (isDrawing && drawingMode) {
+      // Drawing mode
+      if (currentPath.length > 1) {
+        const newPath: DrawingPath = {
+          id: `drawing-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          points: [...currentPath],
+          color,
+          strokeWidth,
+        };
+        
+        // Add to paths
+        const newPaths = [...paths, newPath];
+        setPaths(newPaths);
+        
+        // Update history - remove any "future" history when new action is performed
+        setHistory((prevHistory) => {
+          const newHistory = prevHistory.slice(0, historyIndex + 1);
+          newHistory.push(newPaths);
+          
+          // Limit history to 50 actions
+          if (newHistory.length > 50) {
+            const limited = newHistory.slice(-50);
+            setHistoryIndex(limited.length - 1);
+            return limited;
+          } else {
+            setHistoryIndex(newHistory.length - 1);
+            return newHistory;
+          }
+        });
+      }
 
-    setIsDrawing(false);
-    setCurrentPath([]);
-  }, [isDrawing, currentPath, color, strokeWidth, paths, history, historyIndex]);
+      setIsDrawing(false);
+      setCurrentPath([]);
+    }
+  }, [isDrawing, drawingMode, isErasing, eraserMode, currentPath, color, strokeWidth, paths, history, historyIndex]);
 
   // Set up mouse event listeners
   useEffect(() => {
-    if (isDrawing && drawingMode) {
+    if ((isDrawing && drawingMode) || (isErasing && eraserMode)) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
       return () => {
@@ -284,7 +443,7 @@ const DrawingCanvas = ({ workspaceId }: DrawingCanvasProps) => {
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDrawing, drawingMode, handleMouseMove, handleMouseUp]);
+  }, [isDrawing, drawingMode, isErasing, eraserMode, handleMouseMove, handleMouseUp]);
 
   // Track previous viewport to detect changes
   const previousViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(null);
@@ -330,15 +489,19 @@ const DrawingCanvas = ({ workspaceId }: DrawingCanvasProps) => {
     };
   }, [drawPaths, paths.length, reactFlowInstance]);
 
-  // Always render canvas to show persisted drawings, but only enable interaction when drawing mode is active
+  // Always render canvas to show persisted drawings, but only enable interaction when drawing or eraser mode is active
   return (
     <canvas
       ref={canvasRef}
-      onMouseDown={drawingMode ? handleMouseDown : undefined}
+      onMouseDown={(drawingMode || eraserMode) ? handleMouseDown : undefined}
       className="absolute inset-0 w-full h-full z-10"
       style={{
-        pointerEvents: drawingMode ? 'auto' : 'none',
-        cursor: drawingMode ? (isDrawing ? 'crosshair' : 'crosshair') : 'default',
+        pointerEvents: (drawingMode || eraserMode) ? 'auto' : 'none',
+        cursor: drawingMode 
+          ? (isDrawing ? 'crosshair' : 'crosshair') 
+          : eraserMode 
+          ? (isErasing ? 'grab' : 'grab')
+          : 'default',
         touchAction: 'none',
       }}
     />

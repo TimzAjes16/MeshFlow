@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Undo2, Redo2, Palette, Minus, Plus } from 'lucide-react';
+import { Undo2, Redo2, Palette, Minus, Plus, Eraser, CircleDot, Trash2, Video, RefreshCw, Crop, MousePointerClick, MousePointer2 } from 'lucide-react';
+import { useWorkspaceStore } from '@/state/workspaceStore';
+import { useCanvasStore } from '@/state/canvasStore';
+import type { Node } from '@/types/Node';
 
 interface HorizontalEditorBarProps {
   selectedNodeId?: string | null;
@@ -12,9 +15,26 @@ const MARGIN_BOTTOM = 48; // Margin from bottom edge
 
 const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   const [isBrushActive, setIsBrushActive] = useState(false);
+  const [isEraserActive, setIsEraserActive] = useState(false);
+  const [isLiveCaptureActive, setIsLiveCaptureActive] = useState(false);
   const [brushColor, setBrushColor] = useState('#000000');
   const [brushSize, setBrushSize] = useState(2);
+  const [eraserType, setEraserType] = useState<'partial' | 'full'>('partial');
+  const [eraserSize, setEraserSize] = useState(10);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showEraserTypeMenu, setShowEraserTypeMenu] = useState(false);
+  
+  const { nodes } = useWorkspaceStore();
+  const { selectNode } = useCanvasStore();
+  
+  // Get selected node if available
+  const selectedNode = selectedNodeId ? nodes.find(n => n.id === selectedNodeId) : null;
+  
+  // Check if selected node is a live capture node
+  const isLiveCaptureNode = selectedNode && (
+    (typeof selectedNode.content === 'object' && selectedNode.content?.type === 'live-capture') ||
+    selectedNode.tags?.includes('live-capture')
+  );
   
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
     if (typeof window !== 'undefined') {
@@ -138,6 +158,30 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     };
   }, []);
 
+  // Listen for eraser tool activation
+  useEffect(() => {
+    const handleToggleEraser = (event: CustomEvent) => {
+      setIsEraserActive(event.detail.enabled);
+    };
+
+    window.addEventListener('toggle-eraser-mode', handleToggleEraser as EventListener);
+    return () => {
+      window.removeEventListener('toggle-eraser-mode', handleToggleEraser as EventListener);
+    };
+  }, []);
+
+  // Listen for live capture tool activation
+  useEffect(() => {
+    const handleToggleLiveCapture = (event: CustomEvent) => {
+      setIsLiveCaptureActive(event.detail.enabled);
+    };
+
+    window.addEventListener('toggle-live-capture-mode', handleToggleLiveCapture as EventListener);
+    return () => {
+      window.removeEventListener('toggle-live-capture-mode', handleToggleLiveCapture as EventListener);
+    };
+  }, []);
+
   // Listen for drawing settings changes
   useEffect(() => {
     if (isBrushActive) {
@@ -146,6 +190,15 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
       }));
     }
   }, [brushColor, brushSize, isBrushActive]);
+
+  // Listen for eraser settings changes
+  useEffect(() => {
+    if (isEraserActive) {
+      window.dispatchEvent(new CustomEvent('update-eraser-settings', {
+        detail: { eraserType, eraserSize }
+      }));
+    }
+  }, [eraserType, eraserSize, isEraserActive]);
 
   // Handle undo
   const handleUndo = useCallback(() => {
@@ -168,6 +221,17 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     setBrushSize((prev) => Math.max(1, Math.min(20, prev + delta)));
   }, []);
 
+  // Handle eraser size change
+  const handleEraserSizeChange = useCallback((delta: number) => {
+    setEraserSize((prev) => Math.max(1, Math.min(50, prev + delta)));
+  }, []);
+
+  // Handle eraser type change
+  const handleEraserTypeChange = useCallback((type: 'partial' | 'full') => {
+    setEraserType(type);
+    setShowEraserTypeMenu(false);
+  }, []);
+
   // Predefined colors
   const colors = [
     '#000000', '#FFFFFF', '#FF0000', '#00FF00', '#0000FF',
@@ -175,8 +239,76 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     '#FFC0CB', '#A52A2A', '#808080', '#FFD700', '#4B0082'
   ];
 
-  // Only show when a node is selected OR brush tool is active
-  if (!selectedNodeId && !isBrushActive) {
+  // Handle Update Source - re-open capture modal for existing node
+  const handleUpdateSource = useCallback(() => {
+    if (!selectedNodeId || !isLiveCaptureNode) return;
+    window.dispatchEvent(new CustomEvent('open-live-capture-modal', {
+      detail: { nodeId: selectedNodeId }
+    }));
+  }, [selectedNodeId, isLiveCaptureNode]);
+
+  // Handle Recrop/Edit Viewport - open crop editor
+  const handleRecrop = useCallback(() => {
+    if (!selectedNodeId || !isLiveCaptureNode) return;
+    window.dispatchEvent(new CustomEvent('recrop-live-capture', {
+      detail: { nodeId: selectedNodeId }
+    }));
+  }, [selectedNodeId, isLiveCaptureNode]);
+
+  // Handle Interaction Toggle - enable/disable interaction with captured content
+  const handleToggleInteraction = useCallback(async () => {
+    if (!selectedNodeId || !isLiveCaptureNode || !selectedNode) return;
+    
+    const currentContent = typeof selectedNode.content === 'object' && selectedNode.content?.type === 'live-capture'
+      ? selectedNode.content
+      : { type: 'live-capture', imageUrl: '', cropArea: { x: 0, y: 0, width: 0, height: 0 }, captureHistory: [] };
+    
+    const newInteractive = !(currentContent.interactive ?? false);
+    
+    // Update node content
+    const { updateNode } = useWorkspaceStore.getState();
+    updateNode(selectedNodeId, {
+      content: {
+        ...currentContent,
+        type: 'live-capture',
+        interactive: newInteractive,
+      },
+    });
+    
+    // Persist to API
+    try {
+      const response = await fetch('/api/nodes/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId: selectedNodeId,
+          content: {
+            ...currentContent,
+            type: 'live-capture',
+            interactive: newInteractive,
+          },
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.node) {
+          updateNode(selectedNodeId, data.node);
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling interaction:', error);
+    }
+  }, [selectedNodeId, isLiveCaptureNode, selectedNode]);
+
+  // Get interaction state
+  const isInteractive = selectedNode && isLiveCaptureNode && 
+    typeof selectedNode.content === 'object' && 
+    selectedNode.content?.type === 'live-capture' &&
+    (selectedNode.content.interactive ?? false);
+
+  // Only show when a node is selected OR brush tool is active OR eraser tool is active OR live capture is active
+  if (!selectedNodeId && !isBrushActive && !isEraserActive && !isLiveCaptureActive) {
     return null;
   }
 
@@ -214,6 +346,109 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
 
         {/* Editing options will go here */}
         <div className="flex items-center gap-2 min-h-[32px] min-w-[200px] justify-center">
+          {/* Eraser Tool Controls - Only show when eraser is active */}
+          {isEraserActive && (
+            <>
+              {/* Undo/Redo */}
+              <button
+                onClick={handleUndo}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/undo"
+                title="Undo"
+              >
+                <Undo2 className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/undo:text-gray-800 dark:group-hover/undo:text-gray-200 transition-colors" />
+              </button>
+              <button
+                onClick={handleRedo}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/redo"
+                title="Redo"
+              >
+                <Redo2 className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/redo:text-gray-800 dark:group-hover/redo:text-gray-200 transition-colors" />
+              </button>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+
+              {/* Erase Type Selector */}
+              <div className="relative eraser-type-menu">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowEraserTypeMenu(!showEraserTypeMenu);
+                  }}
+                  className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/type flex items-center gap-1"
+                  title={`Erase type: ${eraserType === 'partial' ? 'Partial' : 'Full'}`}
+                >
+                  {eraserType === 'partial' ? (
+                    <CircleDot className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/type:text-gray-800 dark:group-hover/type:text-gray-200 transition-colors" />
+                  ) : (
+                    <Trash2 className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/type:text-gray-800 dark:group-hover/type:text-gray-200 transition-colors" />
+                  )}
+                  <span className="text-xs text-gray-600 dark:text-gray-400">
+                    {eraserType === 'partial' ? 'Partial' : 'Full'}
+                  </span>
+                </button>
+                
+                {/* Erase Type Menu */}
+                {showEraserTypeMenu && (
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 p-2 backdrop-blur-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200/50 dark:border-gray-700/50 rounded-xl shadow-xl z-50 min-w-[140px]">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEraserTypeChange('partial');
+                      }}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
+                        eraserType === 'partial'
+                          ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                          : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60 text-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      <CircleDot className="w-4 h-4" />
+                      <span className="text-sm">Partial</span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEraserTypeChange('full');
+                      }}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all mt-1 ${
+                        eraserType === 'full'
+                          ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                          : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60 text-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span className="text-sm">Full</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+
+              {/* Eraser Size Control */}
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100/50 dark:bg-gray-700/50 rounded-lg">
+                <button
+                  onClick={() => handleEraserSizeChange(-1)}
+                  className="p-0.5 hover:bg-gray-200/60 dark:hover:bg-gray-600/60 rounded transition-all"
+                  title="Decrease eraser size"
+                >
+                  <Minus className="w-3 h-3 text-gray-600 dark:text-gray-400" />
+                </button>
+                <span className="text-xs font-medium text-gray-700 dark:text-gray-300 min-w-[24px] text-center">
+                  {eraserSize}px
+                </span>
+                <button
+                  onClick={() => handleEraserSizeChange(1)}
+                  className="p-0.5 hover:bg-gray-200/60 dark:hover:bg-gray-600/60 rounded transition-all"
+                  title="Increase eraser size"
+                >
+                  <Plus className="w-3 h-3 text-gray-600 dark:text-gray-400" />
+                </button>
+              </div>
+            </>
+          )}
+
           {/* Brush Tool Controls - Only show when brush is active */}
           {isBrushActive && (
             <>
@@ -308,8 +543,90 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
             </>
           )}
 
+          {/* Live Capture Controls - Show when live capture node is selected or live capture tool is active */}
+          {(isLiveCaptureNode || isLiveCaptureActive) && (
+            <>
+              {/* Divider if there are other controls before */}
+              {(isBrushActive || isEraserActive) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+
+              {/* Update Source Button */}
+              {isLiveCaptureNode && (
+                <button
+                  onClick={handleUpdateSource}
+                  className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/update flex items-center gap-1.5"
+                  title="Update Source - Change the captured source"
+                >
+                  <RefreshCw className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/update:text-purple-600 dark:group-hover/update:text-purple-400 transition-colors" />
+                  <span className="text-xs text-gray-600 dark:text-gray-400 group-hover/update:text-purple-600 dark:group-hover/update:text-purple-400 transition-colors">
+                    Update Source
+                  </span>
+                </button>
+              )}
+
+              {/* Recrop/Edit Viewport Button */}
+              {isLiveCaptureNode && (
+                <button
+                  onClick={handleRecrop}
+                  className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/recrop flex items-center gap-1.5"
+                  title="Recrop - Edit the viewport/crop area"
+                >
+                  <Crop className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/recrop:text-purple-600 dark:group-hover/recrop:text-purple-400 transition-colors" />
+                  <span className="text-xs text-gray-600 dark:text-gray-400 group-hover/recrop:text-purple-600 dark:group-hover/recrop:text-purple-400 transition-colors">
+                    Recrop
+                  </span>
+                </button>
+              )}
+
+              {/* Interaction Toggle Button */}
+              {isLiveCaptureNode && (
+                <button
+                  onClick={handleToggleInteraction}
+                  className={`p-1.5 rounded-lg transition-all duration-150 group/interact flex items-center gap-1.5 ${
+                    isInteractive
+                      ? 'bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30'
+                      : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60'
+                  }`}
+                  title={isInteractive ? 'Disable Interaction - Make captured content non-interactive' : 'Enable Interaction - Allow interaction with captured content'}
+                >
+                  {isInteractive ? (
+                    <MousePointerClick className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  ) : (
+                    <MousePointer2 className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/interact:text-purple-600 dark:group-hover/interact:text-purple-400 transition-colors" />
+                  )}
+                  <span className={`text-xs transition-colors ${
+                    isInteractive
+                      ? 'text-purple-600 dark:text-purple-400'
+                      : 'text-gray-600 dark:text-gray-400 group-hover/interact:text-purple-600 dark:group-hover/interact:text-purple-400'
+                  }`}>
+                    {isInteractive ? 'Interactive' : 'Non-Interactive'}
+                  </span>
+                </button>
+              )}
+
+              {/* Create New Live Capture Button - Show when tool is active but no node selected */}
+              {isLiveCaptureActive && !isLiveCaptureNode && (
+                <button
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('open-live-capture-modal', {
+                      detail: { nodeId: null }
+                    }));
+                  }}
+                  className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/create flex items-center gap-1.5"
+                  title="Create Live Capture Node"
+                >
+                  <Video className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/create:text-purple-600 dark:group-hover/create:text-purple-400 transition-colors" />
+                  <span className="text-xs text-gray-600 dark:text-gray-400 group-hover/create:text-purple-600 dark:group-hover/create:text-purple-400 transition-colors">
+                    Create Capture
+                  </span>
+                </button>
+              )}
+            </>
+          )}
+
           {/* Node Editing Options - Only show when node is selected and brush is not active */}
-          {selectedNodeId && !isBrushActive && (
+          {selectedNodeId && !isBrushActive && !isLiveCaptureNode && (
             <div className="w-2 h-2 rounded-full bg-gray-300/50 dark:bg-gray-600/50" />
           )}
         </div>

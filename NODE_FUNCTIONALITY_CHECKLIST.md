@@ -136,3 +136,4 @@
 - ✅ **Grouped Menus**: Shapes and Charts in dropdown menus
 - ✅ **Live Capture Menu**: Fullscreen and Custom Area options
 
+

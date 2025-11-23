@@ -8,6 +8,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Camera, Crop, Check } from 'lucide-react';
+import { isScreenCaptureSupported, getScreenCaptureStream } from '@/lib/electronUtils';
 
 interface CaptureModalProps {
   isOpen: boolean;
@@ -42,34 +43,20 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Check browser support for screen capture
-  const isScreenCaptureSupported = useCallback(() => {
-    return typeof navigator !== 'undefined' && 
-           navigator.mediaDevices && 
-           typeof navigator.mediaDevices.getDisplayMedia === 'function';
-  }, []);
-
   // Handle starting screen capture for live monitoring
   const handleStartScreenCapture = useCallback(async () => {
     try {
       console.log('Starting screen capture...');
       
-      // Check if getDisplayMedia is available
+      // Check if screen capture is supported (works for both Electron and browser)
       if (!isScreenCaptureSupported()) {
-        const error = new Error('Screen capture is not supported in this browser.');
+        const error = new Error('Screen capture is not supported.');
         (error as any).name = 'NotSupportedError';
         throw error;
       }
 
-      // Try with more permissive constraints that work across browsers
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          // Remove displaySurface constraint as it's not supported in all browsers
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        } as any,
-        audio: false,
-      });
+      // Get screen capture stream (works in both Electron and browser)
+      const stream = await getScreenCaptureStream();
 
       console.log('Screen capture stream obtained:', stream);
       setScreenStream(stream);
@@ -120,15 +107,15 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
       console.error('Error starting screen capture:', error);
       
       // Provide user-friendly error messages
-      let errorMessage = 'Failed to start screen capture. ';
+      let errorMessage = error.message || 'Failed to start screen capture. ';
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        errorMessage += 'Please allow screen sharing when prompted.';
+        errorMessage = 'Screen sharing permission denied. Please allow screen sharing when prompted.';
       } else if (error.name === 'NotFoundError') {
-        errorMessage += 'No screen source found.';
+        errorMessage = 'No screen source found.';
       } else if (error.name === 'NotSupportedError') {
-        errorMessage += 'Screen capture is not supported in this browser. Please use Chrome, Firefox, Edge, or Safari 13+.';
-      } else {
-        errorMessage += error.message || 'Please try again.';
+        errorMessage = 'Screen capture is not supported.';
+      } else if (!errorMessage.includes('Failed to start screen capture')) {
+        errorMessage = `Failed to start screen capture: ${errorMessage}`;
       }
       
       // Show error and close modal
@@ -168,9 +155,9 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
     } else if (isLiveCapture && isOpen && !screenStream) {
       // If this is for live capture, check support first
       if (!isScreenCaptureSupported()) {
-        setError('Screen capture is not supported in this browser. Please use Chrome, Firefox, Edge, or Safari 13+.');
+        setError('Screen capture is not supported.');
         setTimeout(() => {
-          alert('Screen capture is not supported in this browser. Please use Chrome, Firefox, Edge, or Safari 13+.');
+          alert('Screen capture is not supported.');
           onClose();
         }, 100);
         return;
@@ -178,7 +165,7 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
       // Immediately start screen capture if supported
       handleStartScreenCapture();
     }
-  }, [isOpen, isLiveCapture, screenStream, handleStartScreenCapture, isScreenCaptureSupported, onClose]);
+  }, [isOpen, isLiveCapture, screenStream, handleStartScreenCapture, onClose]);
 
   // Check if point is within crop area
   const isPointInCropArea = useCallback((x: number, y: number, area: CropArea, scaleX: number, scaleY: number, offsetX: number, offsetY: number) => {

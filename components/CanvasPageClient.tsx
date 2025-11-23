@@ -154,7 +154,9 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
   useEffect(() => {
     const handleUpdateCaptureNode = (event: CustomEvent) => {
       const nodeId = event.detail.nodeId;
-      const node = nodes.find(n => n.id === nodeId);
+      // Access nodes from store directly to avoid dependency issues
+      const currentNodes = useWorkspaceStore.getState().nodes;
+      const node = currentNodes.find(n => n.id === nodeId);
       const isLiveCaptureNode = node && typeof node.content === 'object' && node.content?.type === 'live-capture';
       
       if (isLiveCaptureNode) {
@@ -169,14 +171,9 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     
     const handleStartScreenCaptureForNode = async (nodeId: string) => {
       try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            displaySurface: 'browser',
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          } as any,
-          audio: false,
-        });
+        // Use screen capture utility that works in both Electron and browser
+        const { getScreenCaptureStream } = await import('@/lib/electronUtils');
+        const stream = await getScreenCaptureStream();
 
         setScreenCaptureNodeId(nodeId);
         setScreenCaptureStream(stream);
@@ -201,14 +198,45 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       setScreenCaptureArea(captureArea);
     };
     
+    // Handle open live capture modal from toolbar
+    const handleOpenLiveCaptureModal = (event: CustomEvent) => {
+      const { nodeId } = event.detail;
+      if (nodeId) {
+        // Update existing node
+        setCaptureNodeId(nodeId);
+      } else {
+        // Create new node
+        setCaptureNodeId(null);
+      }
+      setCaptureModalOpen(true);
+    };
+
+    // Handle recrop live capture node
+    const handleRecropLiveCapture = (event: CustomEvent) => {
+      const { nodeId } = event.detail;
+      // Access nodes from store directly to avoid dependency issues
+      const currentNodes = useWorkspaceStore.getState().nodes;
+      const node = currentNodes.find(n => n.id === nodeId);
+      if (node && typeof node.content === 'object' && node.content?.type === 'live-capture') {
+        // Open capture modal in recrop mode
+        setCaptureNodeId(nodeId);
+        (window as any).liveCaptureMode = 'recrop';
+        setCaptureModalOpen(true);
+      }
+    };
+    
     window.addEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
     window.addEventListener('start-screen-capture', handleStartScreenCapture as EventListener);
+    window.addEventListener('open-live-capture-modal', handleOpenLiveCaptureModal as EventListener);
+    window.addEventListener('recrop-live-capture', handleRecropLiveCapture as EventListener);
     
     return () => {
       window.removeEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
       window.removeEventListener('start-screen-capture', handleStartScreenCapture as EventListener);
+      window.removeEventListener('open-live-capture-modal', handleOpenLiveCaptureModal as EventListener);
+      window.removeEventListener('recrop-live-capture', handleRecropLiveCapture as EventListener);
     };
-  }, []);
+  }, []); // Empty dependency array since we access nodes from store directly
 
   // Handle clipboard image detection for live capture nodes
   const handleClipboardImage = useCallback(

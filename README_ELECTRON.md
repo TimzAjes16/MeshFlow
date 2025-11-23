@@ -106,7 +106,28 @@ The Electron main process:
 
 ## Notes
 
-- Screen capture features require appropriate permissions on macOS (System Preferences > Security & Privacy > Screen Recording)
+### Screen Recording Permissions
+
+Screen capture features require appropriate permissions:
+
+**macOS:**
+1. Open System Preferences (or System Settings on macOS 13+)
+2. Go to Security & Privacy > Privacy
+3. Select "Screen Recording" from the left sidebar
+4. Check the box next to MeshFlow
+5. Restart the app if needed
+
+**Windows:**
+1. Open Windows Settings
+2. Go to Privacy > Screen Recording
+3. Enable "Allow apps to access your screen"
+
+**Linux:**
+- Screen recording permissions vary by distribution
+- You may need to grant permissions through your desktop environment's settings
+
+### Other Notes
+
 - The app includes all Node.js modules, so it will be larger than a static export, but all features work
 - Database connections work normally since the Next.js server runs inside the Electron process
 

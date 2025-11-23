@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { GripVertical, Paintbrush } from 'lucide-react';
+import { GripVertical, Paintbrush, Eraser, Video } from 'lucide-react';
 
 interface VerticalToolbarProps {
   // Tools will be added later
@@ -11,6 +11,8 @@ const MARGIN_LEFT = 48; // Margin from left edge
 
 const VerticalToolbar = ({}: VerticalToolbarProps) => {
   const [isBrushActive, setIsBrushActive] = useState(false);
+  const [isEraserActive, setIsEraserActive] = useState(false);
+  const [isLiveCaptureActive, setIsLiveCaptureActive] = useState(false);
   
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
     if (typeof window !== 'undefined') {
@@ -114,6 +116,14 @@ const VerticalToolbar = ({}: VerticalToolbarProps) => {
     const newState = !isBrushActive;
     setIsBrushActive(newState);
     
+    // If activating brush, deactivate eraser
+    if (newState) {
+      setIsEraserActive(false);
+      window.dispatchEvent(new CustomEvent('toggle-eraser-mode', { 
+        detail: { enabled: false } 
+      }));
+    }
+    
     // Dispatch event to enable/disable drawing mode
     window.dispatchEvent(new CustomEvent('toggle-drawing-mode', { 
       detail: { enabled: newState } 
@@ -126,6 +136,68 @@ const VerticalToolbar = ({}: VerticalToolbarProps) => {
       document.body.style.cursor = '';
     }
   }, [isBrushActive]);
+
+  // Handle eraser toggle
+  const handleEraserToggle = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newState = !isEraserActive;
+    setIsEraserActive(newState);
+    
+    // If activating eraser, deactivate brush and live capture
+    if (newState) {
+      setIsBrushActive(false);
+      setIsLiveCaptureActive(false);
+      window.dispatchEvent(new CustomEvent('toggle-drawing-mode', { 
+        detail: { enabled: false } 
+      }));
+      window.dispatchEvent(new CustomEvent('toggle-live-capture-mode', { 
+        detail: { enabled: false } 
+      }));
+    }
+    
+    // Dispatch event to enable/disable eraser mode
+    window.dispatchEvent(new CustomEvent('toggle-eraser-mode', { 
+      detail: { enabled: newState } 
+    }));
+    
+    // Update cursor
+    if (newState) {
+      document.body.style.cursor = 'grab';
+    } else {
+      document.body.style.cursor = '';
+    }
+  }, [isEraserActive]);
+
+  // Handle live capture toggle
+  const handleLiveCaptureToggle = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newState = !isLiveCaptureActive;
+    setIsLiveCaptureActive(newState);
+    
+    // If activating live capture, deactivate brush and eraser
+    if (newState) {
+      setIsBrushActive(false);
+      setIsEraserActive(false);
+      window.dispatchEvent(new CustomEvent('toggle-drawing-mode', { 
+        detail: { enabled: false } 
+      }));
+      window.dispatchEvent(new CustomEvent('toggle-eraser-mode', { 
+        detail: { enabled: false } 
+      }));
+    }
+    
+    // Dispatch event to enable/disable live capture mode
+    window.dispatchEvent(new CustomEvent('toggle-live-capture-mode', { 
+      detail: { enabled: newState } 
+    }));
+    
+    // Trigger capture modal if activating
+    if (newState) {
+      window.dispatchEvent(new CustomEvent('open-live-capture-modal', {
+        detail: { nodeId: null } // null means create new node
+      }));
+    }
+  }, [isLiveCaptureActive]);
 
   return (
     <div
@@ -172,6 +244,32 @@ const VerticalToolbar = ({}: VerticalToolbarProps) => {
             title={isBrushActive ? 'Disable brush tool' : 'Enable brush tool'}
           >
             <Paintbrush className="w-5 h-5" />
+          </button>
+
+          {/* Eraser Tool */}
+          <button
+            onClick={handleEraserToggle}
+            className={`p-2 rounded-lg transition-all duration-150 ${
+              isEraserActive
+                ? 'bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/60 dark:hover:bg-gray-700/60'
+            }`}
+            title={isEraserActive ? 'Disable eraser tool' : 'Enable eraser tool'}
+          >
+            <Eraser className="w-5 h-5" />
+          </button>
+
+          {/* Live Capture Tool */}
+          <button
+            onClick={handleLiveCaptureToggle}
+            className={`p-2 rounded-lg transition-all duration-150 ${
+              isLiveCaptureActive
+                ? 'bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/60 dark:hover:bg-gray-700/60'
+            }`}
+            title={isLiveCaptureActive ? 'Disable live capture tool' : 'Enable live capture tool'}
+          >
+            <Video className="w-5 h-5" />
           </button>
         </div>
 

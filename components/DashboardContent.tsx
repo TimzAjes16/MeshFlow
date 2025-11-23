@@ -219,6 +219,7 @@ export default function DashboardContent({ workspaces }: DashboardContentProps) 
             searchQuery={searchQuery}
             viewMode={viewMode}
             onCreateNew={() => setIsModalOpen(true)}
+            onWorkspaceDeleted={() => router.refresh()}
           />
         </section>
 

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, systemPreferences, ipcMain } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const isDev = process.env.NODE_ENV === 'development';
@@ -244,6 +244,65 @@ function createMenu() {
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
 }
+
+// IPC handler to request screen recording permission
+ipcMain.handle('request-screen-permission', async () => {
+  try {
+    if (process.platform === 'darwin') {
+      // On macOS, askForMediaAccess will automatically use Touch ID if available
+      const status = await systemPreferences.askForMediaAccess('screen');
+      return {
+        granted: status,
+        platform: 'darwin',
+      };
+    } else if (process.platform === 'win32') {
+      // On Windows, permissions are handled differently
+      // The system will prompt automatically when getDisplayMedia is called
+      return {
+        granted: true,
+        platform: 'win32',
+      };
+    } else {
+      // Linux - permissions vary by distribution
+      return {
+        granted: true,
+        platform: 'linux',
+      };
+    }
+  } catch (error) {
+    console.error('Error requesting screen permission:', error);
+    return {
+      granted: false,
+      error: error.message,
+    };
+  }
+});
+
+// IPC handler to check screen recording permission status
+ipcMain.handle('check-screen-permission', async () => {
+  try {
+    if (process.platform === 'darwin') {
+      const status = systemPreferences.getMediaAccessStatus('screen');
+      return {
+        granted: status === 'granted',
+        status: status,
+        platform: 'darwin',
+      };
+    } else {
+      // On Windows/Linux, we can't check ahead of time
+      return {
+        granted: null, // Unknown - will be determined when getDisplayMedia is called
+        platform: process.platform,
+      };
+    }
+  } catch (error) {
+    console.error('Error checking screen permission:', error);
+    return {
+      granted: false,
+      error: error.message,
+    };
+  }
+});
 
 app.whenReady().then(() => {
   createWindow();

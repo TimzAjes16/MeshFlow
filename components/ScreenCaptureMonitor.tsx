@@ -184,16 +184,9 @@ export default function ScreenCaptureMonitor({
         let stream = externalStream || streamRef.current;
         
         if (!stream) {
-          // Use getDisplayMedia to capture screen/window
-          // User can select which window/screen to share (e.g., YouTube tab, another app)
-          stream = await navigator.mediaDevices.getDisplayMedia({
-            video: {
-              displaySurface: 'browser', // or 'window', 'monitor'
-              width: { ideal: 1920 },
-              height: { ideal: 1080 },
-            } as any,
-            audio: false,
-          });
+          // Use screen capture utility that works in both Electron and browser
+          const { getScreenCaptureStream } = await import('@/lib/electronUtils');
+          stream = await getScreenCaptureStream();
           streamRef.current = stream;
         }
 
