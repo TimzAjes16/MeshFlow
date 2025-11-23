@@ -2,6 +2,7 @@
 #include <napi.h>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace WindowEmbedding {
   
@@ -137,10 +138,25 @@ namespace WindowEmbedding {
   Napi::Value GetWindowList(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     
-    // This would require platform-specific implementation
-    // For now, return empty array
-    Napi::Array result = Napi::Array::New(env);
-    return result;
+    try {
+      std::vector<WindowInfo> windows = GetWindowListNative();
+      
+      Napi::Array result = Napi::Array::New(env, windows.size());
+      
+      for (size_t i = 0; i < windows.size(); i++) {
+        Napi::Object windowObj = Napi::Object::New(env);
+        windowObj.Set("processName", Napi::String::New(env, windows[i].processName));
+        windowObj.Set("windowTitle", Napi::String::New(env, windows[i].windowTitle));
+        windowObj.Set("windowHandle", Napi::Number::New(env, reinterpret_cast<uintptr_t>(windows[i].handle)));
+        result.Set(i, windowObj);
+      }
+      
+      return result;
+    } catch (const std::exception& e) {
+      Napi::Error::New(env, std::string("Error getting window list: ") + e.what())
+        .ThrowAsJavaScriptException();
+      return Napi::Array::New(env);
+    }
   }
   
   void Init(Napi::Env env, Napi::Object exports) {

@@ -2,16 +2,11 @@
 #include "window_embedding.h"
 #include <Cocoa/Cocoa.h>
 #include <AppKit/AppKit.h>
+#include <CoreGraphics/CoreGraphics.h>
 #include <string>
 #include <vector>
 
 namespace WindowEmbedding {
-  
-  struct WindowInfo {
-    NSWindow* window;
-    std::string title;
-    std::string processName;
-  };
   
   void* FindWindowNative(const char* processName, const char* windowTitle) {
     NSArray* windows = [NSApplication sharedApplication].windows;
@@ -91,6 +86,72 @@ namespace WindowEmbedding {
     }
     
     return true;
+  }
+  
+  std::vector<WindowInfo> GetWindowListNative() {
+    std::vector<WindowInfo> windows;
+    
+    // Get all running applications
+    NSArray* runningApps = [[NSWorkspace sharedWorkspace] runningApplications];
+    
+    for (NSRunningApplication* app in runningApps) {
+      // Skip hidden apps and background apps
+      if (app.hidden || app.activationPolicy == NSApplicationActivationPolicyProhibited) {
+        continue;
+      }
+      
+      // Get the app's windows
+      // Note: We need to use CGWindowListCopyWindowInfo for a more complete list
+      // as NSApplication.sharedApplication.windows only returns windows from the current app
+      CFArrayRef windowList = CGWindowListCopyWindowInfo(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+        kCGNullWindowID
+      );
+      
+      if (windowList) {
+        NSArray* windowsArray = (__bridge NSArray*)windowList;
+        
+        for (NSDictionary* windowInfo in windowsArray) {
+          // Get window owner PID
+          NSNumber* ownerPID = windowInfo[(id)kCGWindowOwnerPID];
+          if (!ownerPID || ownerPID.integerValue != app.processIdentifier) {
+            continue;
+          }
+          
+          // Get window name
+          NSString* windowName = windowInfo[(id)kCGWindowName];
+          if (!windowName || windowName.length == 0) {
+            // Skip windows without names (usually system windows)
+            continue;
+          }
+          
+          // Get window bounds to check if it's visible
+          NSDictionary* bounds = windowInfo[(id)kCGWindowBounds];
+          if (!bounds) {
+            continue;
+          }
+          
+          // Get window layer - skip if it's a desktop element
+          NSNumber* layer = windowInfo[(id)kCGWindowLayer];
+          if (layer && layer.integerValue < 0) {
+            continue; // Skip desktop elements
+          }
+          
+          WindowInfo info;
+          info.processName = [app.localizedName UTF8String] ?: "";
+          info.windowTitle = [windowName UTF8String] ?: "";
+          // Store the window ID as the handle (we'll need to find the actual NSWindow later if needed)
+          NSNumber* windowID = windowInfo[(id)kCGWindowNumber];
+          info.handle = reinterpret_cast<void*>(windowID ? windowID.unsignedLongValue : 0);
+          
+          windows.push_back(info);
+        }
+        
+        CFRelease(windowList);
+      }
+    }
+    
+    return windows;
   }
 }
 

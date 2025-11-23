@@ -4,68 +4,89 @@
 #include <psapi.h>
 #include <string>
 #include <vector>
+#include <set>
 
 namespace WindowEmbedding {
   
-  struct WindowInfo {
-    HWND hwnd;
-    std::string title;
-    std::string processName;
+  // Callback for EnumWindows - used by both FindWindowNative and GetWindowListNative
+  struct EnumWindowsData {
+    std::vector<WindowInfo>* windows;
+    const char* searchProcessName;
+    const char* searchWindowTitle;
+    bool isSearch;
   };
   
-  // Callback for EnumWindows
   BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
-    std::vector<WindowInfo>* windows = reinterpret_cast<std::vector<WindowInfo>*>(lParam);
+    EnumWindowsData* data = reinterpret_cast<EnumWindowsData*>(lParam);
     
     // Skip invisible windows
     if (!IsWindowVisible(hwnd)) {
       return TRUE;
     }
     
-    // Get window title
+    // Skip windows with no title (usually system windows)
     char title[256];
     GetWindowTextA(hwnd, title, sizeof(title));
+    if (strlen(title) == 0) {
+      return TRUE;
+    }
     
     // Get process name
     DWORD processId;
     GetWindowThreadProcessId(hwnd, &processId);
     
     HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processId);
-    if (hProcess) {
-      char processName[MAX_PATH];
-      if (GetModuleFileNameExA(hProcess, NULL, processName, MAX_PATH)) {
-        // Extract just the filename
-        std::string fullPath(processName);
-        size_t lastSlash = fullPath.find_last_of("\\/");
-        std::string filename = (lastSlash != std::string::npos) 
-          ? fullPath.substr(lastSlash + 1) 
-          : fullPath;
-        
-        WindowInfo info;
-        info.hwnd = hwnd;
-        info.title = title;
-        info.processName = filename;
-        windows->push_back(info);
-      }
-      CloseHandle(hProcess);
+    if (!hProcess) {
+      return TRUE;
     }
+    
+    char processName[MAX_PATH];
+    if (!GetModuleFileNameExA(hProcess, NULL, processName, MAX_PATH)) {
+      CloseHandle(hProcess);
+      return TRUE;
+    }
+    CloseHandle(hProcess);
+    
+    // Extract just the filename
+    std::string fullPath(processName);
+    size_t lastSlash = fullPath.find_last_of("\\/");
+    std::string filename = (lastSlash != std::string::npos) 
+      ? fullPath.substr(lastSlash + 1) 
+      : fullPath;
+    
+    // If this is a search, check if it matches
+    if (data->isSearch) {
+      bool matchProcess = (!data->searchProcessName || strlen(data->searchProcessName) == 0 || 
+                          filename.find(data->searchProcessName) != std::string::npos);
+      bool matchTitle = (!data->searchWindowTitle || strlen(data->searchWindowTitle) == 0 ||
+                        std::string(title).find(data->searchWindowTitle) != std::string::npos);
+      
+      if (!matchProcess || !matchTitle) {
+        return TRUE;
+      }
+    }
+    
+    WindowInfo info;
+    info.handle = reinterpret_cast<void*>(hwnd);
+    info.windowTitle = title;
+    info.processName = filename;
+    data->windows->push_back(info);
     
     return TRUE;
   }
   
   void* FindWindowNative(const char* processName, const char* windowTitle) {
     std::vector<WindowInfo> windows;
-    EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&windows));
+    EnumWindowsData data;
+    data.windows = &windows;
+    data.searchProcessName = processName;
+    data.searchWindowTitle = windowTitle;
+    data.isSearch = true;
     
-    for (const auto& info : windows) {
-      bool matchProcess = (!processName || strlen(processName) == 0 || 
-                          info.processName.find(processName) != std::string::npos);
-      bool matchTitle = (!windowTitle || strlen(windowTitle) == 0 ||
-                        info.title.find(windowTitle) != std::string::npos);
-      
-      if (matchProcess && matchTitle) {
-        return reinterpret_cast<void*>(info.hwnd);
-      }
+    EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&data));
+    
+    if (!windows.empty()) {
+      return windows[0].handle;
     }
     
     return nullptr;
@@ -130,6 +151,31 @@ namespace WindowEmbedding {
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
     
     return true;
+  }
+  
+  std::vector<WindowInfo> GetWindowListNative() {
+    std::vector<WindowInfo> windows;
+    EnumWindowsData data;
+    data.windows = &windows;
+    data.searchProcessName = nullptr;
+    data.searchWindowTitle = nullptr;
+    data.isSearch = false;
+    
+    EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&data));
+    
+    // Remove duplicates (same process name and window title)
+    std::set<std::pair<std::string, std::string>> seen;
+    std::vector<WindowInfo> uniqueWindows;
+    
+    for (const auto& info : windows) {
+      auto key = std::make_pair(info.processName, info.windowTitle);
+      if (seen.find(key) == seen.end()) {
+        seen.insert(key);
+        uniqueWindows.push_back(info);
+      }
+    }
+    
+    return uniqueWindows;
   }
 }
 

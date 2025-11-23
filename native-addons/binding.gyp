@@ -39,7 +39,8 @@
           "libraries": [
             "-framework Cocoa",
             "-framework ApplicationServices",
-            "-framework Carbon"
+            "-framework Carbon",
+            "-framework CoreGraphics"
           ]
         }]
       ]

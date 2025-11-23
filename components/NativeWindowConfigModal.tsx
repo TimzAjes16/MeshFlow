@@ -76,6 +76,8 @@ export default function NativeWindowConfigModal({
   const handleSelectWindow = (window: WindowInfo) => {
     setProcessName(window.processName);
     setWindowTitle(window.windowTitle);
+    // Clear search to show all windows again after selection
+    setSearchQuery('');
   };
 
   const handleConfirm = () => {
@@ -142,29 +144,35 @@ export default function NativeWindowConfigModal({
               </div>
             ) : (
               <div className="space-y-2">
-                {filteredWindows.map((window, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleSelectWindow(window)}
-                    className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
-                      processName === window.processName && windowTitle === window.windowTitle
-                        ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-900'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Monitor className="w-5 h-5 text-orange-500 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                          {window.windowTitle || window.processName}
+                {filteredWindows.map((window, index) => {
+                  const isSelected = processName === window.processName && windowTitle === window.windowTitle;
+                  return (
+                    <button
+                      key={`${window.processName}-${window.windowTitle}-${index}`}
+                      onClick={() => handleSelectWindow(window)}
+                      className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
+                        isSelected
+                          ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20 ring-2 ring-orange-200 dark:ring-orange-800'
+                          : 'border-gray-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-orange-600 bg-white dark:bg-gray-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Monitor className={`w-5 h-5 flex-shrink-0 ${isSelected ? 'text-orange-500' : 'text-gray-400'}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-sm font-medium truncate ${isSelected ? 'text-orange-900 dark:text-orange-100' : 'text-gray-900 dark:text-white'}`}>
+                            {window.windowTitle || window.processName}
+                          </div>
+                          <div className={`text-xs truncate ${isSelected ? 'text-orange-700 dark:text-orange-300' : 'text-gray-500 dark:text-gray-400'}`}>
+                            {window.processName}
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                          {window.processName}
-                        </div>
+                        {isSelected && (
+                          <div className="flex-shrink-0 w-2 h-2 bg-orange-500 rounded-full"></div>
+                        )}
                       </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

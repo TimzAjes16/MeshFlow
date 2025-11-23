@@ -22,6 +22,16 @@ namespace WindowEmbedding {
   void* FindWindowNative(const char* processName, const char* windowTitle);
   bool EmbedWindowNative(void* childWindow, void* parentWindow);
   bool UnembedWindowNative(void* window);
+  
+  // Platform-specific window list structure
+  struct WindowInfo {
+    void* handle;
+    std::string processName;
+    std::string windowTitle;
+  };
+  
+  // Get list of all visible windows (platform-specific)
+  std::vector<WindowInfo> GetWindowListNative();
 }
 
 #endif // WINDOW_EMBEDDING_H
