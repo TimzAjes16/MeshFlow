@@ -47,6 +47,19 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   const isIframeWidget = selectedNode && typeof selectedNode.content === 'object' && selectedNode.content?.type === 'iframe-widget';
   const isWebViewWidget = selectedNode && typeof selectedNode.content === 'object' && selectedNode.content?.type === 'webview-widget';
   const isNativeWindowWidget = selectedNode && typeof selectedNode.content === 'object' && selectedNode.content?.type === 'native-window-widget';
+
+  // Initialize widget URL from selected node content
+  useEffect(() => {
+    if (selectedNode && (isIframeWidget || isWebViewWidget)) {
+      const content = typeof selectedNode.content === 'object' && selectedNode.content
+        ? selectedNode.content as any
+        : null;
+      const url = content?.url || '';
+      setWidgetUrl(url);
+    } else if (!selectedNode || (!isIframeWidget && !isWebViewWidget)) {
+      setWidgetUrl('');
+    }
+  }, [selectedNodeId, isIframeWidget, isWebViewWidget, selectedNode]);
   
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
     if (typeof window !== 'undefined') {
@@ -477,9 +490,46 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     selectedNode.content?.type === 'live-capture' &&
     (selectedNode.content.interactive ?? false);
   
+  // Normalize URL - add protocol if missing
+  const normalizeUrl = useCallback((url: string): string => {
+    if (!url || !url.trim()) return '';
+    
+    const trimmedUrl = url.trim();
+    
+    // If it already has a protocol, return as is
+    if (/^https?:\/\//i.test(trimmedUrl)) {
+      return trimmedUrl;
+    }
+    
+    // Add https:// if no protocol
+    return `https://${trimmedUrl}`;
+  }, []);
+
+  // Validate URL
+  const isValidUrl = useCallback((url: string): boolean => {
+    if (!url || !url.trim()) return false;
+    
+    try {
+      const normalized = normalizeUrl(url);
+      const urlObj = new URL(normalized);
+      return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }, [normalizeUrl]);
+
   // Handle widget URL save (for iframe and webview widgets)
   const handleSaveWidgetUrl = useCallback(async () => {
     if (!selectedNodeId || (!isIframeWidget && !isWebViewWidget)) return;
+    
+    // Validate URL
+    if (!isValidUrl(widgetUrl)) {
+      alert('Please enter a valid URL (e.g., https://example.com or example.com)');
+      return;
+    }
+    
+    // Normalize URL
+    const normalizedUrl = normalizeUrl(widgetUrl);
     
     const currentContent = typeof selectedNode?.content === 'object' && selectedNode?.content
       ? selectedNode.content as any
@@ -488,9 +538,10 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     const updatedContent = {
       ...currentContent,
       type: isIframeWidget ? 'iframe-widget' : 'webview-widget',
-      url: widgetUrl,
+      url: normalizedUrl,
     };
     
+    // Update workspace store immediately for instant feedback
     updateWorkspaceNode(selectedNodeId, {
       content: updatedContent,
     });
@@ -511,11 +562,16 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
         if (data.node) {
           updateWorkspaceNode(selectedNodeId, data.node);
         }
+      } else {
+        const errorText = await response.text().catch(() => response.statusText);
+        console.error('Error updating widget URL:', errorText);
+        alert(`Failed to save URL: ${errorText}`);
       }
     } catch (error) {
       console.error('Error updating widget URL:', error);
+      alert(`Error saving URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [selectedNodeId, isIframeWidget, isWebViewWidget, widgetUrl, selectedNode, updateWorkspaceNode]);
+  }, [selectedNodeId, isIframeWidget, isWebViewWidget, widgetUrl, selectedNode, updateWorkspaceNode, normalizeUrl, isValidUrl]);
   
   // Handle native window widget save
   const handleSaveNativeWindowConfig = useCallback(async () => {
