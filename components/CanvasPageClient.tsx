@@ -831,11 +831,33 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     }
   }, [workspaceId, nodes, addNode, selectNode]);
 
+  // Handle native window configuration confirmation
+  const handleNativeWindowConfigConfirm = useCallback(async (config: { processName: string; windowTitle: string }) => {
+    if (!pendingNativeWindowType) return;
+    
+    const { type, position } = pendingNativeWindowType;
+    const reactFlowInstance = (window as any).reactFlowInstance;
+    const flowPosition = reactFlowInstance?.screenToFlowPosition?.(position || { x: window.innerWidth / 2, y: window.innerHeight / 2 }) || position || { x: 500, y: 400 };
+    
+    // Create node with configuration
+    await handleCreateNode(type, flowPosition, config);
+    
+    setPendingNativeWindowType(null);
+    setNativeWindowConfigOpen(false);
+  }, [pendingNativeWindowType, handleCreateNode]);
+
   // Listen for widget creation events (must be after handleCreateNode is defined)
   useEffect(() => {
     const handleCreateWidget = async (event: CustomEvent) => {
       const { type } = event.detail;
       const position = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      
+      // For native window widget, show configuration modal first
+      if (type === 'native-window-widget') {
+        setPendingNativeWindowType({ type, position });
+        setNativeWindowConfigOpen(true);
+        return;
+      }
       
       // Try to get reactFlowInstance from window or use position directly
       const reactFlowInstance = (window as any).reactFlowInstance;
