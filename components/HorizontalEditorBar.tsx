@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Undo2, Redo2, Palette, Minus, Plus, Eraser, CircleDot, Trash2, Video, RefreshCw, Crop, MousePointerClick, MousePointer2, X } from 'lucide-react';
+import { Undo2, Redo2, Palette, Minus, Plus, Eraser, CircleDot, Trash2, Video, RefreshCw, Crop, MousePointerClick, MousePointer2, X, Globe, Globe2, Monitor, Save } from 'lucide-react';
 import FloatingCropArea from './FloatingCropArea';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
@@ -25,6 +25,11 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showEraserTypeMenu, setShowEraserTypeMenu] = useState(false);
   const [showFloatingCropArea, setShowFloatingCropArea] = useState(false);
+  
+  // Widget configuration state
+  const [widgetUrl, setWidgetUrl] = useState('');
+  const [widgetProcessName, setWidgetProcessName] = useState('');
+  const [widgetWindowTitle, setWidgetWindowTitle] = useState('');
   
   const { nodes, updateNode: updateWorkspaceNode } = useWorkspaceStore();
   const { selectNode } = useCanvasStore();
@@ -466,6 +471,87 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     typeof selectedNode.content === 'object' && 
     selectedNode.content?.type === 'live-capture' &&
     (selectedNode.content.interactive ?? false);
+  
+  // Handle widget URL save (for iframe and webview widgets)
+  const handleSaveWidgetUrl = useCallback(async () => {
+    if (!selectedNodeId || (!isIframeWidget && !isWebViewWidget)) return;
+    
+    const currentContent = typeof selectedNode?.content === 'object' && selectedNode?.content
+      ? selectedNode.content as any
+      : { type: isIframeWidget ? 'iframe-widget' : 'webview-widget', url: '' };
+    
+    const updatedContent = {
+      ...currentContent,
+      type: isIframeWidget ? 'iframe-widget' : 'webview-widget',
+      url: widgetUrl,
+    };
+    
+    updateWorkspaceNode(selectedNodeId, {
+      content: updatedContent,
+    });
+    
+    // Persist to API
+    try {
+      const response = await fetch('/api/nodes/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId: selectedNodeId,
+          content: updatedContent,
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.node) {
+          updateWorkspaceNode(selectedNodeId, data.node);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating widget URL:', error);
+    }
+  }, [selectedNodeId, isIframeWidget, isWebViewWidget, widgetUrl, selectedNode, updateWorkspaceNode]);
+  
+  // Handle native window widget save
+  const handleSaveNativeWindowConfig = useCallback(async () => {
+    if (!selectedNodeId || !isNativeWindowWidget) return;
+    
+    const currentContent = typeof selectedNode?.content === 'object' && selectedNode?.content
+      ? selectedNode.content as any
+      : { type: 'native-window-widget', processName: '', windowTitle: '' };
+    
+    const updatedContent = {
+      ...currentContent,
+      type: 'native-window-widget',
+      processName: widgetProcessName,
+      windowTitle: widgetWindowTitle,
+    };
+    
+    updateWorkspaceNode(selectedNodeId, {
+      content: updatedContent,
+    });
+    
+    // Persist to API
+    try {
+      const response = await fetch('/api/nodes/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId: selectedNodeId,
+          content: updatedContent,
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.node) {
+          updateWorkspaceNode(selectedNodeId, data.node);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating native window widget:', error);
+    }
+  }, [selectedNodeId, isNativeWindowWidget, widgetProcessName, widgetWindowTitle, selectedNode, updateWorkspaceNode]);
 
   // Show widget when any tool is active (brush, eraser, or live capture)
   // Also show when a node is selected (for node editing options)
@@ -872,8 +958,113 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
             </>
           )}
 
+          {/* Iframe Widget Configuration */}
+          {isIframeWidget && (
+            <>
+              {(isBrushActive || isEraserActive || isLiveCaptureNode) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+              <div className="flex items-center gap-2 px-2 py-1 bg-gray-100/50 dark:bg-gray-700/50 rounded-lg">
+                <Globe className="w-4 h-4 text-blue-500" />
+                <input
+                  type="text"
+                  value={widgetUrl}
+                  onChange={(e) => setWidgetUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveWidgetUrl();
+                    }
+                  }}
+                  placeholder="Enter URL (e.g., https://discord.com)"
+                  className="bg-transparent border-0 outline-none text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 min-w-[200px] max-w-[300px]"
+                />
+                <button
+                  onClick={handleSaveWidgetUrl}
+                  className="p-1 hover:bg-gray-200/60 dark:hover:bg-gray-600/60 rounded transition-colors"
+                  title="Save URL"
+                >
+                  <Save className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* WebView Widget Configuration */}
+          {isWebViewWidget && (
+            <>
+              {(isBrushActive || isEraserActive || isLiveCaptureNode) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+              <div className="flex items-center gap-2 px-2 py-1 bg-gray-100/50 dark:bg-gray-700/50 rounded-lg">
+                <Globe2 className="w-4 h-4 text-green-500" />
+                <input
+                  type="text"
+                  value={widgetUrl}
+                  onChange={(e) => setWidgetUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveWidgetUrl();
+                    }
+                  }}
+                  placeholder="Enter URL (bypasses CORS)"
+                  className="bg-transparent border-0 outline-none text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 min-w-[200px] max-w-[300px]"
+                />
+                <button
+                  onClick={handleSaveWidgetUrl}
+                  className="p-1 hover:bg-gray-200/60 dark:hover:bg-gray-600/60 rounded transition-colors"
+                  title="Save URL"
+                >
+                  <Save className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Native Window Widget Configuration */}
+          {isNativeWindowWidget && (
+            <>
+              {(isBrushActive || isEraserActive || isLiveCaptureNode) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+              <div className="flex items-center gap-2 px-2 py-1 bg-gray-100/50 dark:bg-gray-700/50 rounded-lg">
+                <Monitor className="w-4 h-4 text-orange-500" />
+                <input
+                  type="text"
+                  value={widgetProcessName}
+                  onChange={(e) => setWidgetProcessName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveNativeWindowConfig();
+                    }
+                  }}
+                  placeholder="Process name (e.g., Discord)"
+                  className="bg-transparent border-0 outline-none text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 min-w-[120px] max-w-[150px]"
+                />
+                <input
+                  type="text"
+                  value={widgetWindowTitle}
+                  onChange={(e) => setWidgetWindowTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveNativeWindowConfig();
+                    }
+                  }}
+                  placeholder="Window title (optional)"
+                  className="bg-transparent border-0 outline-none text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 min-w-[120px] max-w-[150px]"
+                />
+                <button
+                  onClick={handleSaveNativeWindowConfig}
+                  className="p-1 hover:bg-gray-200/60 dark:hover:bg-gray-600/60 rounded transition-colors"
+                  title="Save configuration"
+                >
+                  <Save className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                </button>
+              </div>
+            </>
+          )}
+
           {/* Node Editing Options - Only show when node is selected and no other tools/controls are active */}
-          {selectedNodeId && !isBrushActive && !isEraserActive && !isLiveCaptureNode && (
+          {selectedNodeId && !isBrushActive && !isEraserActive && !isLiveCaptureNode && !isIframeWidget && !isWebViewWidget && !isNativeWindowWidget && (
             <div className="w-2 h-2 rounded-full bg-gray-300/50 dark:bg-gray-600/50" />
           )}
         </div>
