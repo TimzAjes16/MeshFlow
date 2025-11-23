@@ -97,6 +97,9 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   // Auto-organize state
   const [autoOrganize, setAutoOrganize] = useState(false);
   
+  // Workspace switcher visibility state
+  const [showWorkspaceSwitcher, setShowWorkspaceSwitcher] = useState(false);
+  
   
   // Handle position updates from auto-organize animation
   const handlePositionUpdate = useCallback(
@@ -858,7 +861,7 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         setViewport(newViewport);
       }, 50); // Update every 50ms max during move for smooth minimap sync
     },
-    [setViewport, showWorkspaceSwitcher]
+    [setViewport, showWorkspaceSwitcher, setShowWorkspaceSwitcher]
   );
 
   const onMoveEnd = useCallback(
