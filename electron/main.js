@@ -1631,6 +1631,18 @@ ipcMain.handle('embed-native-window', async (event, options) => {
         : parentWindowHandle,
     });
     
+    // On macOS, if embedding succeeded, we need to set up screen capture
+    // The widget will handle the actual screen capture display
+    if (process.platform === 'darwin' && result.success && result.method === 'screen-capture') {
+      console.log('[Native Window Embed] macOS: Using screen capture method for window:', {
+        windowID: result.windowID,
+        processName: result.processName,
+        windowTitle: result.windowTitle,
+      });
+      // The widget component will handle getting the screen capture stream
+      // We just need to return the window information
+    }
+    
     return result;
   } catch (error) {
     console.error('[Native Window Embed] Error:', error);

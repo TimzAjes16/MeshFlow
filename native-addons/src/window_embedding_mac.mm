@@ -3,6 +3,7 @@
 #include <Cocoa/Cocoa.h>
 #include <AppKit/AppKit.h>
 #include <CoreGraphics/CoreGraphics.h>
+#include <ApplicationServices/ApplicationServices.h>
 #include <string>
 #include <vector>
 
@@ -12,7 +13,7 @@ namespace WindowEmbedding {
     std::string processNameStr = processName ? processName : "";
     std::string windowTitleStr = windowTitle ? windowTitle : "";
     
-    // Use CGWindowListCopyWindowInfo to get all windows (same approach as GetWindowListNative)
+    // Use CGWindowListCopyWindowInfo to get all windows
     CFArrayRef windowList = CGWindowListCopyWindowInfo(
       kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
       kCGNullWindowID
@@ -79,10 +80,16 @@ namespace WindowEmbedding {
         }
       }
       
-      // Found a matching window - return the window ID (we'll need to find the actual NSWindow later if needed)
+      // Found a matching window - get the window ID
       NSNumber* windowID = windowInfo[(id)kCGWindowNumber];
-      CFRelease(windowList);
-      return reinterpret_cast<void*>(windowID ? windowID.unsignedLongValue : 0);
+      CGWindowID cgWindowID = windowID ? windowID.unsignedIntValue : 0;
+      
+      if (cgWindowID > 0) {
+        // Return the window ID wrapped with a flag to indicate it's a CGWindowID
+        // Use a high bit to indicate it's a window ID, not a pointer
+        CFRelease(windowList);
+        return reinterpret_cast<void*>((uintptr_t)cgWindowID | 0x8000000000000000ULL);
+      }
     }
     
     CFRelease(windowList);
@@ -90,138 +97,96 @@ namespace WindowEmbedding {
   }
   
   bool EmbedWindowNative(void* childWindow, void* parentWindow) {
-    // On macOS, we cannot directly embed windows from other applications
-    // due to security restrictions. The childWindow handle is actually a CGWindowID,
-    // not an NSWindow pointer.
+    // On macOS, true window embedding across applications is not possible
+    // due to security restrictions. However, we can use screen capture + input injection
+    // to create a seamless experience that feels like true embedding.
     // 
-    // For true window embedding on macOS, we would need to:
-    // 1. Use screen capture/streaming to display the window content
-    // 2. Use input injection to forward events to the original window
-    // 
-    // For now, return false to indicate embedding is not supported
-    // The application should use screen capture instead
+    // This function returns true to indicate the window was "found" and can be captured,
+    // but the actual embedding is handled by screen capture in the widget component.
     
-    // Check if childWindow is actually a window ID (small number) vs NSWindow pointer
-    uintptr_t windowId = reinterpret_cast<uintptr_t>(childWindow);
+    // Check if childWindow is a window ID (has high bit set)
+    uintptr_t windowHandle = reinterpret_cast<uintptr_t>(childWindow);
+    bool isWindowID = (windowHandle & 0x8000000000000000ULL) != 0;
     
-    // If it's a small number (< 1 million), it's likely a CGWindowID, not a pointer
-    // NSWindow pointers are typically much larger memory addresses
-    if (windowId < 1000000) {
-      // This is a CGWindowID, not an NSWindow pointer
-      // macOS doesn't support embedding windows from other applications
+    if (!isWindowID) {
+      // Not a valid window ID
       return false;
     }
     
-    // Try to treat it as an NSWindow pointer (for same-application embedding)
-    NSWindow* child = (__bridge NSWindow*)childWindow;
-    NSView* parentView = (__bridge NSView*)parentWindow;
+    // Extract the CGWindowID
+    CGWindowID windowID = (CGWindowID)(windowHandle & 0x7FFFFFFFFFFFFFFFULL);
     
-    if (!child || !parentView) {
-      return false;
+    // Verify the window still exists
+    CFArrayRef windowList = CGWindowListCopyWindowInfo(
+      kCGWindowListOptionIncludingWindow,
+      windowID
+    );
+    
+    bool windowExists = false;
+    if (windowList && CFArrayGetCount(windowList) > 0) {
+      windowExists = true;
+      CFRelease(windowList);
     }
     
-    // Get the child window's content view
-    NSView* childView = child.contentView;
-    if (!childView) {
-      return false;
-    }
-    
-    // Remove from current parent if any
-    [childView removeFromSuperview];
-    
-    // Add to parent view
-    [parentView addSubview:childView];
-    
-    // Set frame to fill parent
-    childView.frame = parentView.bounds;
-    childView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    
-    // Hide the original window
-    [child orderOut:nil];
-    
-    return true;
+    // Return true if window exists - the widget will handle screen capture
+    return windowExists;
   }
   
   bool UnembedWindowNative(void* window) {
-    NSWindow* child = (__bridge NSWindow*)window;
-    
-    if (!child) {
-      return false;
-    }
-    
-    NSView* childView = child.contentView;
-    if (childView && childView.superview) {
-      // Remove from parent
-      [childView removeFromSuperview];
-      
-      // Show the window again
-      [child makeKeyAndOrderFront:nil];
-    }
-    
+    // On macOS, there's nothing to unembed since we use screen capture
+    // Just return true to indicate success
     return true;
   }
   
   std::vector<WindowInfo> GetWindowListNative() {
     std::vector<WindowInfo> windows;
     
-    // Get all running applications
-    NSArray* runningApps = [[NSWorkspace sharedWorkspace] runningApplications];
+    CFArrayRef windowList = CGWindowListCopyWindowInfo(
+      kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+      kCGNullWindowID
+    );
     
-    for (NSRunningApplication* app in runningApps) {
-      // Skip hidden apps and background apps
-      if (app.hidden || app.activationPolicy == NSApplicationActivationPolicyProhibited) {
-        continue;
-      }
+    if (windowList) {
+      NSArray* windowsArray = (__bridge NSArray*)windowList;
       
-      // Get the app's windows
-      // Note: We need to use CGWindowListCopyWindowInfo for a more complete list
-      // as NSApplication.sharedApplication.windows only returns windows from the current app
-      CFArrayRef windowList = CGWindowListCopyWindowInfo(
-        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
-        kCGNullWindowID
-      );
-      
-      if (windowList) {
-        NSArray* windowsArray = (__bridge NSArray*)windowList;
+      for (NSDictionary* windowInfo in windowsArray) {
+        // Get window owner PID
+        NSNumber* ownerPID = windowInfo[(id)kCGWindowOwnerPID];
+        if (!ownerPID) continue;
         
-        for (NSDictionary* windowInfo in windowsArray) {
-          // Get window owner PID
-          NSNumber* ownerPID = windowInfo[(id)kCGWindowOwnerPID];
-          if (!ownerPID || ownerPID.integerValue != app.processIdentifier) {
-            continue;
-          }
-          
-          // Get window name
-          NSString* windowName = windowInfo[(id)kCGWindowName];
-          if (!windowName || windowName.length == 0) {
-            // Skip windows without names (usually system windows)
-            continue;
-          }
-          
-          // Get window bounds to check if it's visible
-          NSDictionary* bounds = windowInfo[(id)kCGWindowBounds];
-          if (!bounds) {
-            continue;
-          }
-          
-          // Get window layer - skip if it's a desktop element
-          NSNumber* layer = windowInfo[(id)kCGWindowLayer];
-          if (layer && layer.integerValue < 0) {
-            continue; // Skip desktop elements
-          }
-          
-          WindowInfo info;
-          info.processName = [app.localizedName UTF8String] ?: "";
-          info.windowTitle = [windowName UTF8String] ?: "";
-          // Store the window ID as the handle (we'll need to find the actual NSWindow later if needed)
-          NSNumber* windowID = windowInfo[(id)kCGWindowNumber];
-          info.handle = reinterpret_cast<void*>(windowID ? windowID.unsignedLongValue : 0);
-          
-          windows.push_back(info);
+        NSRunningApplication* app = [NSRunningApplication runningApplicationWithProcessIdentifier:ownerPID.integerValue];
+        if (!app) continue;
+
+        // Skip hidden apps and background apps
+        if (app.hidden || app.activationPolicy == NSApplicationActivationPolicyProhibited) {
+          continue;
         }
         
-        CFRelease(windowList);
+        // Get window name
+        NSString* windowName = windowInfo[(id)kCGWindowName];
+        if (!windowName || windowName.length == 0) {
+          // Skip windows without names (usually system windows or uninteresting ones)
+          continue;
+        }
+        
+        // Get window layer - skip if it's a desktop element or overlay
+        NSNumber* layer = windowInfo[(id)kCGWindowLayer];
+        if (layer && layer.integerValue < 0) {
+          continue; // Skip desktop elements
+        }
+        
+        WindowInfo info;
+        info.processName = [app.localizedName UTF8String] ?: "";
+        info.windowTitle = [windowName UTF8String] ?: "";
+        // Store the window ID as the handle (with flag bit set)
+        NSNumber* windowID = windowInfo[(id)kCGWindowNumber];
+        CGWindowID cgWindowID = windowID ? windowID.unsignedIntValue : 0;
+        info.handle = reinterpret_cast<void*>((uintptr_t)cgWindowID | 0x8000000000000000ULL);
+        
+        windows.push_back(info);
       }
+      
+      CFRelease(windowList);
     }
     
     return windows;
@@ -229,4 +194,3 @@ namespace WindowEmbedding {
 }
 
 #endif // __APPLE__
-

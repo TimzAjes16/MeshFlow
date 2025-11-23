@@ -57,14 +57,25 @@ namespace WindowEmbedding {
       return result;
     }
     
-    // On macOS, window embedding across applications is not supported
-    // due to security restrictions. The childWindow handle is a CGWindowID,
-    // not an NSWindow pointer, so we cannot embed it directly.
-    // Return an error indicating that screen capture should be used instead.
+    // On macOS, we use screen capture + input injection for seamless embedding
+    // EmbedWindowNative verifies the window exists and returns true if it does
     #ifdef __APPLE__
+    bool macSuccess = EmbedWindowNative(childWindow, parentWindow);
+    
     Napi::Object macResult = Napi::Object::New(env);
-    macResult.Set("success", Napi::Boolean::New(env, false));
-    macResult.Set("error", Napi::String::New(env, "Window embedding across applications is not supported on macOS. Please use the Live Capture widget instead to capture and interact with the window."));
+    macResult.Set("success", Napi::Boolean::New(env, macSuccess));
+    if (macSuccess) {
+      // Extract and return the window ID for screen capture
+      // The window ID is stored with a high bit flag, so we extract it
+      uintptr_t windowHandle = reinterpret_cast<uintptr_t>(childWindow);
+      uintptr_t windowID = windowHandle & 0x7FFFFFFFFFFFFFFFULL;
+      macResult.Set("windowID", Napi::Number::New(env, static_cast<double>(windowID)));
+      macResult.Set("method", Napi::String::New(env, "screen-capture")); // Indicate we're using screen capture
+      macResult.Set("processName", Napi::String::New(env, processName));
+      macResult.Set("windowTitle", Napi::String::New(env, windowTitle));
+    } else {
+      macResult.Set("error", Napi::String::New(env, "Window not found or no longer exists"));
+    }
     return macResult;
     #endif
     

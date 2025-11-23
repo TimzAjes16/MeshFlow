@@ -40,7 +40,8 @@
             "-framework Cocoa",
             "-framework ApplicationServices",
             "-framework Carbon",
-            "-framework CoreGraphics"
+            "-framework CoreGraphics",
+            "-framework QuartzCore"
           ]
         }]
       ]
