@@ -49,6 +49,8 @@ function BaseWidget({
   canResize = true,
   canMinimize = true,
   canClose = true,
+  width,
+  height,
 }: BaseWidgetProps) {
   const { node } = data;
   const [isMinimized, setIsMinimized] = useState(false);
@@ -65,15 +67,19 @@ function BaseWidget({
     if (!canResize || !resizeRef.current) return;
     e.preventDefault();
     e.stopPropagation();
+    
+    // Use React Flow node dimensions if available, otherwise get from DOM
+    const currentWidth = width || resizeRef.current.getBoundingClientRect().width;
+    const currentHeight = height || resizeRef.current.getBoundingClientRect().height;
+    
     setIsResizing(true);
-    const rect = resizeRef.current.getBoundingClientRect();
     setResizeStart({
       x: e.clientX,
       y: e.clientY,
-      width: rect.width,
-      height: rect.height,
+      width: currentWidth,
+      height: currentHeight,
     });
-  }, [canResize]);
+  }, [canResize, width, height]);
 
   const handleResizeMove = useCallback((e: MouseEvent) => {
     if (!isResizing || !resizeStart) return;
