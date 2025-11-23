@@ -29,6 +29,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkScreenPermission: async () => {
     return await ipcRenderer.invoke('check-screen-permission');
   },
+  // Request microphone/audio permission
+  requestMicrophonePermission: async () => {
+    return await ipcRenderer.invoke('request-microphone-permission');
+  },
+  // Check microphone permission status
+  checkMicrophonePermission: async () => {
+    return await ipcRenderer.invoke('check-microphone-permission');
+  },
   // Open capture widget (small draggable widget)
   openCaptureWidget: async () => {
     return await ipcRenderer.invoke('open-capture-widget');

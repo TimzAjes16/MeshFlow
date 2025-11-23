@@ -251,24 +251,31 @@ function createMenu() {
 ipcMain.handle('request-screen-permission', async () => {
   try {
     if (process.platform === 'darwin') {
-      // On macOS, askForMediaAccess will automatically use Touch ID if available
+      // On macOS, askForMediaAccess will automatically use Touch ID/Face ID if available
+      // This will trigger the system permission dialog with biometric authentication
       const status = await systemPreferences.askForMediaAccess('screen');
       return {
         granted: status,
         platform: 'darwin',
+        message: status 
+          ? 'Screen recording permission granted'
+          : 'Screen recording permission denied. Please enable it in System Preferences > Security & Privacy > Screen Recording.',
       };
     } else if (process.platform === 'win32') {
-      // On Windows, permissions are handled differently
-      // The system will prompt automatically when getDisplayMedia is called
+      // On Windows 10/11, the system will prompt automatically when getDisplayMedia is called
+      // We can't request it ahead of time, but we can return success to proceed
       return {
         granted: true,
         platform: 'win32',
+        message: 'Screen recording permission will be requested when capturing starts.',
       };
     } else {
       // Linux - permissions vary by distribution
+      // Most use PipeWire or X11, which prompt when getDisplayMedia is called
       return {
         granted: true,
         platform: 'linux',
+        message: 'Screen recording permission will be requested when capturing starts.',
       };
     }
   } catch (error) {
@@ -276,6 +283,7 @@ ipcMain.handle('request-screen-permission', async () => {
     return {
       granted: false,
       error: error.message,
+      message: `Failed to request screen recording permission: ${error.message}`,
     };
   }
 });
@@ -287,14 +295,21 @@ ipcMain.handle('check-screen-permission', async () => {
       const status = systemPreferences.getMediaAccessStatus('screen');
       return {
         granted: status === 'granted',
-        status: status,
+        status: status, // 'granted', 'denied', 'not-determined', or 'restricted'
         platform: 'darwin',
+        message: status === 'granted' 
+          ? 'Screen recording permission is granted'
+          : status === 'denied'
+          ? 'Screen recording permission is denied. Please enable it in System Preferences > Security & Privacy > Screen Recording.'
+          : 'Screen recording permission has not been requested yet.',
       };
     } else {
       // On Windows/Linux, we can't check ahead of time
+      // The permission will be requested when getDisplayMedia is called
       return {
         granted: null, // Unknown - will be determined when getDisplayMedia is called
         platform: process.platform,
+        message: 'Permission status will be determined when screen capture starts.',
       };
     }
   } catch (error) {
@@ -302,6 +317,77 @@ ipcMain.handle('check-screen-permission', async () => {
     return {
       granted: false,
       error: error.message,
+      message: `Error checking screen recording permission: ${error.message}`,
+    };
+  }
+});
+
+// IPC handler to request microphone/audio permission
+ipcMain.handle('request-microphone-permission', async () => {
+  try {
+    if (process.platform === 'darwin') {
+      // On macOS, askForMediaAccess will automatically use Touch ID/Face ID if available
+      const status = await systemPreferences.askForMediaAccess('microphone');
+      return {
+        granted: status,
+        platform: 'darwin',
+        message: status
+          ? 'Microphone permission granted'
+          : 'Microphone permission denied. Please enable it in System Preferences > Security & Privacy > Microphone.',
+      };
+    } else if (process.platform === 'win32') {
+      // On Windows, permissions are requested when getDisplayMedia is called with audio: true
+      return {
+        granted: true,
+        platform: 'win32',
+        message: 'Microphone permission will be requested when capturing with audio.',
+      };
+    } else {
+      // Linux
+      return {
+        granted: true,
+        platform: 'linux',
+        message: 'Microphone permission will be requested when capturing with audio.',
+      };
+    }
+  } catch (error) {
+    console.error('Error requesting microphone permission:', error);
+    return {
+      granted: false,
+      error: error.message,
+      message: `Failed to request microphone permission: ${error.message}`,
+    };
+  }
+});
+
+// IPC handler to check microphone permission status
+ipcMain.handle('check-microphone-permission', async () => {
+  try {
+    if (process.platform === 'darwin') {
+      const status = systemPreferences.getMediaAccessStatus('microphone');
+      return {
+        granted: status === 'granted',
+        status: status,
+        platform: 'darwin',
+        message: status === 'granted'
+          ? 'Microphone permission is granted'
+          : status === 'denied'
+          ? 'Microphone permission is denied. Please enable it in System Preferences > Security & Privacy > Microphone.'
+          : 'Microphone permission has not been requested yet.',
+      };
+    } else {
+      return {
+        granted: null,
+        platform: process.platform,
+        message: 'Permission status will be determined when audio capture starts.',
+      };
+    }
+  } catch (error) {
+    console.error('Error checking microphone permission:', error);
+    return {
+      granted: false,
+      error: error.message,
+      message: `Error checking microphone permission: ${error.message}`,
     };
   }
 });

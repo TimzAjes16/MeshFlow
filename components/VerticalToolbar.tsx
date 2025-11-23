@@ -168,7 +168,7 @@ const VerticalToolbar = ({}: VerticalToolbarProps) => {
     }
   }, [isEraserActive]);
 
-  // Handle live capture toggle
+  // Handle live capture toggle - activates capture mode to show options in horizontal bar
   const handleLiveCaptureToggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     const newState = !isLiveCaptureActive;
@@ -186,17 +186,10 @@ const VerticalToolbar = ({}: VerticalToolbarProps) => {
       }));
     }
     
-    // Always dispatch event to notify other components (including when disabling)
+    // Dispatch event to notify horizontal editor bar
     window.dispatchEvent(new CustomEvent('toggle-live-capture-mode', { 
       detail: { enabled: newState } 
     }));
-    
-    // Trigger capture modal only if activating
-    if (newState) {
-      window.dispatchEvent(new CustomEvent('open-live-capture-modal', {
-        detail: { nodeId: null } // null means create new node
-      }));
-    }
   }, [isLiveCaptureActive]);
 
   return (
@@ -267,7 +260,7 @@ const VerticalToolbar = ({}: VerticalToolbarProps) => {
                 ? 'bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30'
                 : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/60 dark:hover:bg-gray-700/60'
             }`}
-            title={isLiveCaptureActive ? 'Disable live capture tool' : 'Enable live capture tool'}
+            title={isLiveCaptureActive ? 'Disable capture tool' : 'Enable capture tool'}
           >
             <Video className="w-5 h-5" />
           </button>

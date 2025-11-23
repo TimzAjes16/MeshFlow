@@ -63,17 +63,35 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
       (window as any).currentScreenStream = stream;
 
       // Use video element for preview
+      // Following MDN guidelines: https://developer.mozilla.org/en-US/docs/Web/API/Screen_Capture_API/Using_Screen_Capture
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.autoplay = true;
-        videoRef.current.playsInline = true;
-        videoRef.current.muted = true;
+        const video = videoRef.current;
+        
+        // Set up video element attributes per MDN
+        video.autoplay = true;
+        video.playsInline = true;
+        video.muted = true;
+        video.controls = false;
+        
+        // Connect stream to video element
+        video.srcObject = stream;
+        
+        // Verify stream is active
+        const videoTracks = stream.getVideoTracks();
+        console.log('Stream connected to video element:', {
+          streamId: stream.id,
+          streamActive: stream.active,
+          videoTracks: videoTracks.length,
+          trackReadyStates: videoTracks.map(t => t.readyState),
+          trackSettings: videoTracks[0]?.getSettings(),
+        });
 
+        // Handle loaded metadata event
         const handleLoadedMetadata = () => {
-          if (videoRef.current) {
-            const width = videoRef.current.videoWidth;
-            const height = videoRef.current.videoHeight;
-            console.log('Video dimensions:', width, height);
+          if (video && video.videoWidth > 0 && video.videoHeight > 0) {
+            const width = video.videoWidth;
+            const height = video.videoHeight;
+            console.log('Video metadata loaded:', { width, height });
             setVideoDimensions({ width, height });
             
             // Initialize crop area to center 60% of screen
@@ -89,9 +107,51 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
           }
         };
 
-        videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
-        videoRef.current.play().catch((err) => {
-          console.error('Error playing video:', err);
+        // Handle loaded data event (video is ready to play)
+        const handleLoadedData = () => {
+          console.log('Video data loaded, ready to play');
+        };
+
+        // Handle canplay event
+        const handleCanPlay = () => {
+          console.log('Video can start playing');
+          if (video.paused) {
+            video.play().catch((err) => {
+              console.error('Error playing video:', err);
+              setError('Failed to play video stream. Please try again.');
+            });
+          }
+        };
+
+        // Handle play event
+        const handlePlay = () => {
+          console.log('Video started playing');
+        };
+
+        // Handle error event
+        const handleError = (e: Event) => {
+          console.error('Video element error:', e);
+          const error = (video as HTMLVideoElement).error;
+          if (error) {
+            console.error('Video error details:', {
+              code: error.code,
+              message: error.message,
+            });
+            setError(`Video playback error: ${error.message || 'Unknown error'}`);
+          }
+        };
+
+        // Add event listeners
+        video.addEventListener('loadedmetadata', handleLoadedMetadata);
+        video.addEventListener('loadeddata', handleLoadedData);
+        video.addEventListener('canplay', handleCanPlay);
+        video.addEventListener('play', handlePlay);
+        video.addEventListener('error', handleError);
+
+        // Attempt to play immediately
+        video.play().catch((err) => {
+          console.warn('Initial play() call failed, will retry on canplay:', err);
+          // Will retry on canplay event
         });
       }
       
@@ -144,14 +204,27 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
       setCurrentPos(null);
       setDragOffset(null);
       setError(null);
-      if (screenStream) {
+      
+      // Don't stop the stream if it's for live capture - it will be used by the LiveCaptureNode
+      // Only stop if it's not being used for live capture (i.e., onScreenCapture was not provided)
+      if (screenStream && !isLiveCapture) {
         screenStream.getTracks().forEach(track => track.stop());
         setScreenStream(null);
+        delete (window as any).currentScreenStream;
+      } else if (screenStream && isLiveCapture) {
+        // For live capture, just clear the video ref but keep the stream running
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
+        // Keep currentScreenStream for LiveCaptureNode to access
+        // Don't delete it - it will be cloned and stored in the registry
+      } else {
+        // No stream, clean up normally
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
+        delete (window as any).currentScreenStream;
       }
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
-      delete (window as any).currentScreenStream;
     } else if (isLiveCapture && isOpen && !screenStream) {
       // If this is for live capture in Electron, open capture widget first
       if (typeof window !== 'undefined' && (window as any).electronAPI?.openCaptureWidget) {
@@ -316,9 +389,19 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
 
   // Handle mouse down - start drawing, dragging, or resizing crop area
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!videoRef.current || !containerRef.current || !cropArea) {
-      // If no crop area exists, start drawing a new one
-      if (isCropping && videoRef.current) {
+    // Reset any previous drag/draw state first
+    setIsDrawing(false);
+    setIsDragging(false);
+    setIsResizing(false);
+    setResizeHandle(null);
+    
+    if (!videoRef.current || !containerRef.current) {
+      return;
+    }
+    
+    // If no crop area exists, start drawing a new one
+    if (!cropArea) {
+      if (isCropping) {
         setStartPos({ x: e.clientX, y: e.clientY });
         setCurrentPos({ x: e.clientX, y: e.clientY });
         setIsDrawing(true);
@@ -339,33 +422,39 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
     const mouseX = e.clientX - containerRect.left;
     const mouseY = e.clientY - containerRect.top;
     
-    // Check if clicking on resize handle
+    // Check if clicking on resize handle first (has priority)
     const handle = getResizeHandle(mouseX, mouseY, cropArea, scaleX, scaleY, offsetX, offsetY);
     if (handle) {
       setIsResizing(true);
       setResizeHandle(handle);
       setStartPos({ x: e.clientX, y: e.clientY });
       setCurrentPos({ x: e.clientX, y: e.clientY });
+      setDragOffset(null); // Clear drag offset when resizing
       return;
     }
     
-    // Check if clicking inside crop area (for dragging)
+    // Check if clicking inside crop area (for dragging - can re-drag after releasing)
     if (isPointInCropArea(mouseX, mouseY, cropArea, scaleX, scaleY, offsetX, offsetY)) {
       setIsDragging(true);
       const cropLeft = offsetX + (cropArea.x * scaleX);
       const cropTop = offsetY + (cropArea.y * scaleY);
+      // Calculate drag offset from the mouse position relative to the crop area
       setDragOffset({
         x: mouseX - cropLeft,
         y: mouseY - cropTop,
       });
       setStartPos({ x: e.clientX, y: e.clientY });
+      setCurrentPos({ x: e.clientX, y: e.clientY });
+      setResizeHandle(null); // Clear resize handle when dragging
       return;
     }
     
-    // Otherwise, start drawing a new crop area
+    // Otherwise (clicking outside crop area), start drawing a new crop area
     setStartPos({ x: e.clientX, y: e.clientY });
     setCurrentPos({ x: e.clientX, y: e.clientY });
     setIsDrawing(true);
+    setDragOffset(null); // Clear drag offset when drawing new area
+    setResizeHandle(null); // Clear resize handle when drawing new area
   }, [isCropping, cropArea, getResizeHandle, isPointInCropArea]);
 
   // Document-level mouse move handler for dragging/resizing
@@ -727,13 +816,57 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
                     
                     return (
                       <div
-                        className="absolute border-2 border-blue-500 bg-blue-500/10 z-10"
+                        className="absolute border-2 border-blue-500 bg-blue-500/10 z-10 cursor-grab active:cursor-grabbing"
                         style={{
                           left: `${left}px`,
                           top: `${top}px`,
                           width: `${width}px`,
                           height: `${height}px`,
-                          cursor: isDragging ? 'move' : 'default',
+                          cursor: isDragging ? 'grabbing' : 'grab',
+                          pointerEvents: 'auto',
+                        }}
+                        onMouseDown={(e) => {
+                          // Allow re-dragging the crop area - pass through to container's handleMouseDown
+                          // But prevent default to avoid text selection
+                          e.preventDefault();
+                          e.stopPropagation();
+                          
+                          // Manually trigger dragging by calling the same logic as handleMouseDown
+                          if (!videoRef.current || !containerRef.current) return;
+                          
+                          const elementRect = videoRef.current.getBoundingClientRect();
+                          const containerRect = containerRef.current.getBoundingClientRect();
+                          const offsetX = elementRect.left - containerRect.left;
+                          const offsetY = elementRect.top - containerRect.top;
+                          const scaleX = elementRect.width / videoRef.current.videoWidth;
+                          const scaleY = elementRect.height / videoRef.current.videoHeight;
+                          
+                          const mouseX = e.clientX - containerRect.left;
+                          const mouseY = e.clientY - containerRect.top;
+                          
+                          // Check if clicking on resize handle first (has priority)
+                          const handle = getResizeHandle(mouseX, mouseY, displayCropArea, scaleX, scaleY, offsetX, offsetY);
+                          if (handle) {
+                            setIsResizing(true);
+                            setResizeHandle(handle);
+                            setStartPos({ x: e.clientX, y: e.clientY });
+                            setCurrentPos({ x: e.clientX, y: e.clientY });
+                            setDragOffset(null);
+                            return;
+                          }
+                          
+                          // Otherwise, start dragging the crop area
+                          setIsDragging(true);
+                          const cropLeft = offsetX + (displayCropArea.x * scaleX);
+                          const cropTop = offsetY + (displayCropArea.y * scaleY);
+                          setDragOffset({
+                            x: mouseX - cropLeft,
+                            y: mouseY - cropTop,
+                          });
+                          setStartPos({ x: e.clientX, y: e.clientY });
+                          setCurrentPos({ x: e.clientX, y: e.clientY });
+                          setResizeHandle(null);
+                          setIsDrawing(false);
                         }}
                       >
                         {/* Size label */}

@@ -10,8 +10,6 @@ import ToolbarSettingsPanel from './ToolbarSettingsPanel';
 import EmojiPickerPopup from './EmojiPickerPopup';
 import CaptureModal from './CaptureModal';
 import ClipboardMonitor from './ClipboardMonitor';
-import ScreenCaptureMonitor from './ScreenCaptureMonitor';
-import ScreenCapturePreview from './ScreenCapturePreview';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
 import { useHistoryStore } from '@/state/historyStore';
@@ -35,10 +33,6 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
   const [captureModalOpen, setCaptureModalOpen] = useState(false);
   const [captureNodeId, setCaptureNodeId] = useState<string | null>(null); // For updating existing nodes
   const [activeCaptureNodes, setActiveCaptureNodes] = useState<Set<string>>(new Set()); // Nodes with auto-refresh enabled
-  const [screenCaptureNodeId, setScreenCaptureNodeId] = useState<string | null>(null); // Node currently being monitored via screen capture
-  const [screenCaptureArea, setScreenCaptureArea] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [screenCaptureStream, setScreenCaptureStream] = useState<MediaStream | null>(null);
-  const [showScreenCapturePreview, setShowScreenCapturePreview] = useState(false);
 
   // Clear selectedNodeType when node is deselected
   useEffect(() => {
@@ -165,9 +159,10 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       const node = currentNodes.find(n => n.id === nodeId);
       const isLiveCaptureNode = node && typeof node.content === 'object' && node.content?.type === 'live-capture';
       
+      // For live capture nodes, show capture modal
       if (isLiveCaptureNode) {
-        // For live capture nodes, trigger screen capture directly
-        handleStartScreenCaptureForNode(nodeId);
+        setCaptureNodeId(nodeId);
+        setCaptureModalOpen(true);
       } else {
         // For regular capture, show upload/paste modal
         setCaptureNodeId(nodeId);
@@ -175,34 +170,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       }
     };
     
-    const handleStartScreenCaptureForNode = async (nodeId: string) => {
-      try {
-        // Use screen capture utility that works in both Electron and browser
-        const { getScreenCaptureStream } = await import('@/lib/electronUtils');
-        const stream = await getScreenCaptureStream();
-
-        setScreenCaptureNodeId(nodeId);
-        setScreenCaptureStream(stream);
-        setShowScreenCapturePreview(true);
-
-        // Handle stream end
-        stream.getVideoTracks()[0].addEventListener('ended', () => {
-          setScreenCaptureStream(null);
-          setShowScreenCapturePreview(false);
-          setScreenCaptureNodeId(null);
-          setScreenCaptureArea(null);
-        });
-
-      } catch (error) {
-        console.error('Error starting screen capture:', error);
-      }
-    };
-    
-    const handleStartScreenCapture = (event: CustomEvent) => {
-      const { nodeId, captureArea } = event.detail;
-      setScreenCaptureNodeId(nodeId);
-      setScreenCaptureArea(captureArea);
-    };
+    // Removed handleStartScreenCaptureForNode and handleStartScreenCapture - now using CaptureModal instead
     
     // Handle open live capture modal from toolbar
     const handleOpenLiveCaptureModal = (event: CustomEvent) => {
@@ -231,16 +199,130 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       }
     };
     
+    // Handle create live capture from floating crop area
+    const handleCreateLiveCaptureFromArea = async (event: CustomEvent) => {
+      const { area, stream } = event.detail;
+      
+      if (!stream || !area) {
+        console.error('Missing stream or area for live capture');
+        return;
+      }
+
+      try {
+        // Get thumbnail from stream
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.autoplay = true;
+        video.muted = true;
+        
+        await new Promise((resolve) => {
+          video.addEventListener('loadedmetadata', resolve, { once: true });
+          setTimeout(resolve, 1000); // Timeout after 1 second
+        });
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          throw new Error('Failed to get canvas context');
+        }
+
+        canvas.width = area.width;
+        canvas.height = area.height;
+        
+        // Wait for video to be ready
+        if (video.readyState < 2) {
+          await new Promise((resolve) => {
+            video.addEventListener('loadeddata', resolve, { once: true });
+            setTimeout(resolve, 2000);
+          });
+        }
+        
+        // Draw cropped region (for thumbnail)
+        ctx.drawImage(
+          video,
+          area.x, area.y, area.width, area.height,
+          0, 0, area.width, area.height
+        );
+        
+        const imageUrl = canvas.toDataURL('image/png');
+        
+        // Create new live capture node
+        const storedFlowPos = (window as any).lastFlowPosition || { x: 500, y: 400 };
+        
+        const response = await fetch('/api/nodes/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspaceId,
+            title: 'Live Capture',
+            type: 'live-capture',
+            content: {
+              type: 'live-capture',
+              imageUrl, // Thumbnail
+              cropArea: area,
+              screenBounds: area, // Store screen bounds for interactive mode
+              streamId: stream.id,
+              isLiveStream: true,
+              captureMode: 'custom',
+              interactive: false,
+              captureHistory: imageUrl ? [{
+                imageUrl,
+                timestamp: new Date().toISOString(),
+              }] : [],
+              timestamp: new Date().toISOString(),
+            },
+            tags: ['live-capture'],
+            x: storedFlowPos.x,
+            y: storedFlowPos.y,
+          }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.node) {
+            // Verify stream is still active before storing
+            const tracks = stream.getVideoTracks();
+            if (tracks.length > 0 && tracks.some(t => t.readyState === 'live' || t.readyState === 'ended')) {
+              // Store stream in global registry
+              if (!(window as any).liveCaptureStreams) {
+                (window as any).liveCaptureStreams = new Map();
+              }
+              
+              (window as any).liveCaptureStreams.set(data.node.id, {
+                stream,
+                cropArea: area,
+                screenBounds: area,
+              });
+              
+              // Dispatch event to notify LiveCaptureNode
+              window.dispatchEvent(new CustomEvent('live-capture-stream-ready', {
+                detail: { nodeId: data.node.id }
+              }));
+              
+              // Add node to workspace
+              addNode(data.node);
+              selectNode(data.node.id);
+              
+              (window as any).lastFlowPosition = null;
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error creating live capture from area:', error);
+        alert('Failed to create live capture. Please try again.');
+      }
+    };
+    
     window.addEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
-    window.addEventListener('start-screen-capture', handleStartScreenCapture as EventListener);
     window.addEventListener('open-live-capture-modal', handleOpenLiveCaptureModal as EventListener);
     window.addEventListener('recrop-live-capture', handleRecropLiveCapture as EventListener);
+    window.addEventListener('create-live-capture-from-area', handleCreateLiveCaptureFromArea as EventListener);
     
     return () => {
       window.removeEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
-      window.removeEventListener('start-screen-capture', handleStartScreenCapture as EventListener);
       window.removeEventListener('open-live-capture-modal', handleOpenLiveCaptureModal as EventListener);
       window.removeEventListener('recrop-live-capture', handleRecropLiveCapture as EventListener);
+      window.removeEventListener('create-live-capture-from-area', handleCreateLiveCaptureFromArea as EventListener);
     };
   }, []); // Empty dependency array since we access nodes from store directly
 
@@ -378,99 +460,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     [nodes, activeCaptureNodes, updateNode]
   );
 
-  // Handle screen capture frames
-  const handleScreenCapture = useCallback(
-    async (imageUrl: string) => {
-      if (!screenCaptureNodeId) return;
-      
-      const node = nodes.find(n => n.id === screenCaptureNodeId);
-      if (!node) return;
-
-      const currentContent = typeof node.content === 'object' && node.content?.type === 'live-capture'
-        ? node.content
-        : { type: 'live-capture', imageUrl: '', cropArea: { x: 0, y: 0, width: 0, height: 0 }, captureHistory: [] };
-      
-      const captureHistory = currentContent.captureHistory || [];
-      const newCapture = {
-        imageUrl,
-        timestamp: new Date().toISOString(),
-      };
-      
-      updateNode(screenCaptureNodeId, {
-        content: {
-          ...currentContent,
-          type: 'live-capture',
-          imageUrl,
-          captureHistory: [...captureHistory, newCapture],
-          timestamp: new Date().toISOString(),
-        },
-      });
-      
-      // Persist to API
-      try {
-        const response = await fetch('/api/nodes/update', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nodeId: screenCaptureNodeId,
-            content: {
-              ...currentContent,
-              type: 'live-capture',
-              imageUrl,
-              captureHistory: [...captureHistory, newCapture],
-              timestamp: new Date().toISOString(),
-            },
-          }),
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.node) {
-            updateNode(screenCaptureNodeId, data.node);
-          }
-        }
-      } catch (error) {
-        console.error('Error updating capture node from screen capture:', error);
-      }
-    },
-    [screenCaptureNodeId, nodes, updateNode]
-  );
-
-  // Handle screen area selection from preview
-  const handleScreenAreaSelected = useCallback((area: { x: number; y: number; width: number; height: number }) => {
-    if (screenCaptureNodeId && screenCaptureStream) {
-      // Close preview and start monitoring
-      setScreenCaptureArea(area);
-      setShowScreenCapturePreview(false);
-      
-      // Update the node with the selected area
-      const node = nodes.find(n => n.id === screenCaptureNodeId);
-      if (node) {
-        const currentContent = typeof node.content === 'object' && node.content?.type === 'live-capture'
-          ? node.content
-          : { type: 'live-capture', imageUrl: '', cropArea: { x: 0, y: 0, width: 0, height: 0 }, captureHistory: [] };
-        
-        updateNode(screenCaptureNodeId, {
-          content: {
-            ...currentContent,
-            type: 'live-capture',
-            cropArea: area,
-          },
-        });
-      }
-    }
-  }, [screenCaptureNodeId, screenCaptureStream, nodes, updateNode]);
-
-  const handleScreenCaptureCancel = useCallback(() => {
-    // Stop the stream
-    if (screenCaptureStream) {
-      screenCaptureStream.getTracks().forEach(track => track.stop());
-    }
-    setScreenCaptureStream(null);
-    setShowScreenCapturePreview(false);
-    setScreenCaptureNodeId(null);
-    setScreenCaptureArea(null);
-  }, [screenCaptureStream]);
+  // Removed handleScreenCapture, handleScreenAreaSelected, and handleScreenCaptureCancel - no longer needed
 
   // Update active capture nodes when nodes change
   useEffect(() => {
@@ -1134,16 +1124,14 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         />
       )}
       
-      {/* Capture Modal - Shows croppable area selection for live capture nodes */}
+      {/* Capture Modal - Removed to avoid widget in middle of page */}
+      {/* TODO: Replace with alternative capture UI if needed */}
+      {false && (
       <CaptureModal
         isOpen={captureModalOpen}
         onClose={() => {
           setCaptureModalOpen(false);
           setCaptureNodeId(null);
-          if (screenCaptureStream) {
-            screenCaptureStream.getTracks().forEach(track => track.stop());
-            setScreenCaptureStream(null);
-          }
           if ((window as any).currentScreenStream) {
             (window as any).currentScreenStream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
             delete (window as any).currentScreenStream;
@@ -1195,11 +1183,19 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                 if (!(window as any).liveCaptureStreams) {
                   (window as any).liveCaptureStreams = new Map();
                 }
+                
+                // Store the stream directly - don't clone it as tracks are shared anyway
+                // The modal will NOT stop this stream when closing for live capture
                 (window as any).liveCaptureStreams.set(captureNodeId, {
                   stream,
                   cropArea: area,
                   screenBounds, // Store screen bounds for interactive mode
                 });
+                
+                // Dispatch event to notify LiveCaptureNode that stream is ready
+                window.dispatchEvent(new CustomEvent('live-capture-stream-ready', {
+                  detail: { nodeId: captureNodeId }
+                }));
                 
                 updateNode(captureNodeId, {
                   content: {
@@ -1251,24 +1247,48 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                 if (response.ok) {
                   const data = await response.json();
                   if (data.node) {
+                    // Verify stream is still active before storing
+                    const tracks = stream.getVideoTracks();
+                    console.log('[CanvasPageClient] Storing stream for node', data.node.id, {
+                      streamId: stream.id,
+                      trackCount: tracks.length,
+                      tracksActive: tracks.every(t => t.readyState === 'live' || t.readyState === 'ended'),
+                      readyStates: tracks.map(t => t.readyState),
+                      streamActive: stream.active
+                    });
+                    
+                    if (tracks.length === 0 || !tracks.some(t => t.readyState === 'live' || t.readyState === 'ended')) {
+                      console.error('[CanvasPageClient] Stream has no active tracks, cannot store');
+                      alert('Error: Screen capture stream is not active. Please try capturing again.');
+                      return;
+                    }
+                    
                     // Store stream in global registry BEFORE adding node to ensure it's available when node renders
                     if (!(window as any).liveCaptureStreams) {
                       (window as any).liveCaptureStreams = new Map();
                     }
+                    
+                    // Store the stream directly - don't clone it as tracks are shared anyway
+                    // The modal will NOT stop this stream when closing for live capture
                     (window as any).liveCaptureStreams.set(data.node.id, {
                       stream,
                       cropArea: area,
                       screenBounds: area, // Store screen bounds for interactive mode
                     });
                     
+                    console.log('[CanvasPageClient] Stream stored in registry for node', data.node.id);
+                    console.log('[CanvasPageClient] Registry now has', (window as any).liveCaptureStreams.size, 'streams');
+                    
+                    // Dispatch event to notify LiveCaptureNode that stream is ready
+                    window.dispatchEvent(new CustomEvent('live-capture-stream-ready', {
+                      detail: { nodeId: data.node.id }
+                    }));
+                    
+                    console.log('[CanvasPageClient] Dispatched live-capture-stream-ready event for node', data.node.id);
+                    
                     // Now add the node - stream is already in registry
                     addNode(data.node);
                     selectNode(data.node.id);
-                    
-                    // Set up live stream monitoring
-                    setScreenCaptureNodeId(data.node.id);
-                    setScreenCaptureStream(stream);
-                    setScreenCaptureArea(area);
                     
                     (window as any).lastFlowPosition = null;
                   }
@@ -1296,38 +1316,12 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         }}
         captureMode={(window as any).liveCaptureMode || 'custom'}
       />
+      )}
       
       {/* Clipboard Monitor for Live Capture Nodes */}
       <ClipboardMonitor
         enabled={activeCaptureNodes.size > 0}
         onNewImage={handleClipboardImage}
-      />
-      
-      {/* Screen Capture Preview - Apple-style preview with cropping */}
-      <ScreenCapturePreview
-        isOpen={showScreenCapturePreview}
-        stream={screenCaptureStream}
-        onCapture={handleScreenAreaSelected}
-        onCancel={handleScreenCaptureCancel}
-      />
-      
-      {/* Screen Capture Monitor for continuous monitoring (runs in background) */}
-      <ScreenCaptureMonitor
-        enabled={screenCaptureNodeId !== null && !showScreenCapturePreview && screenCaptureArea !== null}
-        stream={screenCaptureStream}
-        captureArea={screenCaptureArea || undefined}
-        interval={2000} // Capture every 2 seconds
-        onCapture={handleScreenCapture}
-        onError={(error: Error) => {
-          console.error('Screen capture error:', error);
-          if (screenCaptureStream) {
-            screenCaptureStream.getTracks().forEach(track => track.stop());
-          }
-          setScreenCaptureStream(null);
-          setScreenCaptureNodeId(null);
-          setScreenCaptureArea(null);
-          setShowScreenCapturePreview(false);
-        }}
       />
       
       {/* Keyboard Shortcuts */}

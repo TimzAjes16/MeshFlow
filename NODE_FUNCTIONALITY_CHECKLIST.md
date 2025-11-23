@@ -137,3 +137,4 @@
 - ✅ **Live Capture Menu**: Fullscreen and Custom Area options
 
 
+

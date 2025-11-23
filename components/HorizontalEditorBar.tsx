@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Undo2, Redo2, Palette, Minus, Plus, Eraser, CircleDot, Trash2, Video, RefreshCw, Crop, MousePointerClick, MousePointer2 } from 'lucide-react';
+import { Undo2, Redo2, Palette, Minus, Plus, Eraser, CircleDot, Trash2, Video, RefreshCw, Crop, MousePointerClick, MousePointer2, X } from 'lucide-react';
+import FloatingCropArea from './FloatingCropArea';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
 import type { Node } from '@/types/Node';
@@ -23,6 +24,7 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   const [eraserSize, setEraserSize] = useState(10);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showEraserTypeMenu, setShowEraserTypeMenu] = useState(false);
+  const [showFloatingCropArea, setShowFloatingCropArea] = useState(false);
   
   const { nodes, updateNode: updateWorkspaceNode } = useWorkspaceStore();
   const { selectNode } = useCanvasStore();
@@ -178,7 +180,7 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     };
   }, []);
 
-  // Listen for live capture tool activation
+  // Listen for live capture tool activation (kept for potential future use, but Capture button doesn't depend on it)
   useEffect(() => {
     const handleToggleLiveCapture = (event: CustomEvent) => {
       setIsLiveCaptureActive(event.detail.enabled);
@@ -312,9 +314,9 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     selectedNode.content?.type === 'live-capture' &&
     (selectedNode.content.interactive ?? false);
 
-  // Only show when a node is selected OR brush tool is active OR eraser tool is active OR live capture is active
-  // Hide when all tools are deselected and no node is selected
-  const shouldShow = selectedNodeId || isBrushActive || isEraserActive || isLiveCaptureActive;
+  // Show widget when any tool is active (brush, eraser, or live capture)
+  // Also show when a node is selected (for node editing options)
+  const shouldShow = isBrushActive || isEraserActive || isLiveCaptureActive || selectedNodeId;
   
   if (!shouldShow) {
     return null;
@@ -551,8 +553,8 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
             </>
           )}
 
-          {/* Live Capture Controls - Show when live capture node is selected or live capture tool is active */}
-          {(isLiveCaptureNode || isLiveCaptureActive) && (
+          {/* Live Capture Controls - Show when live capture node is selected */}
+          {isLiveCaptureNode && (
             <>
               {/* Divider if there are other controls before */}
               {(isBrushActive || isEraserActive) && (
@@ -560,81 +562,141 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
               )}
 
               {/* Update Source Button */}
-              {isLiveCaptureNode && (
-                <button
-                  onClick={handleUpdateSource}
-                  className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/update flex items-center gap-1.5"
-                  title="Update Source - Change the captured source"
-                >
-                  <RefreshCw className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/update:text-purple-600 dark:group-hover/update:text-purple-400 transition-colors" />
-                  <span className="text-xs text-gray-600 dark:text-gray-400 group-hover/update:text-purple-600 dark:group-hover/update:text-purple-400 transition-colors">
-                    Update Source
-                  </span>
-                </button>
-              )}
+              <button
+                onClick={handleUpdateSource}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/update flex items-center gap-1.5"
+                title="Update Source - Change the captured source"
+              >
+                <RefreshCw className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/update:text-purple-600 dark:group-hover/update:text-purple-400 transition-colors" />
+                <span className="text-xs text-gray-600 dark:text-gray-400 group-hover/update:text-purple-600 dark:group-hover/update:text-purple-400 transition-colors">
+                  Update Source
+                </span>
+              </button>
 
               {/* Recrop/Edit Viewport Button */}
-              {isLiveCaptureNode && (
-                <button
-                  onClick={handleRecrop}
-                  className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/recrop flex items-center gap-1.5"
-                  title="Recrop - Edit the viewport/crop area"
-                >
-                  <Crop className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/recrop:text-purple-600 dark:group-hover/recrop:text-purple-400 transition-colors" />
-                  <span className="text-xs text-gray-600 dark:text-gray-400 group-hover/recrop:text-purple-600 dark:group-hover/recrop:text-purple-400 transition-colors">
-                    Recrop
-                  </span>
-                </button>
-              )}
+              <button
+                onClick={handleRecrop}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/recrop flex items-center gap-1.5"
+                title="Recrop - Edit the viewport/crop area"
+              >
+                <Crop className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/recrop:text-purple-600 dark:group-hover/recrop:text-purple-400 transition-colors" />
+                <span className="text-xs text-gray-600 dark:text-gray-400 group-hover/recrop:text-purple-600 dark:group-hover/recrop:text-purple-400 transition-colors">
+                  Recrop
+                </span>
+              </button>
 
               {/* Interaction Toggle Button */}
-              {isLiveCaptureNode && (
-                <button
-                  onClick={handleToggleInteraction}
-                  className={`p-1.5 rounded-lg transition-all duration-150 group/interact flex items-center gap-1.5 ${
-                    isInteractive
-                      ? 'bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30'
-                      : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60'
-                  }`}
-                  title={isInteractive ? 'Disable Interaction - Make captured content non-interactive' : 'Enable Interaction - Allow interaction with captured content'}
-                >
-                  {isInteractive ? (
-                    <MousePointerClick className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                  ) : (
-                    <MousePointer2 className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/interact:text-purple-600 dark:group-hover/interact:text-purple-400 transition-colors" />
-                  )}
-                  <span className={`text-xs transition-colors ${
-                    isInteractive
-                      ? 'text-purple-600 dark:text-purple-400'
-                      : 'text-gray-600 dark:text-gray-400 group-hover/interact:text-purple-600 dark:group-hover/interact:text-purple-400'
-                  }`}>
-                    {isInteractive ? 'Interactive' : 'Non-Interactive'}
-                  </span>
-                </button>
-              )}
+              <button
+                onClick={handleToggleInteraction}
+                className={`p-1.5 rounded-lg transition-all duration-150 group/interact flex items-center gap-1.5 ${
+                  isInteractive
+                    ? 'bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30'
+                    : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60'
+                }`}
+                title={isInteractive ? 'Disable Interaction - Make captured content non-interactive' : 'Enable Interaction - Allow interaction with captured content'}
+              >
+                {isInteractive ? (
+                  <MousePointerClick className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                ) : (
+                  <MousePointer2 className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/interact:text-purple-600 dark:group-hover/interact:text-purple-400 transition-colors" />
+                )}
+                <span className={`text-xs transition-colors ${
+                  isInteractive
+                    ? 'text-purple-600 dark:text-purple-400'
+                    : 'text-gray-600 dark:text-gray-400 group-hover/interact:text-purple-600 dark:group-hover/interact:text-purple-400'
+                }`}>
+                  {isInteractive ? 'Interactive' : 'Non-Interactive'}
+                </span>
+              </button>
+            </>
+          )}
 
-              {/* Create New Live Capture Button - Show when tool is active but no node selected */}
-              {isLiveCaptureActive && !isLiveCaptureNode && (
+          {/* Live Capture Tool Controls - Show when live capture tool is active */}
+          {isLiveCaptureActive && !isLiveCaptureNode && (
+            <>
+              {/* Divider if there are other controls before */}
+              {(isBrushActive || isEraserActive) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+              
+              {/* Area Highlight Button - Shows floating crop area overlay or confirms selection */}
+              <button
+                onClick={() => {
+                  if (showFloatingCropArea) {
+                    // If crop area is already visible, confirm the selection
+                    // This is handled by triggering the confirm handler
+                    const event = new CustomEvent('confirm-crop-area');
+                    window.dispatchEvent(event);
+                  } else {
+                    // Otherwise, show the crop area
+                    setShowFloatingCropArea(true);
+                  }
+                }}
+                className={`p-1.5 rounded-lg transition-all duration-150 group/area flex items-center gap-1.5 ${
+                  showFloatingCropArea
+                    ? 'bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30'
+                    : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60 text-gray-600 dark:text-gray-400'
+                }`}
+                title={showFloatingCropArea ? 'Confirm selection (or click checkmark on crop area)' : 'Area Highlight - Select an area to capture'}
+              >
+                <Crop className="w-4 h-4 group-hover/area:text-purple-600 dark:group-hover/area:text-purple-400 transition-colors" />
+                <span className={`text-xs transition-colors ${
+                  showFloatingCropArea
+                    ? 'text-purple-600 dark:text-purple-400'
+                    : 'text-gray-600 dark:text-gray-400 group-hover/area:text-purple-600 dark:group-hover/area:text-purple-400'
+                }`}>
+                  {showFloatingCropArea ? 'Confirm Area' : 'Area Highlight'}
+                </span>
+              </button>
+              
+              {/* Cancel button - Show when crop area is visible - also deselects live capture tool */}
+              {showFloatingCropArea && (
                 <button
                   onClick={() => {
-                    window.dispatchEvent(new CustomEvent('open-live-capture-modal', {
-                      detail: { nodeId: null }
+                    setShowFloatingCropArea(false);
+                    // Deactivate live capture tool
+                    setIsLiveCaptureActive(false);
+                    window.dispatchEvent(new CustomEvent('toggle-live-capture-mode', { 
+                      detail: { enabled: false } 
                     }));
                   }}
-                  className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/create flex items-center gap-1.5"
-                  title="Create Live Capture Node"
+                  className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/cancel flex items-center gap-1.5"
+                  title="Cancel area selection and deselect live capture tool (or press ESC)"
                 >
-                  <Video className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/create:text-purple-600 dark:group-hover/create:text-purple-400 transition-colors" />
-                  <span className="text-xs text-gray-600 dark:text-gray-400 group-hover/create:text-purple-600 dark:group-hover/create:text-purple-400 transition-colors">
-                    Create Capture
+                  <X className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/cancel:text-red-600 dark:group-hover/cancel:text-red-400 transition-colors" />
+                  <span className="text-xs text-gray-600 dark:text-gray-400 group-hover/cancel:text-red-600 dark:group-hover/cancel:text-red-400 transition-colors">
+                    Cancel
                   </span>
                 </button>
               )}
             </>
           )}
 
-          {/* Node Editing Options - Only show when node is selected and brush is not active */}
-          {selectedNodeId && !isBrushActive && !isLiveCaptureNode && (
+          {/* Capture Button - Show when no tools active and no live capture node selected */}
+          {(!isBrushActive && !isEraserActive && !isLiveCaptureActive && !isLiveCaptureNode) && (
+            <>
+              {(selectedNodeId && !isBrushActive && !isLiveCaptureNode) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('open-live-capture-modal', {
+                    detail: { nodeId: null }
+                  }));
+                }}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/capture flex items-center gap-1.5"
+                title="Capture - Create a new live capture"
+              >
+                <Video className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/capture:text-purple-600 dark:group-hover/capture:text-purple-400 transition-colors" />
+                <span className="text-xs text-gray-600 dark:text-gray-400 group-hover/capture:text-purple-600 dark:group-hover/capture:text-purple-400 transition-colors">
+                  Capture
+                </span>
+              </button>
+            </>
+          )}
+
+          {/* Node Editing Options - Only show when node is selected and no other tools/controls are active */}
+          {selectedNodeId && !isBrushActive && !isEraserActive && !isLiveCaptureNode && (
             <div className="w-2 h-2 rounded-full bg-gray-300/50 dark:bg-gray-600/50" />
           )}
         </div>
@@ -645,6 +707,73 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
           style={{ transform: 'scale(1.1)' }}
         />
       </div>
+
+      {/* Floating Crop Area Overlay - Can be positioned outside app bounds */}
+      <FloatingCropArea
+        isOpen={showFloatingCropArea}
+        onClose={() => setShowFloatingCropArea(false)}
+        onConfirm={async (area) => {
+          setShowFloatingCropArea(false);
+          
+          // Start screen capture for the entire screen (we'll crop to area in the node)
+          try {
+            const { getScreenCaptureStream, requestScreenRecordingPermission, checkScreenRecordingPermission } = await import('@/lib/electronUtils');
+            console.log('[HorizontalEditorBar] Starting screen capture for area:', area);
+            
+            // Check and request permissions before attempting capture
+            const permissionStatus = await checkScreenRecordingPermission();
+            if (permissionStatus.granted === false || permissionStatus.granted === null) {
+              console.log('[HorizontalEditorBar] Requesting screen recording permission...');
+              const permissionResult = await requestScreenRecordingPermission();
+              
+              if (!permissionResult.granted) {
+                const errorMessage = permissionResult.message || 'Screen recording permission is required to capture the screen.';
+                alert(errorMessage);
+                return;
+              }
+              
+              console.log('[HorizontalEditorBar] Screen recording permission granted:', permissionResult.message);
+            }
+            
+            // Get screen capture stream (permissions are also checked inside this function)
+            const stream = await getScreenCaptureStream({ requestPermissions: true, includeAudio: false });
+            
+            // Verify stream has video tracks
+            const tracks = stream.getVideoTracks();
+            if (tracks.length === 0) {
+              throw new Error('Screen capture stream has no video tracks');
+            }
+            
+            console.log('[HorizontalEditorBar] Screen capture stream obtained:', {
+              streamId: stream.id,
+              trackCount: tracks.length,
+              readyStates: tracks.map(t => t.readyState)
+            });
+            
+            // Store stream globally for immediate access
+            (window as any).currentScreenStream = stream;
+            
+            // Dispatch event to create live capture node with the area and stream
+            // The area coordinates are in screen space (absolute screen coordinates)
+            window.dispatchEvent(new CustomEvent('create-live-capture-from-area', {
+              detail: { 
+                area: {
+                  x: area.x,
+                  y: area.y,
+                  width: area.width,
+                  height: area.height,
+                },
+                stream 
+              }
+            }));
+          } catch (error: any) {
+            console.error('[HorizontalEditorBar] Error starting screen capture:', error);
+            alert(`Failed to start screen capture: ${error.message || 'Unknown error'}. Please try again.`);
+          }
+        }}
+        defaultWidth={779}
+        defaultHeight={513}
+      />
     </div>
   );
 };

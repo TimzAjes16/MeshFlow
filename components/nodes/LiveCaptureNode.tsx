@@ -4,7 +4,7 @@
  * Inspired by Aries Infinite functionality
  */
 
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState, useMemo } from 'react';
 import BaseNode from './BaseNode';
 import type { Node as NodeType } from '@/types/Node';
 import { NodeProps } from 'reactflow';
@@ -77,6 +77,27 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
         screenBounds: { x: 0, y: 0, width: 0, height: 0 },
       };
   
+  // Memoize cropArea and screenBounds to ensure stable references for useEffect dependencies
+  const cropArea = useMemo(() => {
+    const area = captureData.cropArea || { x: 0, y: 0, width: 0, height: 0 };
+    return area;
+  }, [
+    captureData.cropArea?.x ?? 0,
+    captureData.cropArea?.y ?? 0,
+    captureData.cropArea?.width ?? 0,
+    captureData.cropArea?.height ?? 0,
+  ]);
+  
+  const screenBounds = useMemo(() => {
+    const bounds = captureData.screenBounds || { x: 0, y: 0, width: 0, height: 0 };
+    return bounds;
+  }, [
+    captureData.screenBounds?.x ?? 0,
+    captureData.screenBounds?.y ?? 0,
+    captureData.screenBounds?.width ?? 0,
+    captureData.screenBounds?.height ?? 0,
+  ]);
+  
   const isInteractive = captureData.interactive ?? false;
   
   // Get live stream from global registry - always try to get stream for live capture
@@ -87,26 +108,56 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
       if (streamRegistry && streamRegistry.has(id)) {
         const streamData = streamRegistry.get(id);
         if (streamData && streamData.stream) {
+          // Verify stream is still active
+          const tracks = streamData.stream.getVideoTracks();
+          if (tracks.length > 0) {
+            // Accept streams that are 'live' or 'ended' (ended means it's paused but track exists)
+            // For screen capture, tracks can be active even if readyState is not 'live'
+            const hasActiveTracks = tracks.some(track => 
+              track.readyState === 'live' || track.readyState === 'ended'
+            );
+            if (hasActiveTracks) {
+              console.log(`[LiveCaptureNode] Found stream in registry for node ${id}`, {
+                trackCount: tracks.length,
+                readyStates: tracks.map(t => t.readyState),
+                streamId: streamData.stream.id
+              });
           setLiveStream(streamData.stream);
-          return true;
+              return true;
+            } else {
+              console.warn(`[LiveCaptureNode] Stream in registry but no active tracks for node ${id}`);
+              // Stream is no longer active, remove from registry
+              streamRegistry.delete(id);
+            }
+          }
         }
       }
       
       // Fallback: try to get current screen stream (for new captures)
       if ((window as any).currentScreenStream) {
         const currentStream = (window as any).currentScreenStream;
-        setLiveStream(currentStream);
-        
-        // Store it in the registry for this node if not already there
-        if (!streamRegistry) {
-          (window as any).liveCaptureStreams = new Map();
+        // Verify stream is still active
+        const tracks = currentStream.getVideoTracks();
+        if (tracks.length > 0) {
+          const hasActiveTracks = tracks.some(track => 
+            track.readyState === 'live' || track.readyState === 'ended'
+          );
+          if (hasActiveTracks) {
+            console.log(`[LiveCaptureNode] Found currentScreenStream, storing in registry for node ${id}`);
+            setLiveStream(currentStream);
+            
+            // Store it in the registry for this node if not already there
+            if (!streamRegistry) {
+              (window as any).liveCaptureStreams = new Map();
+            }
+            (window as any).liveCaptureStreams.set(id, {
+              stream: currentStream,
+              cropArea: captureData.cropArea,
+              screenBounds: screenBounds,
+            });
+            return true;
+          }
         }
-        (window as any).liveCaptureStreams.set(id, {
-          stream: currentStream,
-          cropArea: captureData.cropArea,
-          screenBounds: captureData.screenBounds,
-        });
-        return true;
       }
       
       return false;
@@ -121,14 +172,27 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
         }
       }, 100); // Check every 100ms
       
-      // Stop polling after 5 seconds
+      // Stop polling after 10 seconds (increased from 5)
       const timeoutId = setTimeout(() => {
         clearInterval(intervalId);
-      }, 5000);
+      }, 10000);
+      
+      // Also listen for stream-ready event
+      const handleStreamReady = (event: CustomEvent) => {
+        if (event.detail.nodeId === id) {
+          if (checkForStream()) {
+            clearInterval(intervalId);
+            clearTimeout(timeoutId);
+          }
+        }
+      };
+      
+      window.addEventListener('live-capture-stream-ready', handleStreamReady as EventListener);
       
       return () => {
         clearInterval(intervalId);
         clearTimeout(timeoutId);
+        window.removeEventListener('live-capture-stream-ready', handleStreamReady as EventListener);
         // Cleanup on unmount
         if (cropIntervalRef.current) {
           clearInterval(cropIntervalRef.current);
@@ -136,63 +200,376 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
       };
     }
     
+    // Listen for stream-ready event even if stream was found initially (for re-connections)
+    const handleStreamReady = (event: CustomEvent) => {
+      if (event.detail.nodeId === id) {
+        checkForStream();
+      }
+    };
+    
+    window.addEventListener('live-capture-stream-ready', handleStreamReady as EventListener);
+    
     return () => {
+      window.removeEventListener('live-capture-stream-ready', handleStreamReady as EventListener);
       // Cleanup on unmount
       if (cropIntervalRef.current) {
         clearInterval(cropIntervalRef.current);
       }
     };
-  }, [id, captureData.cropArea, captureData.screenBounds]);
+  }, [id, cropArea, screenBounds]);
   
   // Set up video element for live stream - always use canvas for consistent cropping
   useEffect(() => {
-    if (liveStream && videoRef.current) {
-      videoRef.current.srcObject = liveStream;
-      videoRef.current.autoplay = true;
-      videoRef.current.playsInline = true;
-      videoRef.current.muted = isMuted;
-      
-      // Always use canvas for cropping, even in interactive mode
-      if (canvasRef.current && captureData.cropArea && captureData.cropArea.width > 0 && captureData.cropArea.height > 0) {
+    if (!liveStream) {
+      console.log(`[LiveCaptureNode] No stream available for node ${id}`);
+      return;
+    }
+
+    if (!videoRef.current) {
+      console.log(`[LiveCaptureNode] Video ref not available for node ${id}`);
+      return;
+    }
+
+    // Verify stream is active and has video tracks
+    const videoTracks = liveStream.getVideoTracks();
+    if (videoTracks.length === 0) {
+      console.error(`[LiveCaptureNode] Stream has no video tracks for node ${id}`);
+      return;
+    }
+    
+    // Check if tracks are actually live/active
+    const activeTracks = videoTracks.filter(t => t.readyState === 'live' || t.readyState === 'ended');
+    if (activeTracks.length === 0) {
+      console.warn(`[LiveCaptureNode] Stream has no active tracks for node ${id}`, {
+        tracks: videoTracks.map(t => ({ id: t.id, readyState: t.readyState, enabled: t.enabled }))
+      });
+      // Don't return - try to set up anyway as tracks might become active
+    }
+    
+    console.log(`[LiveCaptureNode] Setting up video element for node ${id}`, {
+      streamId: liveStream.id,
+      streamActive: liveStream.active,
+      trackCount: videoTracks.length,
+      activeTrackCount: activeTracks.length,
+      readyStates: videoTracks.map(t => t.readyState),
+      trackSettings: videoTracks[0]?.getSettings(),
+      videoTracks: videoTracks.map(t => ({
+        id: t.id,
+        label: t.label,
+        enabled: t.enabled,
+        readyState: t.readyState,
+        muted: t.muted,
+        settings: t.getSettings()
+      }))
+    });
+    
+    const video = videoRef.current;
+    
+    // Clear any existing stream first
+    if (video.srcObject) {
+      console.log(`[LiveCaptureNode] Clearing existing srcObject for node ${id}`);
+      video.srcObject = null;
+    }
+    
+    // Set up video element attributes per MDN guidelines
+    // https://developer.mozilla.org/en-US/docs/Web/API/Screen_Capture_API/Using_Screen_Capture
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = isMuted || true; // Always mute to allow autoplay
+    video.controls = false;
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'cover';
+    
+    // Connect stream to video element
+    try {
+      video.srcObject = liveStream;
+      console.log(`[LiveCaptureNode] Stream assigned to video element for node ${id}`, {
+        videoSrcObject: video.srcObject?.id,
+        streamId: liveStream.id
+      });
+    } catch (error) {
+      console.error(`[LiveCaptureNode] Error assigning stream to video for node ${id}:`, error);
+      return;
+    }
+    
+    // Set up video event listeners per MDN
+    const handleLoadedMetadata = () => {
+      if (video && video.videoWidth > 0 && video.videoHeight > 0) {
+        console.log(`[LiveCaptureNode] Video loaded metadata for node ${id}`, {
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight,
+          readyState: video.readyState,
+          streamActive: liveStream.active,
+          trackReadyState: videoTracks[0]?.readyState
+        });
+      }
+    };
+    
+    const handleLoadedData = () => {
+      console.log(`[LiveCaptureNode] Video loaded data for node ${id}`, {
+        readyState: video.readyState
+      });
+    };
+    
+    // Ensure video plays - try immediately and on canplay
+    // Define attemptPlay FIRST so it can be used in event handlers
+    const attemptPlay = async () => {
+      try {
+        if (video.paused && !isPaused) {
+          await video.play();
+          console.log(`[LiveCaptureNode] Video play() succeeded for node ${id}`);
+        }
+      } catch (error: any) {
+        console.warn(`[LiveCaptureNode] Video play() failed for node ${id}:`, error);
+        // Try again after a short delay
+        setTimeout(() => {
+          if (video.paused && !isPaused) {
+            video.play().catch(err => console.error(`[LiveCaptureNode] Retry play() failed for node ${id}:`, err));
+          }
+        }, 500);
+      }
+    };
+    
+    const handleCanPlay = () => {
+      console.log(`[LiveCaptureNode] Video can play for node ${id}`, {
+        readyState: video.readyState,
+        paused: video.paused
+      });
+      // Attempt to play if paused
+      attemptPlay();
+    };
+    
+    const handleCanPlayForPlay = () => {
+      attemptPlay();
+    };
+    
+    const handlePlay = () => {
+      console.log(`[LiveCaptureNode] Video started playing for node ${id}`);
+    };
+    
+    const handlePlaying = () => {
+      console.log(`[LiveCaptureNode] Video is playing for node ${id}`);
+    };
+    
+    const handleCanPlayThrough = () => {
+      console.log(`[LiveCaptureNode] Video can play through for node ${id}`);
+      attemptPlay();
+    };
+    
+    const handlePause = () => {
+      console.log(`[LiveCaptureNode] Video paused for node ${id}`);
+    };
+    
+    const handleWaiting = () => {
+      console.log(`[LiveCaptureNode] Video waiting for data for node ${id}`);
+    };
+    
+    const handleStalled = () => {
+      console.warn(`[LiveCaptureNode] Video stalled for node ${id}`);
+    };
+    
+    const handleError = (e: Event) => {
+      console.error(`[LiveCaptureNode] Video error for node ${id}:`, e);
+      const error = (video as HTMLVideoElement).error;
+      if (error) {
+        console.error(`[LiveCaptureNode] Video error details:`, {
+          code: error.code,
+          message: error.message,
+        });
+      }
+    };
+    
+    // Monitor track state
+    const handleTrackEnded = () => {
+      console.warn(`[LiveCaptureNode] Video track ended for node ${id}`);
+    };
+    
+    const handleTrackMute = () => {
+      console.log(`[LiveCaptureNode] Track muted for node ${id}`);
+    };
+    
+    const handleTrackUnmute = () => {
+      console.log(`[LiveCaptureNode] Track unmuted for node ${id}`);
+    };
+    
+    // Add event listeners
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('loadeddata', handleLoadedData);
+    video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('canplay', handleCanPlayForPlay);
+    video.addEventListener('canplaythrough', handleCanPlayThrough);
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('playing', handlePlaying);
+    video.addEventListener('pause', handlePause);
+    video.addEventListener('waiting', handleWaiting);
+    video.addEventListener('stalled', handleStalled);
+    video.addEventListener('error', handleError);
+    
+    // Monitor track events - store reference for cleanup
+    const videoTrack = videoTracks[0];
+    if (videoTrack) {
+      videoTrack.addEventListener('ended', handleTrackEnded);
+      videoTrack.addEventListener('mute', handleTrackMute);
+      videoTrack.addEventListener('unmute', handleTrackUnmute);
+    }
+    
+    // Try to play immediately after a short delay to let the stream connect
+    setTimeout(() => {
+      attemptPlay();
+    }, 100);
+    
+    // Always use canvas for cropping, even in interactive mode
+    if (canvasRef.current && cropArea && cropArea.width > 0 && cropArea.height > 0) {
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        
-        canvas.width = captureData.cropArea.width;
-        canvas.height = captureData.cropArea.height;
+      if (!ctx) {
+        console.error(`[LiveCaptureNode] Could not get 2d context for canvas on node ${id}`);
+        return () => {
+          video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+          video.removeEventListener('loadeddata', handleLoadedData);
+          video.removeEventListener('canplay', handleCanPlay);
+          video.removeEventListener('canplay', handleCanPlayForPlay);
+          video.removeEventListener('canplaythrough', handleCanPlayThrough);
+          video.removeEventListener('play', handlePlay);
+          video.removeEventListener('playing', handlePlaying);
+          video.removeEventListener('pause', handlePause);
+          video.removeEventListener('waiting', handleWaiting);
+          video.removeEventListener('stalled', handleStalled);
+          video.removeEventListener('error', handleError);
+          videoTrack?.removeEventListener('ended', handleTrackEnded);
+          videoTrack?.removeEventListener('mute', handleTrackMute);
+          videoTrack?.removeEventListener('unmute', handleTrackUnmute);
+        };
+      }
+      
+      canvas.width = cropArea.width;
+      canvas.height = cropArea.height;
+      
+      console.log(`[LiveCaptureNode] Canvas set up for node ${id}`, {
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+        cropArea: cropArea
+      });
         
         // Continuously crop and draw the video feed
         const drawFrame = () => {
-          if (videoRef.current && canvas && ctx && !isPaused) {
-            try {
+        if (!videoRef.current || !canvas || !ctx) {
+          return;
+        }
+        
+        if (isPaused) {
+          return;
+        }
+        
+        try {
+          const videoForDraw = videoRef.current;
+          // Check if video is ready to draw (readyState 2 = HAVE_CURRENT_DATA, 4 = HAVE_ENOUGH_DATA)
+          if (videoForDraw.readyState >= 2 && videoForDraw.videoWidth > 0 && videoForDraw.videoHeight > 0) {
+            // Draw the cropped region from the video onto the canvas
               ctx.drawImage(
-                videoRef.current,
-                captureData.cropArea.x,
-                captureData.cropArea.y,
-                captureData.cropArea.width,
-                captureData.cropArea.height,
+              videoForDraw,
+              cropArea.x,
+              cropArea.y,
+              cropArea.width,
+              cropArea.height,
                 0,
                 0,
                 canvas.width,
                 canvas.height
               );
-            } catch (error) {
-              console.error('Error drawing video frame:', error);
-            }
           }
-        };
+        } catch (error) {
+          console.error(`[LiveCaptureNode] Error drawing video frame for node ${id}:`, error);
+        }
+      };
+      
+      // Wait for video to be ready before starting to draw
+      let readyCheckAttempts = 0;
+      const maxReadyCheckAttempts = 100; // 10 seconds max wait
+      
+      const waitForVideo = () => {
+        if (!videoRef.current) {
+          return;
+        }
         
-        // Draw at video frame rate (60fps)
+        readyCheckAttempts++;
+        
+        const videoForWait = videoRef.current;
+        if (videoForWait.readyState >= 2 && videoForWait.videoWidth > 0 && videoForWait.videoHeight > 0) {
+          console.log(`[LiveCaptureNode] Video ready for node ${id}, starting canvas drawing`, {
+            videoWidth: videoForWait.videoWidth,
+            videoHeight: videoForWait.videoHeight,
+            readyState: videoForWait.readyState,
+            attempts: readyCheckAttempts
+          });
+          // Draw immediately
+          drawFrame();
+          // Then draw at video frame rate (60fps)
+          cropIntervalRef.current = setInterval(drawFrame, 16);
+        } else if (readyCheckAttempts < maxReadyCheckAttempts) {
+          // Wait a bit and try again
+          setTimeout(waitForVideo, 100);
+        } else {
+          console.warn(`[LiveCaptureNode] Video not ready after ${maxReadyCheckAttempts} attempts for node ${id}`, {
+            readyState: videoForWait.readyState,
+            videoWidth: videoForWait.videoWidth,
+            videoHeight: videoForWait.videoHeight
+          });
+          // Start drawing anyway - might still work
         cropIntervalRef.current = setInterval(drawFrame, 16);
+        }
+      };
+      
+      // Start waiting for video to be ready
+      waitForVideo();
+      
+      return () => {
+        video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        video.removeEventListener('loadeddata', handleLoadedData);
+        video.removeEventListener('canplay', handleCanPlay);
+        video.removeEventListener('canplay', handleCanPlayForPlay);
+        video.removeEventListener('canplaythrough', handleCanPlayThrough);
+        video.removeEventListener('play', handlePlay);
+        video.removeEventListener('playing', handlePlaying);
+        video.removeEventListener('pause', handlePause);
+        video.removeEventListener('waiting', handleWaiting);
+        video.removeEventListener('stalled', handleStalled);
+        video.removeEventListener('error', handleError);
+        videoTrack?.removeEventListener('ended', handleTrackEnded);
+        videoTrack?.removeEventListener('mute', handleTrackMute);
+        videoTrack?.removeEventListener('unmute', handleTrackUnmute);
         
-        return () => {
           if (cropIntervalRef.current) {
             clearInterval(cropIntervalRef.current);
-          }
-        };
-      }
+          cropIntervalRef.current = null;
+        }
+      };
+    } else {
+      console.warn(`[LiveCaptureNode] Canvas or crop area not available for node ${id}`, {
+        hasCanvas: !!canvasRef.current,
+        hasCropArea: !!cropArea,
+        cropArea: cropArea
+      });
+      
+      return () => {
+        video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        video.removeEventListener('loadeddata', handleLoadedData);
+        video.removeEventListener('canplay', handleCanPlay);
+        video.removeEventListener('canplay', handleCanPlayForPlay);
+        video.removeEventListener('canplaythrough', handleCanPlayThrough);
+        video.removeEventListener('play', handlePlay);
+        video.removeEventListener('playing', handlePlaying);
+        video.removeEventListener('pause', handlePause);
+        video.removeEventListener('waiting', handleWaiting);
+        video.removeEventListener('stalled', handleStalled);
+        video.removeEventListener('error', handleError);
+        videoTrack?.removeEventListener('ended', handleTrackEnded);
+        videoTrack?.removeEventListener('mute', handleTrackMute);
+        videoTrack?.removeEventListener('unmute', handleTrackUnmute);
+      };
     }
-  }, [liveStream, captureData.cropArea, isMuted, isPaused]);
+  }, [liveStream, cropArea, isMuted, isPaused, id]);
   
   // Update node dimensions for live stream - always use crop area dimensions
   useEffect(() => {
@@ -430,7 +807,7 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
 
   // Map coordinates from node display to actual screen coordinates for interactive mode
   const mapToScreenCoordinates = (clientX: number, clientY: number): { x: number; y: number } | null => {
-    if (!containerRef.current || !captureData.screenBounds || !captureData.cropArea) return null;
+    if (!containerRef.current || !screenBounds || !cropArea) return null;
     
     const containerRect = containerRef.current.getBoundingClientRect();
     const videoArea = containerRef.current.querySelector('.video-area') as HTMLElement;
@@ -443,23 +820,23 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
     const relY = clientY - videoRect.top;
     
     // Calculate scale factors
-    const scaleX = captureData.cropArea.width / videoRect.width;
-    const scaleY = captureData.cropArea.height / videoRect.height;
+    const scaleX = cropArea.width / videoRect.width;
+    const scaleY = cropArea.height / videoRect.height;
     
     // Map to crop area coordinates
     const cropX = relX * scaleX;
     const cropY = relY * scaleY;
     
     // Map to screen coordinates
-    const screenX = captureData.screenBounds.x + cropX;
-    const screenY = captureData.screenBounds.y + cropY;
+    const screenX = screenBounds.x + cropX;
+    const screenY = screenBounds.y + cropY;
     
     return { x: Math.round(screenX), y: Math.round(screenY) };
   };
 
   // Forward mouse events to underlying application when interactive mode is enabled
   const handleInteractiveMouseEvent = (e: React.MouseEvent, eventType: 'click' | 'mousedown' | 'mouseup' | 'mousemove') => {
-    if (!isInteractive || !captureData.screenBounds) return;
+    if (!isInteractive || !screenBounds) return;
     
     e.preventDefault();
     e.stopPropagation();
@@ -560,11 +937,11 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
     : null;
 
   // Determine display dimensions - always use crop area for live capture
-  const displayWidth = captureData.cropArea.width > 0
-    ? captureData.cropArea.width
+  const displayWidth = cropArea.width > 0
+    ? cropArea.width
     : 300;
-  const displayHeight = captureData.cropArea.height > 0
-    ? captureData.cropArea.height
+  const displayHeight = cropArea.height > 0
+    ? cropArea.height
     : 200;
 
   return (
@@ -629,12 +1006,38 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
           {liveStream ? (
             <>
               {/* Hidden video element for source */}
+              {/* Hidden video element - must be rendered and connected to stream for canvas to work */}
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
-                muted={isMuted}
+                muted={isMuted || true}
                 className="hidden"
+                style={{ 
+                  position: 'absolute',
+                  top: '-9999px',
+                  left: '-9999px',
+                  width: '1px',
+                  height: '1px',
+                  opacity: 0,
+                  pointerEvents: 'none'
+                }}
+                onLoadedMetadata={() => {
+                  console.log(`[LiveCaptureNode] Video metadata loaded (hidden element) for node ${id}`, {
+                    videoWidth: videoRef.current?.videoWidth,
+                    videoHeight: videoRef.current?.videoHeight,
+                    readyState: videoRef.current?.readyState,
+                    srcObject: !!videoRef.current?.srcObject
+                  });
+                }}
+                onCanPlay={() => {
+                  console.log(`[LiveCaptureNode] Video can play (hidden element) for node ${id}`);
+                  if (videoRef.current && videoRef.current.paused) {
+                    videoRef.current.play().catch(err => 
+                      console.error(`[LiveCaptureNode] Error playing hidden video for node ${id}:`, err)
+                    );
+                  }
+                }}
               />
               {/* Canvas showing cropped live feed - always use canvas for consistent cropping */}
               <canvas

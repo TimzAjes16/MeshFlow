@@ -17,8 +17,10 @@ declare global {
         name: string;
         thumbnail: Electron.NativeImage;
       }>>;
-      requestScreenPermission?: () => Promise<{ granted: boolean; platform?: string; error?: string }>;
-      checkScreenPermission?: () => Promise<{ granted: boolean | null; status?: string; platform?: string; error?: string }>;
+      requestScreenPermission?: () => Promise<{ granted: boolean; platform?: string; error?: string; message?: string }>;
+      checkScreenPermission?: () => Promise<{ granted: boolean | null; status?: string; platform?: string; error?: string; message?: string }>;
+      requestMicrophonePermission?: () => Promise<{ granted: boolean; platform?: string; error?: string; message?: string }>;
+      checkMicrophonePermission?: () => Promise<{ granted: boolean | null; status?: string; platform?: string; error?: string; message?: string }>;
       openCaptureWidget?: () => Promise<void>;
       moveWidget?: (x: number, y: number) => Promise<void>;
       getWidgetPosition?: () => Promise<{ x: number; y: number } | null>;
@@ -42,15 +44,142 @@ export function isElectron(): boolean {
 }
 
 /**
- * Get screen capture stream - works in both Electron and browser
+ * Request screen recording permission
  */
-export async function getScreenCaptureStream(): Promise<MediaStream> {
+export async function requestScreenRecordingPermission(): Promise<{ granted: boolean; message?: string; error?: string }> {
+  if (isElectron() && window.electronAPI?.requestScreenPermission) {
+    try {
+      const result = await window.electronAPI.requestScreenPermission();
+      return {
+        granted: result.granted === true,
+        message: result.message,
+        error: result.error,
+      };
+    } catch (error: any) {
+      return {
+        granted: false,
+        error: error.message || 'Failed to request permission',
+      };
+    }
+  }
+  
+  // In browser, permissions are handled by getDisplayMedia
+  return { granted: true, message: 'Permission will be requested when capturing starts.' };
+}
+
+/**
+ * Check screen recording permission status
+ */
+export async function checkScreenRecordingPermission(): Promise<{ granted: boolean | null; message?: string }> {
+  if (isElectron() && window.electronAPI?.checkScreenPermission) {
+    try {
+      const result = await window.electronAPI.checkScreenPermission();
+      return {
+        granted: result.granted,
+        message: result.message,
+      };
+    } catch (error: any) {
+      return {
+        granted: null,
+        message: `Error checking permission: ${error.message}`,
+      };
+    }
+  }
+  
+  return { granted: null, message: 'Permission status unknown.' };
+}
+
+/**
+ * Request microphone permission (for audio capture)
+ */
+export async function requestMicrophonePermission(): Promise<{ granted: boolean; message?: string; error?: string }> {
+  if (isElectron() && window.electronAPI?.requestMicrophonePermission) {
+    try {
+      const result = await window.electronAPI.requestMicrophonePermission();
+      return {
+        granted: result.granted === true,
+        message: result.message,
+        error: result.error,
+      };
+    } catch (error: any) {
+      return {
+        granted: false,
+        error: error.message || 'Failed to request microphone permission',
+      };
+    }
+  }
+  
+  // In browser, permissions are handled by getDisplayMedia with audio: true
+  return { granted: true, message: 'Permission will be requested when capturing with audio.' };
+}
+
+/**
+ * Check microphone permission status
+ */
+export async function checkMicrophonePermission(): Promise<{ granted: boolean | null; message?: string }> {
+  if (isElectron() && window.electronAPI?.checkMicrophonePermission) {
+    try {
+      const result = await window.electronAPI.checkMicrophonePermission();
+      return {
+        granted: result.granted,
+        message: result.message,
+      };
+    } catch (error: any) {
+      return {
+        granted: null,
+        message: `Error checking microphone permission: ${error.message}`,
+      };
+    }
+  }
+  
+  return { granted: null, message: 'Permission status unknown.' };
+}
+
+/**
+ * Get screen capture stream - works in both Electron and browser
+ * Automatically requests permissions if needed
+ */
+export async function getScreenCaptureStream(options?: { requestPermissions?: boolean; includeAudio?: boolean }): Promise<MediaStream> {
+  const { requestPermissions = true, includeAudio = false } = options || {};
+  
+  // Request permissions if needed (especially on macOS)
+  if (requestPermissions && isElectron()) {
+    try {
+      const permissionStatus = await checkScreenRecordingPermission();
+      if (permissionStatus.granted === false || permissionStatus.granted === null) {
+        console.log('[electronUtils] Requesting screen recording permission...');
+        const permissionResult = await requestScreenRecordingPermission();
+        if (!permissionResult.granted) {
+          throw new Error(permissionResult.message || 'Screen recording permission denied');
+        }
+        console.log('[electronUtils] Screen recording permission granted');
+      }
+      
+      // If audio is requested, check microphone permission too
+      if (includeAudio) {
+        const micPermissionStatus = await checkMicrophonePermission();
+        if (micPermissionStatus.granted === false || micPermissionStatus.granted === null) {
+          console.log('[electronUtils] Requesting microphone permission...');
+          const micPermissionResult = await requestMicrophonePermission();
+          if (!micPermissionResult.granted) {
+            console.warn('[electronUtils] Microphone permission denied, continuing without audio');
+          } else {
+            console.log('[electronUtils] Microphone permission granted');
+          }
+        }
+      }
+    } catch (permissionError: any) {
+      console.error('[electronUtils] Error requesting permissions:', permissionError);
+      // Continue anyway - the actual capture call might still work
+    }
+  }
+  
   if (isElectron()) {
     // Use Electron's desktopCapturer
-    return getElectronScreenCapture();
+    return getElectronScreenCapture(includeAudio);
   } else {
     // Use browser's getDisplayMedia
-    return getBrowserScreenCapture();
+    return getBrowserScreenCapture(includeAudio);
   }
 }
 
@@ -73,41 +202,33 @@ export function isScreenCaptureSupported(): boolean {
  * Get screen capture stream using Electron's desktopCapturer or getDisplayMedia
  * In Electron, we prefer desktopCapturer but fall back to getDisplayMedia
  */
-async function getElectronScreenCapture(): Promise<MediaStream> {
+async function getElectronScreenCapture(includeAudio: boolean = false): Promise<MediaStream> {
   try {
-    // First, check and request screen recording permission (will use Touch ID on macOS)
-    if (window.electronAPI?.checkScreenPermission && window.electronAPI?.requestScreenPermission) {
-      try {
-        // Check current permission status
-        const permissionStatus = await window.electronAPI.checkScreenPermission();
-        
-        // If permission is not granted, request it (will trigger Touch ID on macOS)
-        if (permissionStatus.granted === false || permissionStatus.granted === null) {
-          console.log('Requesting screen recording permission...');
-          const permissionResult = await window.electronAPI.requestScreenPermission();
-          
-          if (!permissionResult.granted) {
-            throw new Error('Screen recording permission was denied. Please enable it in System Preferences > Security & Privacy > Screen Recording.');
-          }
-          
-          console.log('Screen recording permission granted');
-        }
-      } catch (permissionError: any) {
-        console.error('Error requesting screen permission:', permissionError);
-        // Continue anyway - the actual capture call might still work
-      }
-    }
+    // Permissions are now handled in getScreenCaptureStream before this function is called
 
     // First, try getDisplayMedia (works in Electron 5+)
+    // Using MDN-recommended options structure per https://developer.mozilla.org/en-US/docs/Web/API/Screen_Capture_API/Using_Screen_Capture
     if (navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function') {
       try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({
+        const displayMediaOptions = {
           video: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          } as any,
-          audio: false,
-        });
+            displaySurface: "browser" as const, // Can be "browser", "window", or "monitor"
+          },
+          audio: includeAudio, // Request audio if needed
+        } as MediaStreamConstraints;
+        
+        const stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+        
+        // Ensure video tracks are active
+        const videoTracks = stream.getVideoTracks();
+        if (videoTracks.length > 0) {
+          console.log('getDisplayMedia stream obtained with video tracks:', videoTracks.length);
+          // Monitor track state
+          videoTracks[0].addEventListener('ended', () => {
+            console.log('Screen capture track ended');
+          });
+        }
+        
         return stream;
       } catch (getDisplayMediaError: any) {
         console.log('getDisplayMedia failed in Electron, trying desktopCapturer:', getDisplayMediaError);
@@ -203,19 +324,51 @@ async function getElectronScreenCapture(): Promise<MediaStream> {
 
 /**
  * Get screen capture stream using browser's getDisplayMedia
+ * Using MDN-recommended approach per https://developer.mozilla.org/en-US/docs/Web/API/Screen_Capture_API/Using_Screen_Capture
  */
-async function getBrowserScreenCapture(): Promise<MediaStream> {
+async function getBrowserScreenCapture(includeAudio: boolean = false): Promise<MediaStream> {
   if (!isScreenCaptureSupported()) {
     throw new Error('Screen capture is not supported in this browser. Please use Chrome, Firefox, Edge, or Safari 13+.');
   }
 
   try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({
+    // Use MDN-recommended options structure
+    // Using MediaStreamConstraints as per TypeScript definitions
+        const displayMediaOptions: MediaStreamConstraints = {
       video: {
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-      } as any,
-      audio: false,
+        displaySurface: "browser" as const, // Can be "browser", "window", or "monitor"
+      } as any, // displaySurface is a valid constraint but may not be in all TS definitions
+      audio: includeAudio, // Request audio if needed
+    };
+    
+    console.log('Requesting screen capture with options:', displayMediaOptions);
+    const stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+    
+    // Verify stream has video tracks
+    const videoTracks = stream.getVideoTracks();
+    if (videoTracks.length === 0) {
+      throw new Error('Screen capture stream has no video tracks.');
+    }
+    
+    console.log('Screen capture stream obtained:', {
+      id: stream.id,
+      active: stream.active,
+      videoTracks: videoTracks.length,
+      trackSettings: videoTracks[0].getSettings(),
+    });
+    
+    // Monitor track state for debugging
+    videoTracks[0].addEventListener('ended', () => {
+      console.log('Screen capture track ended');
+    });
+    
+    // Handle track state changes
+    videoTracks[0].addEventListener('mute', () => {
+      console.log('Screen capture track muted');
+    });
+    
+    videoTracks[0].addEventListener('unmute', () => {
+      console.log('Screen capture track unmuted');
     });
 
     return stream;
