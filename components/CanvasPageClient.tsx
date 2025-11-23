@@ -423,13 +423,13 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     window.addEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
     window.addEventListener('open-live-capture-modal', handleOpenLiveCaptureModal as EventListener);
     window.addEventListener('recrop-live-capture', handleRecropLiveCapture as EventListener);
-    window.addEventListener('create-live-capture-from-area', handleCreateLiveCaptureFromArea as EventListener);
+    window.addEventListener('create-live-capture-from-area', handleCreateLiveCaptureFromArea as unknown as EventListener);
     
     return () => {
       window.removeEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
       window.removeEventListener('open-live-capture-modal', handleOpenLiveCaptureModal as EventListener);
       window.removeEventListener('recrop-live-capture', handleRecropLiveCapture as EventListener);
-      window.removeEventListener('create-live-capture-from-area', handleCreateLiveCaptureFromArea as EventListener);
+      window.removeEventListener('create-live-capture-from-area', handleCreateLiveCaptureFromArea as unknown as EventListener);
     };
   }, []); // No dependencies needed - handlers access store directly
 
@@ -868,10 +868,10 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       await handleCreateNode(type, flowPosition);
     };
 
-    window.addEventListener('create-widget', handleCreateWidget as EventListener);
+    window.addEventListener('create-widget', handleCreateWidget as unknown as EventListener);
     
     return () => {
-      window.removeEventListener('create-widget', handleCreateWidget as EventListener);
+      window.removeEventListener('create-widget', handleCreateWidget as unknown as EventListener);
     };
   }, [handleCreateNode]);
 
@@ -1327,8 +1327,8 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         isLiveCapture={
           captureNodeId 
             ? (() => {
-                const node = nodes.find(n => n.id === captureNodeId);
-                return node && typeof node.content === 'object' && node.content?.type === 'live-capture';
+                const foundNode = nodes.find(n => n.id === captureNodeId);
+                return foundNode ? (typeof foundNode?.content === 'object' && foundNode?.content?.type === 'live-capture') : false;
               })()
             : true // If no captureNodeId, it's a new live-capture node
         }
@@ -1347,10 +1347,9 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
             
             // If updating existing node
             if (captureNodeId) {
-              setScreenCaptureNodeId(captureNodeId);
-              setScreenCaptureStream(stream);
-              setScreenCaptureArea(area);
-              setShowScreenCapturePreview(false);
+              setCaptureNodeId(captureNodeId);
+              // Note: Screen capture preview functionality has been removed
+              // Stream is handled directly in LiveCaptureNode
               setCaptureModalOpen(false);
               
               // Update node with selected area and stream info

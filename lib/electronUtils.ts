@@ -15,7 +15,7 @@ declare global {
       getDesktopSources?: (options: { types: string[]; thumbnailSize?: { width: number; height: number } }) => Promise<Array<{
         id: string;
         name: string;
-        thumbnail: Electron.NativeImage;
+        thumbnail: any; // Electron.NativeImage - type not available in this context
       }>>;
       requestScreenPermission?: () => Promise<{ granted: boolean; platform?: string; error?: string; message?: string }>;
       checkScreenPermission?: () => Promise<{ granted: boolean | null; status?: string; platform?: string; error?: string; message?: string }>;

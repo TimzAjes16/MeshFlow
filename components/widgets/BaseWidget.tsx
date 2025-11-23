@@ -36,6 +36,8 @@ export interface WidgetProps extends NodeProps {
   canResize?: boolean;
   canMinimize?: boolean;
   canClose?: boolean;
+  width?: number;
+  height?: number;
 }
 
 interface BaseWidgetProps extends WidgetProps {

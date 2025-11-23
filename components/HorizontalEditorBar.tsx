@@ -581,6 +581,14 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
       alert(`Error saving URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }, [selectedNodeId, isIframeWidget, isWebViewWidget, widgetUrl, selectedNode, updateWorkspaceNode, normalizeUrl, isValidUrl]);
+
+  // Handle auto-save on blur
+  const handleUrlBlur = useCallback(() => {
+    // Auto-save on blur (when widget is deselected or input loses focus)
+    if (widgetUrl && isValidUrl(widgetUrl)) {
+      handleSaveWidgetUrl();
+    }
+  }, [widgetUrl, isValidUrl, handleSaveWidgetUrl]);
   
   // Handle native window widget save
   const handleSaveNativeWindowConfig = useCallback(async () => {
@@ -1052,12 +1060,7 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
                       handleSaveWidgetUrl();
                     }
                   }}
-                  onBlur={() => {
-                    // Auto-save on blur (when widget is deselected or input loses focus)
-                    if (widgetUrl && isValidUrl(widgetUrl)) {
-                      handleSaveWidgetUrl();
-                    }
-                  }}
+                  onBlur={handleUrlBlur}
                   onClick={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
                   placeholder="Enter URL (e.g., https://discord.com)"
@@ -1095,12 +1098,7 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
                       handleSaveWidgetUrl();
                     }
                   }}
-                  onBlur={() => {
-                    // Auto-save on blur (when widget is deselected or input loses focus)
-                    if (widgetUrl && isValidUrl(widgetUrl)) {
-                      handleSaveWidgetUrl();
-                    }
-                  }}
+                  onBlur={handleUrlBlur}
                   onClick={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
                   placeholder="Enter URL (bypasses CORS)"

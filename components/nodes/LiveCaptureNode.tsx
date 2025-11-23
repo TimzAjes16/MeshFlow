@@ -113,13 +113,13 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
           if (tracks.length > 0) {
             // Accept streams that are 'live' or 'ended' (ended means it's paused but track exists)
             // For screen capture, tracks can be active even if readyState is not 'live'
-            const hasActiveTracks = tracks.some(track => 
+            const hasActiveTracks = tracks.some((track: MediaStreamTrack) => 
               track.readyState === 'live' || track.readyState === 'ended'
             );
             if (hasActiveTracks) {
               console.log(`[LiveCaptureNode] Found stream in registry for node ${id}`, {
                 trackCount: tracks.length,
-                readyStates: tracks.map(t => t.readyState),
+                readyStates: tracks.map((t: MediaStreamTrack) => t.readyState),
                 streamId: streamData.stream.id
               });
           setLiveStream(streamData.stream);
@@ -139,7 +139,7 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
         // Verify stream is still active
         const tracks = currentStream.getVideoTracks();
         if (tracks.length > 0) {
-          const hasActiveTracks = tracks.some(track => 
+          const hasActiveTracks = tracks.some((track: MediaStreamTrack) => 
             track.readyState === 'live' || track.readyState === 'ended'
           );
           if (hasActiveTracks) {

@@ -65,10 +65,11 @@ function WebViewWidget(props: WebViewWidgetProps) {
           const webview = webviewRef.current;
           
           // Immediately set the src
-          if (webview.src !== newUrl) {
-            webview.src = newUrl;
+          const currentSrc = (webview as any).src;
+          if (currentSrc !== newUrl) {
+            (webview as any).src = newUrl;
           } else {
-            webview.reload();
+            (webview as any).reload();
           }
           
           // Set timeout for error detection
@@ -132,11 +133,12 @@ function WebViewWidget(props: WebViewWidgetProps) {
       const webview = webviewRef.current;
       
       // Immediately set the src to trigger reload - no delay
-      if (webview.src !== currentUrl) {
-        webview.src = currentUrl;
+      const currentSrc = (webview as any).src;
+      if (currentSrc !== currentUrl) {
+        (webview as any).src = currentUrl;
       } else {
         // If src is already set, reload it immediately
-        webview.reload();
+        (webview as any).reload();
       }
       
       // Set a timeout to detect if the webview fails to load
@@ -279,7 +281,7 @@ function WebViewWidget(props: WebViewWidgetProps) {
             ref={webviewRef}
             src={webviewConfig.url || undefined}
             className="w-full h-full"
-            allowpopups="true"
+            allowpopups={true}
             webpreferences="allowRunningInsecureContent, javascript=yes"
             style={{ 
               display: isLoading || hasError ? 'none' : 'block',
