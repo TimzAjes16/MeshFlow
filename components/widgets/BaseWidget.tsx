@@ -6,7 +6,7 @@
 
 'use client';
 
-import React, { memo, useRef, useState, useCallback } from 'react';
+import React, { memo, useRef, useState, useCallback, useEffect } from 'react';
 import { X, Minimize2, Maximize2 } from 'lucide-react';
 import type { Node as NodeType } from '@/types/Node';
 import { NodeProps } from 'reactflow';
@@ -18,6 +18,7 @@ export interface WidgetProps extends NodeProps {
   onResize?: (width: number, height: number) => void;
   onMinimize?: () => void;
   onClose?: () => void;
+  onTitleChange?: (title: string) => void;
   isDocked?: boolean;
   canResize?: boolean;
   canMinimize?: boolean;
@@ -45,6 +46,7 @@ function BaseWidget({
   onResize,
   onMinimize,
   onClose,
+  onTitleChange,
   isDocked = false,
   canResize = true,
   canMinimize = true,
@@ -54,6 +56,9 @@ function BaseWidget({
 }: BaseWidgetProps) {
   const { node } = data;
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editingTitle, setEditingTitle] = useState('');
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const resizeRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeStart, setResizeStart] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -152,8 +157,52 @@ function BaseWidget({
     }
   }, [isResizing, handleResizeMove, handleResizeEnd]);
 
-  const displayTitle = title || node.title || 'Widget';
+  const displayTitle = title || node.title || 'New Widget';
   const displayIcon = icon;
+
+  // Handle title editing
+  const handleTitleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isResizing) {
+      setIsEditingTitle(true);
+      setEditingTitle(displayTitle);
+    }
+  }, [displayTitle, isResizing]);
+
+  const handleTitleSave = useCallback(() => {
+    if (editingTitle.trim() && editingTitle !== displayTitle) {
+      onTitleChange?.(editingTitle.trim());
+    }
+    setIsEditingTitle(false);
+  }, [editingTitle, displayTitle, onTitleChange]);
+
+  const handleTitleCancel = useCallback(() => {
+    setIsEditingTitle(false);
+    setEditingTitle('');
+  }, []);
+
+  const handleTitleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleTitleSave();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleTitleCancel();
+    }
+  }, [handleTitleSave, handleTitleCancel]);
+
+  // Focus input when editing starts
+  useEffect(() => {
+    if (isEditingTitle && titleInputRef.current) {
+      titleInputRef.current.focus();
+      titleInputRef.current.select();
+    }
+  }, [isEditingTitle]);
+
+  // Save on blur
+  const handleTitleBlur = useCallback(() => {
+    handleTitleSave();
+  }, [handleTitleSave]);
 
   return (
     <div
@@ -191,9 +240,31 @@ function BaseWidget({
       >
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {displayIcon && <div className="flex-shrink-0">{displayIcon}</div>}
-          <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
-            {displayTitle}
-          </span>
+          {isEditingTitle ? (
+            <input
+              ref={titleInputRef}
+              type="text"
+              value={editingTitle}
+              onChange={(e) => {
+                e.stopPropagation();
+                setEditingTitle(e.target.value);
+              }}
+              onKeyDown={handleTitleKeyDown}
+              onBlur={handleTitleBlur}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="flex-1 min-w-0 text-sm font-medium text-gray-900 dark:text-white bg-transparent border-b border-blue-500 outline-none px-1"
+              style={{ minWidth: '100px' }}
+            />
+          ) : (
+            <span
+              className="text-sm font-medium text-gray-900 dark:text-white truncate cursor-text hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              onClick={handleTitleClick}
+              title="Click to edit title"
+            >
+              {displayTitle}
+            </span>
+          )}
         </div>
         
         <div className="flex items-center gap-1 flex-shrink-0">

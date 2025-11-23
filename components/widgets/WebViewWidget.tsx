@@ -21,7 +21,7 @@ function WebViewWidget(props: WebViewWidgetProps) {
   const { data } = props;
   const node = data.node;
   const webviewRef = useRef<HTMLWebViewElement>(null);
-  const { handleClose, handleResize } = useWidgetHandlers(node.id);
+  const { handleClose, handleResize, handleTitleChange } = useWidgetHandlers(node.id);
   
   // Extract webview config from node content
   const webviewConfig = typeof node.content === 'object' && node.content?.type === 'webview-widget'
@@ -134,6 +134,7 @@ function WebViewWidget(props: WebViewWidgetProps) {
       className="webview-widget"
       onClose={handleClose}
       onResize={handleResize}
+      onTitleChange={handleTitleChange}
     >
       {hasError ? (
         <div className="flex flex-col items-center justify-center h-full p-4 text-center">

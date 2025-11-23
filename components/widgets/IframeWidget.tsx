@@ -21,7 +21,7 @@ interface IframeWidgetProps extends WidgetProps {
 function IframeWidget(props: IframeWidgetProps) {
   const { data } = props;
   const node = data.node;
-  const { handleClose, handleResize } = useWidgetHandlers(node.id);
+  const { handleClose, handleResize, handleTitleChange } = useWidgetHandlers(node.id);
   
   // Extract iframe config from node content
   const iframeConfig = typeof node.content === 'object' && node.content?.type === 'iframe-widget'
@@ -76,6 +76,7 @@ function IframeWidget(props: IframeWidgetProps) {
       className="iframe-widget"
       onClose={handleClose}
       onResize={handleResize}
+      onTitleChange={handleTitleChange}
     >
       {hasError ? (
         <div className="flex flex-col items-center justify-center h-full p-4 text-center">

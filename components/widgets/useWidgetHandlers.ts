@@ -105,9 +105,40 @@ export function useWidgetHandlers(nodeId: string) {
     }
   }, [nodeId, workspaceId, getNode, setNodes, updateWorkspaceNode]);
 
+  const handleTitleChange = useCallback(async (newTitle: string) => {
+    if (!nodeId || !workspaceId) return;
+    
+    // Update workspace store
+    updateWorkspaceNode(nodeId, {
+      title: newTitle,
+    });
+    
+    // Persist to API
+    try {
+      const response = await fetch('/api/nodes/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId,
+          title: newTitle,
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.node) {
+          updateWorkspaceNode(nodeId, data.node);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating widget title:', error);
+    }
+  }, [nodeId, workspaceId, updateWorkspaceNode]);
+
   return {
     handleClose,
     handleResize,
+    handleTitleChange,
   };
 }
 

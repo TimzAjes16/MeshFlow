@@ -39,7 +39,7 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const updateNode = useWorkspaceStore((state) => state.updateNode);
-  const { handleClose, handleResize } = useWidgetHandlers(node.id);
+  const { handleClose, handleResize, handleTitleChange } = useWidgetHandlers(node.id);
   const [isMuted, setIsMuted] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
@@ -288,6 +288,7 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
       className="live-capture-widget"
       onClose={handleClose}
       onResize={handleResize}
+      onTitleChange={handleTitleChange}
     >
       {!isConfigured ? (
         <div className="flex flex-col items-center justify-center h-full p-4 text-center bg-gray-100 dark:bg-gray-900">

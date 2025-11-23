@@ -22,7 +22,7 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
   const { data } = props;
   const node = data.node;
   const containerRef = useRef<HTMLDivElement>(null);
-  const { handleClose, handleResize } = useWidgetHandlers(node.id);
+  const { handleClose, handleResize, handleTitleChange } = useWidgetHandlers(node.id);
   
   // Extract native window config from node content
   const windowConfig = typeof node.content === 'object' && node.content?.type === 'native-window-widget'
@@ -115,6 +115,7 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
       className="native-window-widget"
       onClose={handleClose}
       onResize={handleResize}
+      onTitleChange={handleTitleChange}
     >
       {error ? (
         <div className="flex flex-col items-center justify-center h-full p-4 text-center">
