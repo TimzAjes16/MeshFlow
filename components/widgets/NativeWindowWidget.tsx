@@ -9,6 +9,7 @@
 import { memo, useState, useEffect, useCallback, useRef } from 'react';
 import BaseWidget, { WidgetProps } from './BaseWidget';
 import { Monitor, AlertCircle, RefreshCw } from 'lucide-react';
+import { useWidgetHandlers } from './useWidgetHandlers';
 
 interface NativeWindowWidgetProps extends WidgetProps {
   // Native window specific props
@@ -21,6 +22,7 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
   const { data } = props;
   const node = data.node;
   const containerRef = useRef<HTMLDivElement>(null);
+  const { handleClose, handleResize } = useWidgetHandlers(node.id);
   
   // Extract native window config from node content
   const windowConfig = typeof node.content === 'object' && node.content?.type === 'native-window-widget'
@@ -111,6 +113,8 @@ function NativeWindowWidget(props: NativeWindowWidgetProps) {
       title={node.title || windowConfig.windowTitle || 'Native App'}
       icon={<Monitor className="w-4 h-4" />}
       className="native-window-widget"
+      onClose={handleClose}
+      onResize={handleResize}
     >
       {error ? (
         <div className="flex flex-col items-center justify-center h-full p-4 text-center">

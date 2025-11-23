@@ -11,6 +11,7 @@ import BaseWidget, { WidgetProps } from './BaseWidget';
 import { Camera, Volume2, VolumeX, Pause, Play } from 'lucide-react';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import type { Node as NodeType } from '@/types/Node';
+import { useWidgetHandlers } from './useWidgetHandlers';
 
 interface LiveCaptureWidgetProps extends WidgetProps {
   // Live capture specific props
@@ -38,6 +39,7 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const updateNode = useWorkspaceStore((state) => state.updateNode);
+  const { handleClose, handleResize } = useWidgetHandlers(node.id);
   const [isMuted, setIsMuted] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
@@ -284,6 +286,8 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
       title={node.title || 'Live Capture'}
       icon={<Camera className="w-4 h-4" />}
       className="live-capture-widget"
+      onClose={handleClose}
+      onResize={handleResize}
     >
       {!isConfigured ? (
         <div className="flex flex-col items-center justify-center h-full p-4 text-center bg-gray-100 dark:bg-gray-900">

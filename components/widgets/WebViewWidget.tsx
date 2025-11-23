@@ -9,6 +9,7 @@
 import { memo, useState, useCallback, useEffect, useRef } from 'react';
 import BaseWidget, { WidgetProps } from './BaseWidget';
 import { Globe2, AlertCircle } from 'lucide-react';
+import { useWidgetHandlers } from './useWidgetHandlers';
 
 interface WebViewWidgetProps extends WidgetProps {
   url?: string;
@@ -20,6 +21,7 @@ function WebViewWidget(props: WebViewWidgetProps) {
   const { data } = props;
   const node = data.node;
   const webviewRef = useRef<HTMLWebViewElement>(null);
+  const { handleClose, handleResize } = useWidgetHandlers(node.id);
   
   // Extract webview config from node content
   const webviewConfig = typeof node.content === 'object' && node.content?.type === 'webview-widget'
@@ -89,6 +91,8 @@ function WebViewWidget(props: WebViewWidgetProps) {
         title={node.title || 'Web App'}
         icon={<Globe2 className="w-4 h-4" />}
         className="webview-widget"
+        onClose={handleClose}
+        onResize={handleResize}
       >
         {!webviewConfig.url ? (
           <div className="flex flex-col items-center justify-center h-full p-4 text-center">
@@ -128,6 +132,8 @@ function WebViewWidget(props: WebViewWidgetProps) {
       title={node.title || 'Web App'}
       icon={<Globe2 className="w-4 h-4" />}
       className="webview-widget"
+      onClose={handleClose}
+      onResize={handleResize}
     >
       {hasError ? (
         <div className="flex flex-col items-center justify-center h-full p-4 text-center">

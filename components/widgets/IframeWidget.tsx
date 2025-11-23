@@ -9,6 +9,7 @@
 import { memo, useState, useCallback } from 'react';
 import BaseWidget, { WidgetProps } from './BaseWidget';
 import { Globe, AlertCircle } from 'lucide-react';
+import { useWidgetHandlers } from './useWidgetHandlers';
 
 interface IframeWidgetProps extends WidgetProps {
   // Iframe-specific props
@@ -20,6 +21,7 @@ interface IframeWidgetProps extends WidgetProps {
 function IframeWidget(props: IframeWidgetProps) {
   const { data } = props;
   const node = data.node;
+  const { handleClose, handleResize } = useWidgetHandlers(node.id);
   
   // Extract iframe config from node content
   const iframeConfig = typeof node.content === 'object' && node.content?.type === 'iframe-widget'
@@ -53,6 +55,8 @@ function IframeWidget(props: IframeWidgetProps) {
       title={node.title || 'Web App'}
       icon={<Globe className="w-4 h-4" />}
       className="iframe-widget"
+      onClose={handleClose}
+      onResize={handleResize}
     >
       {hasError ? (
         <div className="flex flex-col items-center justify-center h-full p-4 text-center">

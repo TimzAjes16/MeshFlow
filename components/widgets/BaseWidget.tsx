@@ -151,8 +151,12 @@ function BaseWidget({
           )}
           {canClose && (
             <button
-              onClick={onClose}
-              className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose?.();
+              }}
+              className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors z-10"
               title="Close"
             >
               <X className="w-3.5 h-3.5 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400" />
@@ -171,11 +175,15 @@ function BaseWidget({
       {/* Resize Handle */}
       {canResize && !isMinimized && (
         <div
-          className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 transition-colors"
+          className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 transition-colors z-10"
           style={{
             clipPath: 'polygon(100% 0, 0 100%, 100% 100%)',
           }}
-          onMouseDown={handleResizeStart}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleResizeStart(e);
+          }}
         />
       )}
     </div>
