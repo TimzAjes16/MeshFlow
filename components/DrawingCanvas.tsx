@@ -34,6 +34,14 @@ const DrawingCanvas = ({ workspaceId }: DrawingCanvasProps) => {
   const [color, setColor] = useState('#000000');
   const [strokeWidth, setStrokeWidth] = useState(2);
 
+  // Use refs to store event handlers to avoid Turbopack evaluation issues
+  const handleToggleDrawingRef = useRef<((event: CustomEvent) => void) | null>(null);
+  const handleToggleEraserRef = useRef<((event: CustomEvent) => void) | null>(null);
+  const handleUpdateEraserSettingsRef = useRef<((event: CustomEvent) => void) | null>(null);
+  const handleUpdateSettingsRef = useRef<((event: CustomEvent) => void) | null>(null);
+  const handleUndoRef = useRef<(() => void) | null>(null);
+  const handleRedoRef = useRef<(() => void) | null>(null);
+
   // Listen for drawing mode toggle
   useEffect(() => {
     handleToggleDrawingRef.current = (event: CustomEvent) => {
@@ -115,14 +123,6 @@ const DrawingCanvas = ({ workspaceId }: DrawingCanvasProps) => {
       window.removeEventListener('update-drawing-settings', handleUpdateSettingsWrapper);
     };
   }, []);
-
-  // Use refs to store event handlers to avoid Turbopack evaluation issues
-  const handleToggleDrawingRef = useRef<((event: CustomEvent) => void) | null>(null);
-  const handleToggleEraserRef = useRef<((event: CustomEvent) => void) | null>(null);
-  const handleUpdateEraserSettingsRef = useRef<((event: CustomEvent) => void) | null>(null);
-  const handleUpdateSettingsRef = useRef<((event: CustomEvent) => void) | null>(null);
-  const handleUndoRef = useRef<(() => void) | null>(null);
-  const handleRedoRef = useRef<(() => void) | null>(null);
 
   // Listen for undo/redo events
   useEffect(() => {
