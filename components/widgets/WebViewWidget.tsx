@@ -57,6 +57,30 @@ function WebViewWidget(props: WebViewWidgetProps) {
     setHasError(true);
   }, []);
 
+  // Setup webview event listeners (Electron webview uses DOM events, not React props)
+  useEffect(() => {
+    if (!isElectron || !webviewRef.current || !webviewConfig.url) return;
+
+    const webview = webviewRef.current;
+    
+    const handleDidFinishLoad = () => {
+      handleLoad();
+    };
+    
+    const handleDidFailLoad = () => {
+      handleError();
+    };
+
+    // Use addEventListener for Electron webview events
+    webview.addEventListener('did-finish-load', handleDidFinishLoad);
+    webview.addEventListener('did-fail-load', handleDidFailLoad);
+
+    return () => {
+      webview.removeEventListener('did-finish-load', handleDidFinishLoad);
+      webview.removeEventListener('did-fail-load', handleDidFailLoad);
+    };
+  }, [isElectron, webviewConfig.url, handleLoad, handleError]);
+
   // If not in Electron, fallback to iframe
   if (!isElectron) {
     return (
@@ -66,22 +90,34 @@ function WebViewWidget(props: WebViewWidgetProps) {
         icon={<Globe2 className="w-4 h-4" />}
         className="webview-widget"
       >
-        <div className="relative w-full h-full">
-          {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            </div>
-          )}
-          <iframe
-            src={webviewConfig.url}
-            className="w-full h-full border-0"
-            allowFullScreen={webviewConfig.allowFullScreen}
-            onLoad={handleLoad}
-            onError={handleError}
-            title={node.title || 'Embedded content'}
-            style={{ display: isLoading ? 'none' : 'block' }}
-          />
-        </div>
+        {!webviewConfig.url ? (
+          <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+            <Globe2 className="w-8 h-8 text-gray-400 mb-2" />
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+              No URL configured
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-500">
+              Click to configure this widget
+            </p>
+          </div>
+        ) : (
+          <div className="relative w-full h-full">
+            {isLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              </div>
+            )}
+            <iframe
+              src={webviewConfig.url || undefined}
+              className="w-full h-full border-0"
+              allowFullScreen={webviewConfig.allowFullScreen}
+              onLoad={handleLoad}
+              onError={handleError}
+              title={node.title || 'Embedded content'}
+              style={{ display: isLoading ? 'none' : 'block' }}
+            />
+          </div>
+        )}
       </BaseWidget>
     );
   }
@@ -103,6 +139,16 @@ function WebViewWidget(props: WebViewWidgetProps) {
             {webviewConfig.url}
           </p>
         </div>
+      ) : !webviewConfig.url ? (
+        <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+          <Globe2 className="w-8 h-8 text-gray-400 mb-2" />
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+            No URL configured
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500">
+            Click to configure this widget
+          </p>
+        </div>
       ) : (
         <div className="relative w-full h-full">
           {isLoading && (
@@ -113,12 +159,10 @@ function WebViewWidget(props: WebViewWidgetProps) {
           {/* Electron webview tag - only works in Electron environment */}
           <webview
             ref={webviewRef}
-            src={webviewConfig.url}
+            src={webviewConfig.url || undefined}
             className="w-full h-full"
             allowpopups={webviewConfig.allowFullScreen ? 'true' : 'false'}
             preload={webviewConfig.preloadScript}
-            onDidFinishLoad={handleLoad}
-            onDidFailLoad={handleError}
             style={{ display: isLoading ? 'none' : 'block' }}
           />
         </div>

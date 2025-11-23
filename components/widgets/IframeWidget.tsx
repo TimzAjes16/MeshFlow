@@ -64,6 +64,16 @@ function IframeWidget(props: IframeWidgetProps) {
             {iframeConfig.url}
           </p>
         </div>
+      ) : !iframeConfig.url ? (
+        <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+          <Globe className="w-8 h-8 text-gray-400 mb-2" />
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+            No URL configured
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500">
+            Click to configure this widget
+          </p>
+        </div>
       ) : (
         <div className="relative w-full h-full">
           {isLoading && (
@@ -72,7 +82,7 @@ function IframeWidget(props: IframeWidgetProps) {
             </div>
           )}
           <iframe
-            src={iframeConfig.url}
+            src={iframeConfig.url || undefined}
             className="w-full h-full border-0"
             allowFullScreen={iframeConfig.allowFullScreen}
             sandbox={iframeConfig.sandbox}
