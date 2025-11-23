@@ -186,12 +186,12 @@ const VerticalToolbar = ({}: VerticalToolbarProps) => {
       }));
     }
     
-    // Dispatch event to enable/disable live capture mode
+    // Always dispatch event to notify other components (including when disabling)
     window.dispatchEvent(new CustomEvent('toggle-live-capture-mode', { 
       detail: { enabled: newState } 
     }));
     
-    // Trigger capture modal if activating
+    // Trigger capture modal only if activating
     if (newState) {
       window.dispatchEvent(new CustomEvent('open-live-capture-modal', {
         detail: { nodeId: null } // null means create new node

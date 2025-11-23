@@ -81,29 +81,59 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
   
   // Get live stream from global registry - always try to get stream for live capture
   useEffect(() => {
-    // Try to get stream from registry first
-    const streamRegistry = (window as any).liveCaptureStreams;
-    if (streamRegistry && streamRegistry.has(id)) {
-      const streamData = streamRegistry.get(id);
-      if (streamData && streamData.stream) {
-        setLiveStream(streamData.stream);
-        return;
+    const checkForStream = () => {
+      // Try to get stream from registry first
+      const streamRegistry = (window as any).liveCaptureStreams;
+      if (streamRegistry && streamRegistry.has(id)) {
+        const streamData = streamRegistry.get(id);
+        if (streamData && streamData.stream) {
+          setLiveStream(streamData.stream);
+          return true;
+        }
       }
-    }
-    
-    // Fallback: try to get current screen stream (for new captures)
-    if ((window as any).currentScreenStream) {
-      const currentStream = (window as any).currentScreenStream;
-      setLiveStream(currentStream);
       
-      // Store it in the registry for this node if not already there
-      if (streamRegistry && !streamRegistry.has(id)) {
-        streamRegistry.set(id, {
+      // Fallback: try to get current screen stream (for new captures)
+      if ((window as any).currentScreenStream) {
+        const currentStream = (window as any).currentScreenStream;
+        setLiveStream(currentStream);
+        
+        // Store it in the registry for this node if not already there
+        if (!streamRegistry) {
+          (window as any).liveCaptureStreams = new Map();
+        }
+        (window as any).liveCaptureStreams.set(id, {
           stream: currentStream,
           cropArea: captureData.cropArea,
           screenBounds: captureData.screenBounds,
         });
+        return true;
       }
+      
+      return false;
+    };
+    
+    // Check immediately
+    if (!checkForStream()) {
+      // If stream not found, set up a polling mechanism to check periodically
+      const intervalId = setInterval(() => {
+        if (checkForStream()) {
+          clearInterval(intervalId);
+        }
+      }, 100); // Check every 100ms
+      
+      // Stop polling after 5 seconds
+      const timeoutId = setTimeout(() => {
+        clearInterval(intervalId);
+      }, 5000);
+      
+      return () => {
+        clearInterval(intervalId);
+        clearTimeout(timeoutId);
+        // Cleanup on unmount
+        if (cropIntervalRef.current) {
+          clearInterval(cropIntervalRef.current);
+        }
+      };
     }
     
     return () => {

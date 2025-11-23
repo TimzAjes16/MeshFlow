@@ -1191,6 +1191,16 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                 // For now, we'll store the crop area as screen bounds - this will be improved with actual screen coordinate tracking
                 const screenBounds = area; // TODO: Get actual screen coordinates from video metadata
                 
+                // Store stream in global registry BEFORE updating node to ensure it's available when node re-renders
+                if (!(window as any).liveCaptureStreams) {
+                  (window as any).liveCaptureStreams = new Map();
+                }
+                (window as any).liveCaptureStreams.set(captureNodeId, {
+                  stream,
+                  cropArea: area,
+                  screenBounds, // Store screen bounds for interactive mode
+                });
+                
                 updateNode(captureNodeId, {
                   content: {
                     ...currentContent,
@@ -1241,15 +1251,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                 if (response.ok) {
                   const data = await response.json();
                   if (data.node) {
-                    addNode(data.node);
-                    selectNode(data.node.id);
-                    
-                    // Set up live stream monitoring
-                    setScreenCaptureNodeId(data.node.id);
-                    setScreenCaptureStream(stream);
-                    setScreenCaptureArea(area);
-                    
-                    // Store stream in global registry for LiveCaptureNode to access
+                    // Store stream in global registry BEFORE adding node to ensure it's available when node renders
                     if (!(window as any).liveCaptureStreams) {
                       (window as any).liveCaptureStreams = new Map();
                     }
@@ -1258,6 +1260,15 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                       cropArea: area,
                       screenBounds: area, // Store screen bounds for interactive mode
                     });
+                    
+                    // Now add the node - stream is already in registry
+                    addNode(data.node);
+                    selectNode(data.node.id);
+                    
+                    // Set up live stream monitoring
+                    setScreenCaptureNodeId(data.node.id);
+                    setScreenCaptureStream(stream);
+                    setScreenCaptureArea(area);
                     
                     (window as any).lastFlowPosition = null;
                   }

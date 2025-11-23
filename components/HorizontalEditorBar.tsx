@@ -313,7 +313,10 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     (selectedNode.content.interactive ?? false);
 
   // Only show when a node is selected OR brush tool is active OR eraser tool is active OR live capture is active
-  if (!selectedNodeId && !isBrushActive && !isEraserActive && !isLiveCaptureActive) {
+  // Hide when all tools are deselected and no node is selected
+  const shouldShow = selectedNodeId || isBrushActive || isEraserActive || isLiveCaptureActive;
+  
+  if (!shouldShow) {
     return null;
   }
 
