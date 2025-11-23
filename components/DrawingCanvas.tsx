@@ -286,27 +286,59 @@ const DrawingCanvas = ({ workspaceId }: DrawingCanvasProps) => {
     }
   }, [isDrawing, drawingMode, handleMouseMove, handleMouseUp]);
 
-  // Update canvas size on window resize
+  // Track previous viewport to detect changes
+  const previousViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(null);
+
+  // Update canvas size on window resize and viewport changes
   useEffect(() => {
     const handleResize = () => {
       drawPaths();
     };
 
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [drawPaths]);
+    
+    // Monitor viewport changes to redraw drawings when zooming/panning
+    // This ensures drawings stay correctly positioned even when drawing mode is off
+    const checkViewportChanges = () => {
+      if (!reactFlowInstance || paths.length === 0) return;
+      
+      try {
+        const currentViewport = reactFlowInstance.getViewport();
+        const previous = previousViewportRef.current;
+        
+        // Check if viewport actually changed
+        if (
+          !previous ||
+          previous.x !== currentViewport.x ||
+          previous.y !== currentViewport.y ||
+          previous.zoom !== currentViewport.zoom
+        ) {
+          previousViewportRef.current = currentViewport;
+          drawPaths();
+        }
+      } catch (error) {
+        // Silently handle errors (e.g., if React Flow isn't ready)
+      }
+    };
+    
+    // Check for viewport changes periodically
+    const interval = setInterval(checkViewportChanges, 100);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearInterval(interval);
+    };
+  }, [drawPaths, paths.length, reactFlowInstance]);
 
-  if (!drawingMode) {
-    return null;
-  }
-
+  // Always render canvas to show persisted drawings, but only enable interaction when drawing mode is active
   return (
     <canvas
       ref={canvasRef}
-      onMouseDown={handleMouseDown}
-      className="absolute inset-0 w-full h-full pointer-events-auto z-10"
+      onMouseDown={drawingMode ? handleMouseDown : undefined}
+      className="absolute inset-0 w-full h-full z-10"
       style={{
-        cursor: isDrawing ? 'crosshair' : 'crosshair',
+        pointerEvents: drawingMode ? 'auto' : 'none',
+        cursor: drawingMode ? (isDrawing ? 'crosshair' : 'crosshair') : 'default',
         touchAction: 'none',
       }}
     />
