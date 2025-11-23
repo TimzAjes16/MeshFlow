@@ -645,6 +645,10 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           'line-chart': 'Line Chart',
           'pie-chart': 'Pie Chart',
           'area-chart': 'Area Chart',
+          'iframe-widget': 'Web App',
+          'webview-widget': 'Web App',
+          'live-capture-widget': 'Live Capture',
+          'native-window-widget': extraConfig?.windowTitle || extraConfig?.processName || 'Native App',
         };
 
         // Get default content based on node type
@@ -677,12 +681,20 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
             };
           }
           if (type === 'native-window-widget') {
-            return {
+            const defaultContent = {
               type: 'native-window-widget',
               processName: '',
               windowTitle: '',
               windowHandle: undefined,
             };
+            // Merge with extraConfig if provided (from modal confirmation)
+            if (extraConfig && typeof extraConfig === 'object') {
+              return {
+                ...defaultContent,
+                ...extraConfig,
+              };
+            }
+            return defaultContent;
           }
           
           // Chart types
