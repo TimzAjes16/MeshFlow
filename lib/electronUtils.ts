@@ -30,6 +30,12 @@ declare global {
       getScreenBounds?: () => Promise<{ x: number; y: number; width: number; height: number }>;
       confirmCapture?: (selection: { x: number; y: number; width: number; height: number }) => Promise<void>;
       onCaptureSelection?: (callback: (selection: { x: number; y: number; width: number; height: number; sourceId?: string }) => void) => void;
+      openCropAreaOverlay?: (options?: { defaultWidth?: number; defaultHeight?: number }) => Promise<void>;
+      closeCropAreaOverlay?: () => Promise<void>;
+      confirmCropArea?: (area: { x: number; y: number; width: number; height: number }) => Promise<void>;
+      cancelCropArea?: () => Promise<void>;
+      onCropAreaSelected?: (callback: (area: { x: number; y: number; width: number; height: number }) => void) => void;
+      onCropAreaCancelled?: (callback: () => void) => void;
     };
   }
 }

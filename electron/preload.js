@@ -73,6 +73,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onCaptureSelection: (callback) => {
     ipcRenderer.on('capture-selection', (_, selection) => callback(selection));
   },
+  // Open crop area overlay (system-wide)
+  openCropAreaOverlay: async (options) => {
+    return await ipcRenderer.invoke('open-crop-area-overlay', options);
+  },
+  // Close crop area overlay
+  closeCropAreaOverlay: async () => {
+    return await ipcRenderer.invoke('close-crop-area-overlay');
+  },
+  // Confirm crop area selection
+  confirmCropArea: async (area) => {
+    return await ipcRenderer.invoke('confirm-crop-area', area);
+  },
+  // Cancel crop area
+  cancelCropArea: async () => {
+    return await ipcRenderer.invoke('cancel-crop-area');
+  },
+  // Listen for crop area selection
+  onCropAreaSelected: (callback) => {
+    ipcRenderer.on('crop-area-selected', (_, area) => callback(area));
+  },
+  // Listen for crop area cancellation
+  onCropAreaCancelled: (callback) => {
+    ipcRenderer.on('crop-area-cancelled', () => callback());
+  },
 });
 
 

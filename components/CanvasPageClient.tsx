@@ -201,12 +201,15 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     
     // Handle create live capture from floating crop area
     const handleCreateLiveCaptureFromArea = async (event: CustomEvent) => {
+      console.log('[CanvasPageClient] handleCreateLiveCaptureFromArea called with:', event.detail);
       const { area, stream } = event.detail;
       
       if (!stream || !area) {
-        console.error('Missing stream or area for live capture');
+        console.error('[CanvasPageClient] Missing stream or area for live capture:', { stream: !!stream, area: !!area });
         return;
       }
+
+      console.log('[CanvasPageClient] Creating live capture node with area:', area, 'and stream:', stream.id);
 
       try {
         // Get thumbnail from stream
@@ -237,10 +240,30 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           });
         }
         
+        // Get video dimensions for proper coordinate conversion
+        // The video stream captures what the user selected (screen/window)
+        // We need to determine the actual video dimensions to properly crop
+        const videoWidth = video.videoWidth || window.screen.width;
+        const videoHeight = video.videoHeight || window.screen.height;
+        
+        console.log('[CanvasPageClient] Video dimensions:', {
+          videoWidth,
+          videoHeight,
+          screenWidth: window.screen.width,
+          screenHeight: window.screen.height,
+          cropArea: area
+        });
+        
         // Draw cropped region (for thumbnail)
+        // Ensure crop coordinates are within video bounds
+        const cropX = Math.max(0, Math.min(area.x, videoWidth));
+        const cropY = Math.max(0, Math.min(area.y, videoHeight));
+        const cropW = Math.min(area.width, videoWidth - cropX);
+        const cropH = Math.min(area.height, videoHeight - cropY);
+        
         ctx.drawImage(
           video,
-          area.x, area.y, area.width, area.height,
+          cropX, cropY, cropW, cropH,
           0, 0, area.width, area.height
         );
         
@@ -248,6 +271,17 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         
         // Create new live capture node
         const storedFlowPos = (window as any).lastFlowPosition || { x: 500, y: 400 };
+        
+        // Store screen bounds for coordinate conversion in LiveCaptureNode
+        // The video stream dimensions represent what was captured
+        const screenBounds = {
+          x: 0,
+          y: 0,
+          width: videoWidth,  // Use actual video dimensions
+          height: videoHeight
+        };
+        
+        console.log('[CanvasPageClient] Storing screen bounds:', screenBounds);
         
         const response = await fetch('/api/nodes/create', {
           method: 'POST',
@@ -259,8 +293,8 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
             content: {
               type: 'live-capture',
               imageUrl, // Thumbnail
-              cropArea: area,
-              screenBounds: area, // Store screen bounds for interactive mode
+              cropArea: area, // The selected area in screen coordinates
+              screenBounds: screenBounds, // Store full screen bounds for coordinate conversion
               streamId: stream.id,
               isLiveStream: true,
               captureMode: 'custom',
@@ -279,33 +313,57 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         
         if (response.ok) {
           const data = await response.json();
+          console.log('[CanvasPageClient] Node created successfully:', data.node?.id);
           if (data.node) {
             // Verify stream is still active before storing
             const tracks = stream.getVideoTracks();
+            console.log('[CanvasPageClient] Stream tracks:', tracks.length, 'ready states:', tracks.map(t => t.readyState));
             if (tracks.length > 0 && tracks.some(t => t.readyState === 'live' || t.readyState === 'ended')) {
               // Store stream in global registry
               if (!(window as any).liveCaptureStreams) {
                 (window as any).liveCaptureStreams = new Map();
               }
               
+              // Store screen bounds for coordinate conversion
+              const screenBoundsForStream = {
+                x: 0,
+                y: 0,
+                width: window.screen.width,
+                height: window.screen.height
+              };
+              
               (window as any).liveCaptureStreams.set(data.node.id, {
                 stream,
                 cropArea: area,
-                screenBounds: area,
+                screenBounds: screenBoundsForStream,
               });
+              
+              console.log('[CanvasPageClient] Stream stored in registry for node:', data.node.id);
               
               // Dispatch event to notify LiveCaptureNode
               window.dispatchEvent(new CustomEvent('live-capture-stream-ready', {
                 detail: { nodeId: data.node.id }
               }));
               
+              console.log('[CanvasPageClient] live-capture-stream-ready event dispatched');
+              
               // Add node to workspace
               addNode(data.node);
               selectNode(data.node.id);
               
+              console.log('[CanvasPageClient] Node added to workspace and selected');
+              
               (window as any).lastFlowPosition = null;
+            } else {
+              console.warn('[CanvasPageClient] Stream tracks not in valid state:', tracks.map(t => ({ state: t.readyState, enabled: t.enabled })));
             }
+          } else {
+            console.error('[CanvasPageClient] No node in response:', data);
           }
+        } else {
+          console.error('[CanvasPageClient] Failed to create node, response status:', response.status);
+          const errorText = await response.text();
+          console.error('[CanvasPageClient] Error response:', errorText);
         }
       } catch (error) {
         console.error('Error creating live capture from area:', error);

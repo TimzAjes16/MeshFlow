@@ -6,6 +6,7 @@ const isDev = process.env.NODE_ENV === 'development';
 let mainWindow;
 let overlayWindow = null;
 let captureWidget = null;
+let cropAreaOverlay = null;
 let nextServer = null;
 const PORT = 3000;
 const HOST = 'localhost';
@@ -1237,6 +1238,336 @@ ipcMain.handle('confirm-capture', async (event, selection) => {
     
     overlayWindow.close();
     overlayWindow = null;
+  }
+});
+
+// IPC handler to open crop area overlay (system-wide)
+ipcMain.handle('open-crop-area-overlay', async (event, options = {}) => {
+  if (cropAreaOverlay) {
+    cropAreaOverlay.focus();
+    return;
+  }
+
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height, x, y } = primaryDisplay.bounds;
+  const defaultWidth = options.defaultWidth || 779;
+  const defaultHeight = options.defaultHeight || 513;
+
+  // Create overlay window that spans the entire screen
+  cropAreaOverlay = new BrowserWindow({
+    width: width,
+    height: height,
+    x: x,
+    y: y,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    fullscreen: false,
+    focusable: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+      enableRemoteModule: false,
+    },
+  });
+
+  // Create HTML for crop area overlay
+  const cropAreaHTML = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Crop Area Overlay</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          width: 100vw;
+          height: 100vh;
+          background: transparent;
+          overflow: hidden;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          cursor: default;
+        }
+        #crop-area {
+          position: absolute;
+          border: 2px solid #3b82f6;
+          background: rgba(59, 130, 246, 0.1);
+          backdrop-filter: blur(4px);
+          border-radius: 8px;
+          box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.3);
+          cursor: grab;
+          user-select: none;
+          -webkit-user-select: none;
+        }
+        #crop-area.dragging {
+          cursor: grabbing;
+        }
+        #header {
+          position: absolute;
+          top: -40px;
+          left: 0;
+          right: 0;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 0 8px;
+          pointer-events: none;
+        }
+        #dimensions {
+          background: #3b82f6;
+          color: white;
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 500;
+          white-space: nowrap;
+        }
+        #controls {
+          display: flex;
+          gap: 4px;
+        }
+        .control-btn {
+          width: 24px;
+          height: 24px;
+          border-radius: 6px;
+          border: none;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 14px;
+          transition: all 0.15s;
+          pointer-events: auto;
+        }
+        #confirm-btn {
+          background: #10b981;
+          color: white;
+        }
+        #confirm-btn:hover {
+          background: #059669;
+        }
+        #cancel-btn {
+          background: #ef4444;
+          color: white;
+        }
+        #cancel-btn:hover {
+          background: #dc2626;
+        }
+        .resize-handle {
+          position: absolute;
+          width: 12px;
+          height: 12px;
+          background: #3b82f6;
+          border: 2px solid white;
+          border-radius: 50%;
+          pointer-events: auto;
+          z-index: 10;
+        }
+        .resize-handle.nw { top: -6px; left: -6px; cursor: nwse-resize; }
+        .resize-handle.ne { top: -6px; right: -6px; cursor: nesw-resize; }
+        .resize-handle.sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+        .resize-handle.se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+        .resize-handle.n { top: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+        .resize-handle.s { bottom: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+        .resize-handle.w { left: -6px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+        .resize-handle.e { right: -6px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+      </style>
+    </head>
+    <body>
+      <div id="crop-area">
+        <div id="header">
+          <div id="dimensions">${defaultWidth} × ${defaultHeight}px</div>
+          <div id="controls">
+            <button id="confirm-btn" class="control-btn" title="Confirm selection">✓</button>
+            <button id="cancel-btn" class="control-btn" title="Cancel">×</button>
+          </div>
+        </div>
+        <div class="resize-handle nw"></div>
+        <div class="resize-handle ne"></div>
+        <div class="resize-handle sw"></div>
+        <div class="resize-handle se"></div>
+        <div class="resize-handle n"></div>
+        <div class="resize-handle s"></div>
+        <div class="resize-handle w"></div>
+        <div class="resize-handle e"></div>
+      </div>
+      <script>
+        const cropArea = document.getElementById('crop-area');
+        const dimensionsEl = document.getElementById('dimensions');
+        const confirmBtn = document.getElementById('confirm-btn');
+        const cancelBtn = document.getElementById('cancel-btn');
+        
+        let position = {
+          x: ${(width / 2) - (defaultWidth / 2)},
+          y: ${(height / 2) - (defaultHeight / 2)}
+        };
+        let size = { width: ${defaultWidth}, height: ${defaultHeight} };
+        let isDragging = false;
+        let isResizing = false;
+        let resizeHandle = null;
+        let dragOffset = { x: 0, y: 0 };
+        
+        function updatePosition() {
+          cropArea.style.left = position.x + 'px';
+          cropArea.style.top = position.y + 'px';
+          cropArea.style.width = size.width + 'px';
+          cropArea.style.height = size.height + 'px';
+          dimensionsEl.textContent = Math.round(size.width) + ' × ' + Math.round(size.height) + 'px';
+        }
+        
+        // Drag handlers
+        cropArea.addEventListener('mousedown', (e) => {
+          if (e.target.classList.contains('resize-handle')) return;
+          if (e.target.closest('.control-btn')) return;
+          e.preventDefault();
+          isDragging = true;
+          dragOffset.x = e.screenX - position.x;
+          dragOffset.y = e.screenY - position.y;
+          cropArea.classList.add('dragging');
+        });
+        
+        // Resize handlers
+        document.querySelectorAll('.resize-handle').forEach(handle => {
+          handle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            isResizing = true;
+            resizeHandle = handle.className.split(' ')[1];
+            const handleX = resizeHandle.includes('w') ? position.x : resizeHandle.includes('e') ? position.x + size.width : position.x + size.width / 2;
+            const handleY = resizeHandle.includes('n') ? position.y : resizeHandle.includes('s') ? position.y + size.height : position.y + size.height / 2;
+            dragOffset.x = e.screenX - handleX;
+            dragOffset.y = e.screenY - handleY;
+          });
+        });
+        
+        // Mouse move
+        document.addEventListener('mousemove', (e) => {
+          if (isDragging) {
+            position.x = e.screenX - dragOffset.x;
+            position.y = e.screenY - dragOffset.y;
+            updatePosition();
+          } else if (isResizing && resizeHandle) {
+            let handleScreenX, handleScreenY;
+            if (resizeHandle.includes('w')) {
+              handleScreenX = position.x;
+            } else if (resizeHandle.includes('e')) {
+              handleScreenX = position.x + size.width;
+            } else {
+              handleScreenX = position.x + size.width / 2;
+            }
+            if (resizeHandle.includes('n')) {
+              handleScreenY = position.y;
+            } else if (resizeHandle.includes('s')) {
+              handleScreenY = position.y + size.height;
+            } else {
+              handleScreenY = position.y + size.height / 2;
+            }
+            const currentHandleX = e.screenX - dragOffset.x;
+            const currentHandleY = e.screenY - dragOffset.y;
+            const deltaX = currentHandleX - handleScreenX;
+            const deltaY = currentHandleY - handleScreenY;
+            
+            if (resizeHandle.includes('n')) {
+              const heightChange = -deltaY;
+              size.height = Math.max(100, size.height + heightChange);
+              position.y = position.y - (size.height - (size.height - heightChange));
+            }
+            if (resizeHandle.includes('s')) {
+              size.height = Math.max(100, size.height + deltaY);
+            }
+            if (resizeHandle.includes('w')) {
+              const widthChange = -deltaX;
+              size.width = Math.max(100, size.width + widthChange);
+              position.x = position.x - (size.width - (size.width - widthChange));
+            }
+            if (resizeHandle.includes('e')) {
+              size.width = Math.max(100, size.width + deltaX);
+            }
+            updatePosition();
+          }
+        });
+        
+        // Mouse up
+        document.addEventListener('mouseup', () => {
+          isDragging = false;
+          isResizing = false;
+          resizeHandle = null;
+          cropArea.classList.remove('dragging');
+        });
+        
+        // ESC key
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            window.electronAPI?.cancelCropArea?.();
+          }
+        });
+        
+        // Buttons
+        confirmBtn.addEventListener('click', () => {
+          if (window.electronAPI?.confirmCropArea) {
+            window.electronAPI.confirmCropArea({
+              x: position.x,
+              y: position.y,
+              width: size.width,
+              height: size.height
+            });
+          }
+        });
+        
+        cancelBtn.addEventListener('click', () => {
+          if (window.electronAPI?.cancelCropArea) {
+            window.electronAPI.cancelCropArea();
+          }
+        });
+        
+        updatePosition();
+        
+        // Prevent context menu
+        document.addEventListener('contextmenu', (e) => e.preventDefault());
+      </script>
+    </body>
+    </html>
+  `;
+
+  cropAreaOverlay.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(cropAreaHTML)}`);
+  
+  cropAreaOverlay.setIgnoreMouseEvents(false);
+  cropAreaOverlay.focus();
+  
+  cropAreaOverlay.on('closed', () => {
+    cropAreaOverlay = null;
+  });
+});
+
+// IPC handler to close crop area overlay
+ipcMain.handle('close-crop-area-overlay', () => {
+  if (cropAreaOverlay) {
+    cropAreaOverlay.close();
+    cropAreaOverlay = null;
+  }
+});
+
+// IPC handler to confirm crop area selection
+ipcMain.handle('confirm-crop-area', async (event, area) => {
+  if (mainWindow && cropAreaOverlay) {
+    mainWindow.webContents.send('crop-area-selected', area);
+    cropAreaOverlay.close();
+    cropAreaOverlay = null;
+  }
+});
+
+// IPC handler to cancel crop area
+ipcMain.handle('cancel-crop-area', () => {
+  if (mainWindow && cropAreaOverlay) {
+    mainWindow.webContents.send('crop-area-cancelled');
+    cropAreaOverlay.close();
+    cropAreaOverlay = null;
   }
 });
 

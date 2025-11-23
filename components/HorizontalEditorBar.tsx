@@ -308,6 +308,112 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     }
   }, [selectedNodeId, isLiveCaptureNode, selectedNode, updateWorkspaceNode]);
 
+  // Handle crop area confirmation (used by both React component and Electron overlay)
+  const handleCropAreaConfirm = useCallback(async (area: { x: number; y: number; width: number; height: number }) => {
+    console.log('[HorizontalEditorBar] handleCropAreaConfirm called with area:', area);
+    setShowFloatingCropArea(false);
+    
+    // Start screen capture for the entire screen (we'll crop to area in the node)
+    try {
+      const { getScreenCaptureStream, requestScreenRecordingPermission, checkScreenRecordingPermission } = await import('@/lib/electronUtils');
+      console.log('[HorizontalEditorBar] Starting screen capture for area:', area);
+      
+      // Check and request permissions before attempting capture
+      const permissionStatus = await checkScreenRecordingPermission();
+      console.log('[HorizontalEditorBar] Permission status:', permissionStatus);
+      
+      if (permissionStatus.granted === false || permissionStatus.granted === null) {
+        console.log('[HorizontalEditorBar] Requesting screen recording permission...');
+        const permissionResult = await requestScreenRecordingPermission();
+        
+        if (!permissionResult.granted) {
+          const errorMessage = permissionResult.message || 'Screen recording permission is required to capture the screen.';
+          console.error('[HorizontalEditorBar] Permission denied:', errorMessage);
+          alert(errorMessage);
+          return;
+        }
+        
+        console.log('[HorizontalEditorBar] Screen recording permission granted:', permissionResult.message);
+      }
+      
+      // Get screen capture stream (permissions are also checked inside this function)
+      console.log('[HorizontalEditorBar] Getting screen capture stream...');
+      const stream = await getScreenCaptureStream({ requestPermissions: true, includeAudio: false });
+      
+      // Verify stream has video tracks
+      const tracks = stream.getVideoTracks();
+      if (tracks.length === 0) {
+        throw new Error('Screen capture stream has no video tracks');
+      }
+      
+      console.log('[HorizontalEditorBar] Screen capture stream obtained:', {
+        streamId: stream.id,
+        trackCount: tracks.length,
+        readyStates: tracks.map(t => t.readyState)
+      });
+      
+      // Store stream globally for immediate access
+      (window as any).currentScreenStream = stream;
+      
+      // Dispatch event to create live capture node with the area and stream
+      // The area coordinates are in screen space (absolute screen coordinates)
+      console.log('[HorizontalEditorBar] Dispatching create-live-capture-from-area event with area:', area);
+      const event = new CustomEvent('create-live-capture-from-area', {
+        detail: { 
+          area: {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: area.height,
+          },
+          stream 
+        }
+      });
+      window.dispatchEvent(event);
+      console.log('[HorizontalEditorBar] Event dispatched successfully');
+    } catch (error: any) {
+      console.error('[HorizontalEditorBar] Error starting screen capture:', error);
+      console.error('[HorizontalEditorBar] Error stack:', error.stack);
+      alert(`Failed to start screen capture: ${error.message || 'Unknown error'}. Please try again.`);
+    }
+  }, []);
+
+  // Listen for crop area selection from Electron overlay
+  // Note: This must be set up after handleCropAreaConfirm is defined
+  useEffect(() => {
+    if (typeof window === 'undefined' || !(window as any).electronAPI?.onCropAreaSelected) {
+      console.log('[HorizontalEditorBar] Electron API not available for crop area events');
+      return;
+    }
+
+    console.log('[HorizontalEditorBar] Setting up crop area event listeners');
+    
+    const handleCropAreaSelected = (area: { x: number; y: number; width: number; height: number }) => {
+      // Handle crop area selection from Electron overlay
+      console.log('[HorizontalEditorBar] Crop area selected from Electron overlay:', area);
+      handleCropAreaConfirm(area);
+    };
+
+    const handleCropAreaCancelled = () => {
+      console.log('[HorizontalEditorBar] Crop area cancelled from Electron overlay');
+      setShowFloatingCropArea(false);
+      setIsLiveCaptureActive(false);
+      window.dispatchEvent(new CustomEvent('toggle-live-capture-mode', { 
+        detail: { enabled: false } 
+      }));
+    };
+
+    (window as any).electronAPI.onCropAreaSelected(handleCropAreaSelected);
+    (window as any).electronAPI.onCropAreaCancelled(handleCropAreaCancelled);
+    
+    console.log('[HorizontalEditorBar] Crop area event listeners registered');
+
+    return () => {
+      // Cleanup is handled by Electron's IPC system
+      // Note: We can't easily remove IPC listeners, but they should be scoped to this component lifecycle
+    };
+  }, [handleCropAreaConfirm]);
+
   // Get interaction state
   const isInteractive = selectedNode && isLiveCaptureNode && 
     typeof selectedNode.content === 'object' && 
@@ -621,15 +727,30 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
               
               {/* Area Highlight Button - Shows floating crop area overlay or confirms selection */}
               <button
-                onClick={() => {
-                  if (showFloatingCropArea) {
-                    // If crop area is already visible, confirm the selection
-                    // This is handled by triggering the confirm handler
-                    const event = new CustomEvent('confirm-crop-area');
-                    window.dispatchEvent(event);
+                onClick={async () => {
+                  // Use Electron overlay window for system-wide visibility
+                  if (typeof window !== 'undefined' && (window as any).electronAPI?.openCropAreaOverlay) {
+                    try {
+                      // Close any existing React-based crop area
+                      setShowFloatingCropArea(false);
+                      // Open Electron overlay window
+                      await (window as any).electronAPI.openCropAreaOverlay({
+                        defaultWidth: 779,
+                        defaultHeight: 513,
+                      });
+                    } catch (error) {
+                      console.error('Error opening crop area overlay:', error);
+                      // Fallback to React component
+                      setShowFloatingCropArea(true);
+                    }
                   } else {
-                    // Otherwise, show the crop area
-                    setShowFloatingCropArea(true);
+                    // Fallback to React component if Electron API not available
+                    if (showFloatingCropArea) {
+                      const event = new CustomEvent('confirm-crop-area');
+                      window.dispatchEvent(event);
+                    } else {
+                      setShowFloatingCropArea(true);
+                    }
                   }
                 }}
                 className={`p-1.5 rounded-lg transition-all duration-150 group/area flex items-center gap-1.5 ${
@@ -650,9 +771,18 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
               </button>
               
               {/* Cancel button - Show when crop area is visible - also deselects live capture tool */}
-              {showFloatingCropArea && (
+              {(showFloatingCropArea || (typeof window !== 'undefined' && (window as any).electronAPI?.closeCropAreaOverlay)) && (
                 <button
-                  onClick={() => {
+                  onClick={async () => {
+                    // Close Electron overlay if open
+                    if (typeof window !== 'undefined' && (window as any).electronAPI?.closeCropAreaOverlay) {
+                      try {
+                        await (window as any).electronAPI.closeCropAreaOverlay();
+                      } catch (error) {
+                        console.error('Error closing crop area overlay:', error);
+                      }
+                    }
+                    // Close React component
                     setShowFloatingCropArea(false);
                     // Deactivate live capture tool
                     setIsLiveCaptureActive(false);
@@ -712,65 +842,7 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
       <FloatingCropArea
         isOpen={showFloatingCropArea}
         onClose={() => setShowFloatingCropArea(false)}
-        onConfirm={async (area) => {
-          setShowFloatingCropArea(false);
-          
-          // Start screen capture for the entire screen (we'll crop to area in the node)
-          try {
-            const { getScreenCaptureStream, requestScreenRecordingPermission, checkScreenRecordingPermission } = await import('@/lib/electronUtils');
-            console.log('[HorizontalEditorBar] Starting screen capture for area:', area);
-            
-            // Check and request permissions before attempting capture
-            const permissionStatus = await checkScreenRecordingPermission();
-            if (permissionStatus.granted === false || permissionStatus.granted === null) {
-              console.log('[HorizontalEditorBar] Requesting screen recording permission...');
-              const permissionResult = await requestScreenRecordingPermission();
-              
-              if (!permissionResult.granted) {
-                const errorMessage = permissionResult.message || 'Screen recording permission is required to capture the screen.';
-                alert(errorMessage);
-                return;
-              }
-              
-              console.log('[HorizontalEditorBar] Screen recording permission granted:', permissionResult.message);
-            }
-            
-            // Get screen capture stream (permissions are also checked inside this function)
-            const stream = await getScreenCaptureStream({ requestPermissions: true, includeAudio: false });
-            
-            // Verify stream has video tracks
-            const tracks = stream.getVideoTracks();
-            if (tracks.length === 0) {
-              throw new Error('Screen capture stream has no video tracks');
-            }
-            
-            console.log('[HorizontalEditorBar] Screen capture stream obtained:', {
-              streamId: stream.id,
-              trackCount: tracks.length,
-              readyStates: tracks.map(t => t.readyState)
-            });
-            
-            // Store stream globally for immediate access
-            (window as any).currentScreenStream = stream;
-            
-            // Dispatch event to create live capture node with the area and stream
-            // The area coordinates are in screen space (absolute screen coordinates)
-            window.dispatchEvent(new CustomEvent('create-live-capture-from-area', {
-              detail: { 
-                area: {
-                  x: area.x,
-                  y: area.y,
-                  width: area.width,
-                  height: area.height,
-                },
-                stream 
-              }
-            }));
-          } catch (error: any) {
-            console.error('[HorizontalEditorBar] Error starting screen capture:', error);
-            alert(`Failed to start screen capture: ${error.message || 'Unknown error'}. Please try again.`);
-          }
-        }}
+        onConfirm={handleCropAreaConfirm}
         defaultWidth={779}
         defaultHeight={513}
       />

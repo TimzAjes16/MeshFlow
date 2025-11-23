@@ -449,7 +449,8 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
       console.log(`[LiveCaptureNode] Canvas set up for node ${id}`, {
         canvasWidth: canvas.width,
         canvasHeight: canvas.height,
-        cropArea: cropArea
+        cropArea: cropArea,
+        screenBounds: screenBounds
       });
         
         // Continuously crop and draw the video feed
@@ -466,13 +467,67 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
           const videoForDraw = videoRef.current;
           // Check if video is ready to draw (readyState 2 = HAVE_CURRENT_DATA, 4 = HAVE_ENOUGH_DATA)
           if (videoForDraw.readyState >= 2 && videoForDraw.videoWidth > 0 && videoForDraw.videoHeight > 0) {
+            // Calculate crop coordinates relative to video stream
+            // The video stream from getDisplayMedia is the full screen/window that was selected
+            // We need to convert screen-space cropArea coordinates to video-space coordinates
+            const videoWidth = videoForDraw.videoWidth;
+            const videoHeight = videoForDraw.videoHeight;
+            
+            // If screenBounds is provided, it tells us what portion of the screen the video represents
+            // Otherwise, assume the video is the full screen
+            let videoCropX = cropArea.x;
+            let videoCropY = cropArea.y;
+            let videoCropWidth = cropArea.width;
+            let videoCropHeight = cropArea.height;
+            
+            // If screenBounds is set and different from video dimensions, we need to scale
+            // screenBounds represents the actual screen area, videoWidth/Height is what we captured
+            if (screenBounds && screenBounds.width > 0 && screenBounds.height > 0) {
+              // The video might be the full screen or a window
+              // Calculate scale factors
+              const scaleX = videoWidth / screenBounds.width;
+              const scaleY = videoHeight / screenBounds.height;
+              
+              // Convert cropArea (screen coordinates) to video coordinates
+              videoCropX = (cropArea.x - screenBounds.x) * scaleX;
+              videoCropY = (cropArea.y - screenBounds.y) * scaleY;
+              videoCropWidth = cropArea.width * scaleX;
+              videoCropHeight = cropArea.height * scaleY;
+              
+              console.log(`[LiveCaptureNode] Cropping coordinates calculated for node ${id}`, {
+                screenCropArea: cropArea,
+                screenBounds: screenBounds,
+                videoDimensions: { width: videoWidth, height: videoHeight },
+                videoCropArea: { x: videoCropX, y: videoCropY, width: videoCropWidth, height: videoCropHeight },
+                scale: { x: scaleX, y: scaleY }
+              });
+            } else {
+              // No screenBounds, assume video is full screen - use cropArea directly
+              // But ensure crop coordinates are within video bounds
+              videoCropX = Math.max(0, Math.min(cropArea.x, videoWidth));
+              videoCropY = Math.max(0, Math.min(cropArea.y, videoHeight));
+              videoCropWidth = Math.min(cropArea.width, videoWidth - videoCropX);
+              videoCropHeight = Math.min(cropArea.height, videoHeight - videoCropY);
+              
+              console.log(`[LiveCaptureNode] Using direct crop coordinates for node ${id}`, {
+                videoDimensions: { width: videoWidth, height: videoHeight },
+                videoCropArea: { x: videoCropX, y: videoCropY, width: videoCropWidth, height: videoCropHeight }
+              });
+            }
+            
+            // Ensure crop coordinates are valid and within video bounds
+            videoCropX = Math.max(0, Math.min(videoCropX, videoWidth));
+            videoCropY = Math.max(0, Math.min(videoCropY, videoHeight));
+            videoCropWidth = Math.min(videoCropWidth, videoWidth - videoCropX);
+            videoCropHeight = Math.min(videoCropHeight, videoHeight - videoCropY);
+            
             // Draw the cropped region from the video onto the canvas
               ctx.drawImage(
               videoForDraw,
-              cropArea.x,
-              cropArea.y,
-              cropArea.width,
-              cropArea.height,
+              videoCropX,
+              videoCropY,
+              videoCropWidth,
+              videoCropHeight,
                 0,
                 0,
                 canvas.width,
