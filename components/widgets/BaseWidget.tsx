@@ -119,19 +119,35 @@ function BaseWidget({
   // Handle resize mouse events
   React.useEffect(() => {
     if (isResizing) {
+      // Disable React Flow node dragging during resize
+      const nodeWrapper = resizeRef.current?.closest('.react-flow__node') as HTMLElement;
+      if (nodeWrapper) {
+        nodeWrapper.style.pointerEvents = 'none';
+        // Re-enable pointer events on the resize handle itself
+        const resizeHandle = nodeWrapper.querySelector('[data-resize-handle]') as HTMLElement;
+        if (resizeHandle) {
+          resizeHandle.style.pointerEvents = 'auto';
+        }
+      }
+      
       // Add event listeners with capture phase to ensure we catch events first
-      document.addEventListener('mousemove', handleResizeMove, { passive: false });
-      document.addEventListener('mouseup', handleResizeEnd, { passive: false });
+      document.addEventListener('mousemove', handleResizeMove, { passive: false, capture: true });
+      document.addEventListener('mouseup', handleResizeEnd, { passive: false, capture: true });
       
       // Prevent text selection during resize
       document.body.style.userSelect = 'none';
       document.body.style.cursor = 'nwse-resize';
       
       return () => {
-        document.removeEventListener('mousemove', handleResizeMove);
-        document.removeEventListener('mouseup', handleResizeEnd);
+        document.removeEventListener('mousemove', handleResizeMove, { capture: true });
+        document.removeEventListener('mouseup', handleResizeEnd, { capture: true });
         document.body.style.userSelect = '';
         document.body.style.cursor = '';
+        
+        // Re-enable React Flow node dragging after resize
+        if (nodeWrapper) {
+          nodeWrapper.style.pointerEvents = '';
+        }
       };
     }
   }, [isResizing, handleResizeMove, handleResizeEnd]);
@@ -156,6 +172,16 @@ function BaseWidget({
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
+      }}
+      onMouseDown={(e) => {
+        // Prevent React Flow from handling drag when clicking on widget content
+        // Only allow dragging from header (which has data-widget-header attribute)
+        // OR if we're resizing
+        if (!(e.target as HTMLElement).closest('[data-widget-header]') && 
+            !(e.target as HTMLElement).closest('[data-resize-handle]') &&
+            !isResizing) {
+          e.stopPropagation();
+        }
       }}
     >
       {/* Widget Header */}

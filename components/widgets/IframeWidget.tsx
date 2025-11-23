@@ -6,7 +6,7 @@
 
 'use client';
 
-import { memo, useState, useCallback } from 'react';
+import { memo, useState, useCallback, useEffect, useRef } from 'react';
 import BaseWidget, { WidgetProps } from './BaseWidget';
 import { Globe, AlertCircle } from 'lucide-react';
 import { useWidgetHandlers } from './useWidgetHandlers';
@@ -38,6 +38,25 @@ function IframeWidget(props: IframeWidgetProps) {
 
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const previousUrlRef = useRef<string>('');
+
+  // Reload iframe when URL changes
+  useEffect(() => {
+    const currentUrl = iframeConfig.url || '';
+    if (currentUrl && currentUrl !== previousUrlRef.current && iframeRef.current) {
+      previousUrlRef.current = currentUrl;
+      setIsLoading(true);
+      setHasError(false);
+      // Force iframe reload by setting src to empty and then back to URL
+      iframeRef.current.src = '';
+      setTimeout(() => {
+        if (iframeRef.current) {
+          iframeRef.current.src = currentUrl;
+        }
+      }, 10);
+    }
+  }, [iframeConfig.url]);
 
   const handleLoad = useCallback(() => {
     setIsLoading(false);
@@ -86,6 +105,7 @@ function IframeWidget(props: IframeWidgetProps) {
             </div>
           )}
           <iframe
+            ref={iframeRef}
             src={iframeConfig.url || undefined}
             className="w-full h-full border-0"
             allowFullScreen={iframeConfig.allowFullScreen}
