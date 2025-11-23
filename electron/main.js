@@ -1754,6 +1754,35 @@ ipcMain.handle('send-keyboard-event', async (event, keyboardEvent) => {
   }
 });
 
+// Window discovery for native window widget
+ipcMain.handle('get-window-list', async () => {
+  try {
+    if (!nativeAddon) {
+      return [];
+    }
+    
+    const windows = nativeAddon.getWindowList();
+    return windows || [];
+  } catch (error) {
+    console.error('[Window Discovery] Error:', error);
+    return [];
+  }
+});
+
+ipcMain.handle('find-window', async (event, options) => {
+  try {
+    if (!nativeAddon) {
+      return { found: false };
+    }
+    
+    const result = nativeAddon.findWindow(options);
+    return result || { found: false };
+  } catch (error) {
+    console.error('[Window Discovery] Error:', error);
+    return { found: false };
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
   createMenu();

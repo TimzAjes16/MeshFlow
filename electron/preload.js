@@ -111,6 +111,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendKeyboardEvent: async (event) => {
     return await ipcRenderer.invoke('send-keyboard-event', event);
   },
+  // Window discovery for native window widget
+  getWindowList: async () => {
+    return await ipcRenderer.invoke('get-window-list');
+  },
+  findWindow: async (options) => {
+    return await ipcRenderer.invoke('find-window', options);
+  },
 });
 
 

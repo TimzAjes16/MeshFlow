@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { GripVertical, Paintbrush, Eraser, Video, Globe, Globe2, Monitor, Plus } from 'lucide-react';
+import { GripVertical, Paintbrush, Eraser, Globe, Globe2, Monitor, Plus } from 'lucide-react';
 
 interface VerticalToolbarProps {
   // Tools will be added later
@@ -12,7 +12,6 @@ const MARGIN_LEFT = 48; // Margin from left edge
 const VerticalToolbar = ({}: VerticalToolbarProps) => {
   const [isBrushActive, setIsBrushActive] = useState(false);
   const [isEraserActive, setIsEraserActive] = useState(false);
-  const [isLiveCaptureActive, setIsLiveCaptureActive] = useState(false);
   
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
     if (typeof window !== 'undefined') {
@@ -143,14 +142,10 @@ const VerticalToolbar = ({}: VerticalToolbarProps) => {
     const newState = !isEraserActive;
     setIsEraserActive(newState);
     
-    // If activating eraser, deactivate brush and live capture
+    // If activating eraser, deactivate brush
     if (newState) {
       setIsBrushActive(false);
-      setIsLiveCaptureActive(false);
       window.dispatchEvent(new CustomEvent('toggle-drawing-mode', { 
-        detail: { enabled: false } 
-      }));
-      window.dispatchEvent(new CustomEvent('toggle-live-capture-mode', { 
         detail: { enabled: false } 
       }));
     }
@@ -167,30 +162,6 @@ const VerticalToolbar = ({}: VerticalToolbarProps) => {
       document.body.style.cursor = '';
     }
   }, [isEraserActive]);
-
-  // Handle live capture toggle - activates capture mode to show options in horizontal bar
-  const handleLiveCaptureToggle = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    const newState = !isLiveCaptureActive;
-    setIsLiveCaptureActive(newState);
-    
-    // If activating live capture, deactivate brush and eraser
-    if (newState) {
-      setIsBrushActive(false);
-      setIsEraserActive(false);
-      window.dispatchEvent(new CustomEvent('toggle-drawing-mode', { 
-        detail: { enabled: false } 
-      }));
-      window.dispatchEvent(new CustomEvent('toggle-eraser-mode', { 
-        detail: { enabled: false } 
-      }));
-    }
-    
-    // Dispatch event to notify horizontal editor bar
-    window.dispatchEvent(new CustomEvent('toggle-live-capture-mode', { 
-      detail: { enabled: newState } 
-    }));
-  }, [isLiveCaptureActive]);
 
   return (
     <div
@@ -250,19 +221,6 @@ const VerticalToolbar = ({}: VerticalToolbarProps) => {
             title={isEraserActive ? 'Disable eraser tool' : 'Enable eraser tool'}
           >
             <Eraser className="w-5 h-5" />
-          </button>
-
-          {/* Live Capture Tool */}
-          <button
-            onClick={handleLiveCaptureToggle}
-            className={`p-2 rounded-lg transition-all duration-150 ${
-              isLiveCaptureActive
-                ? 'bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30'
-                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/60 dark:hover:bg-gray-700/60'
-            }`}
-            title={isLiveCaptureActive ? 'Disable capture tool' : 'Enable capture tool'}
-          >
-            <Video className="w-5 h-5" />
           </button>
         </div>
 

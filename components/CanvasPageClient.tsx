@@ -10,6 +10,7 @@ import ToolbarSettingsPanel from './ToolbarSettingsPanel';
 import EmojiPickerPopup from './EmojiPickerPopup';
 import CaptureModal from './CaptureModal';
 import ClipboardMonitor from './ClipboardMonitor';
+import NativeWindowConfigModal from './NativeWindowConfigModal';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
 import { useHistoryStore } from '@/state/historyStore';
@@ -579,7 +580,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
   }, [nodes]);
 
   const handleCreateNode = useCallback(
-    async (type: string = 'note', screenPosition: { x: number; y: number }) => {
+    async (type: string = 'note', screenPosition: { x: number; y: number }, extraConfig?: Record<string, any>) => {
       console.log('handleCreateNode called with type:', type, 'position:', screenPosition);
       
       // Handle live-capture type specially - show modal
@@ -616,7 +617,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         };
 
         // Get default content based on node type
-        const getDefaultContent = (type: string) => {
+        const getDefaultContent = (type: string, extraConfig?: Record<string, any>) => {
           // Widget types
           if (type === 'iframe-widget') {
             return {
@@ -700,7 +701,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
             workspaceId,
             title: titles[type] || 'New Widget',
             type: type, // Explicit type (following Miro/Notion pattern)
-            content: getDefaultContent(type),
+            content: getDefaultContent(type, extraConfig),
             tags: [type], // Keep for backwards compatibility
             x: storedFlowPos.x,
             y: storedFlowPos.y,
