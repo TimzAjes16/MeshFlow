@@ -589,13 +589,22 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
 
       // Persist node position to database
       try {
+        const positionX = node.position?.x !== undefined ? Math.round(node.position.x * 100) / 100 : 0;
+        const positionY = node.position?.y !== undefined ? Math.round(node.position.y * 100) / 100 : 0;
+        
+        // Validate position values
+        if (isNaN(positionX) || isNaN(positionY) || !isFinite(positionX) || !isFinite(positionY)) {
+          console.warn('[CanvasContainer] Invalid position values, skipping update:', { x: positionX, y: positionY });
+          return;
+        }
+
         const response = await fetch('/api/nodes/update', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             nodeId: node.id,
-            x: node.position?.x !== undefined ? Math.round(node.position.x * 100) / 100 : 0,
-            y: node.position?.y !== undefined ? Math.round(node.position.y * 100) / 100 : 0,
+            x: positionX,
+            y: positionY,
           }),
         });
 
@@ -603,11 +612,12 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
           // Update workspace store with new position
           const { updateNode } = useWorkspaceStore.getState();
           updateNode(node.id, {
-            x: node.position?.x !== undefined ? Math.round(node.position.x * 100) / 100 : 0,
-            y: node.position?.y !== undefined ? Math.round(node.position.y * 100) / 100 : 0,
+            x: positionX,
+            y: positionY,
           });
         } else {
-          console.error('[CanvasContainer] Failed to update node position:', response.statusText);
+          const errorText = await response.text().catch(() => response.statusText);
+          console.error('[CanvasContainer] Failed to update node position:', response.status, errorText);
         }
       } catch (error) {
         console.error('[CanvasContainer] Error updating node position:', error);

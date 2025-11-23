@@ -45,8 +45,19 @@ export async function PUT(request: NextRequest) {
     if (title !== undefined) updateData.title = title;
     if (content !== undefined) updateData.content = content;
     if (tags !== undefined) updateData.tags = tags;
-    if (x !== undefined) updateData.x = x;
-    if (y !== undefined) updateData.y = y;
+    if (x !== undefined && typeof x === 'number' && !isNaN(x)) updateData.x = x;
+    if (y !== undefined && typeof y === 'number' && !isNaN(y)) updateData.y = y;
+
+    // If no fields to update, return early
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({
+        node: {
+          ...existingNode,
+          createdAt: existingNode.createdAt.toISOString(),
+          updatedAt: existingNode.updatedAt.toISOString(),
+        },
+      }, { status: 200 });
+    }
 
     // Regenerate embedding if title or content changed (optional - don't fail if this errors)
     if (title !== undefined || content !== undefined) {
@@ -143,10 +154,22 @@ export async function PUT(request: NextRequest) {
     }
 
     // Update node
-    const updatedNode = await prisma.node.update({
-      where: { id: nodeId },
-      data: updateData,
-    });
+    let updatedNode;
+    try {
+      updatedNode = await prisma.node.update({
+        where: { id: nodeId },
+        data: updateData,
+      });
+    } catch (dbError: any) {
+      console.error('[API] Database error updating node:', {
+        message: dbError?.message,
+        code: dbError?.code,
+        meta: dbError?.meta,
+        nodeId,
+        updateData,
+      });
+      throw new Error(`Database error: ${dbError?.message || 'Failed to update node'}`);
+    }
 
     // Log activity (optional - don't fail if this errors)
     try {
