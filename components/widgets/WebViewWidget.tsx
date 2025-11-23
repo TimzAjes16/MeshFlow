@@ -281,7 +281,7 @@ function WebViewWidget(props: WebViewWidgetProps) {
             ref={webviewRef}
             src={webviewConfig.url || undefined}
             className="w-full h-full"
-            allowpopups={true}
+            allowpopups="true"
             webpreferences="allowRunningInsecureContent, javascript=yes"
             style={{ 
               display: isLoading || hasError ? 'none' : 'block',
