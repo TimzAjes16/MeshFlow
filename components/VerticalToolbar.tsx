@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { GripVertical, Paintbrush, Eraser, Globe, Globe2, Monitor, Plus } from 'lucide-react';
+import { GripVertical, Paintbrush, Eraser, Video, Globe, Globe2, Monitor, Plus } from 'lucide-react';
 
 interface VerticalToolbarProps {
   // Tools will be added later
