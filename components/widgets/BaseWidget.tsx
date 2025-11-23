@@ -211,14 +211,23 @@ function BaseWidget({
       {canResize && !isMinimized && (
         <div
           data-resize-handle
-          className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 transition-colors z-50"
+          className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-50"
           style={{
+            background: 'linear-gradient(135deg, transparent 0%, transparent 40%, rgba(59, 130, 246, 0.5) 40%, rgba(59, 130, 246, 0.5) 100%)',
             clipPath: 'polygon(100% 0, 0 100%, 100% 100%)',
           }}
           onMouseDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
             handleResizeStart(e);
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background = 'linear-gradient(135deg, transparent 0%, transparent 40%, rgba(59, 130, 246, 0.8) 40%, rgba(59, 130, 246, 0.8) 100%)';
+          }}
+          onMouseLeave={(e) => {
+            if (!isResizing) {
+              (e.currentTarget as HTMLElement).style.background = 'linear-gradient(135deg, transparent 0%, transparent 40%, rgba(59, 130, 246, 0.5) 40%, rgba(59, 130, 246, 0.5) 100%)';
+            }
           }}
           onClick={(e) => {
             e.preventDefault();
