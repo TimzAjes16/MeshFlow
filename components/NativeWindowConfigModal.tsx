@@ -35,13 +35,33 @@ export default function NativeWindowConfigModal({
   const loadWindows = useCallback(async () => {
     if (!isOpen) return;
     
+    console.log('[NativeWindowConfigModal] loadWindows called, isOpen:', isOpen);
     setIsLoading(true);
     try {
       // Check if we're in Electron
       if (typeof window !== 'undefined' && (window as any).electronAPI?.getWindowList) {
+        console.log('[NativeWindowConfigModal] Calling electronAPI.getWindowList()...');
         const windows = await (window as any).electronAPI.getWindowList();
-        setAvailableWindows(windows || []);
+        console.log('[NativeWindowConfigModal] Received windows:', windows);
+        console.log('[NativeWindowConfigModal] Windows count:', windows ? windows.length : 0);
+        
+        if (windows && Array.isArray(windows)) {
+          // Ensure windows have the correct structure
+          const formattedWindows = windows.map((win: any) => ({
+            processName: win.processName || win.process_name || '',
+            windowTitle: win.windowTitle || win.window_title || win.title || '',
+            windowHandle: win.windowHandle || win.window_handle || win.handle,
+          })).filter((win: any) => win.processName || win.windowTitle);
+          
+          console.log('[NativeWindowConfigModal] Formatted windows:', formattedWindows);
+          setAvailableWindows(formattedWindows);
+        } else {
+          console.warn('[NativeWindowConfigModal] Windows is not an array:', windows);
+          setAvailableWindows([]);
+        }
       } else {
+        console.warn('[NativeWindowConfigModal] Not in Electron or getWindowList not available');
+        console.log('[NativeWindowConfigModal] electronAPI:', (window as any).electronAPI);
         // Mock data for development
         setAvailableWindows([
           { processName: 'Discord', windowTitle: 'Discord' },
@@ -52,7 +72,8 @@ export default function NativeWindowConfigModal({
         ]);
       }
     } catch (error) {
-      console.error('Error loading windows:', error);
+      console.error('[NativeWindowConfigModal] Error loading windows:', error);
+      console.error('[NativeWindowConfigModal] Error details:', error instanceof Error ? error.message : error);
       setAvailableWindows([]);
     } finally {
       setIsLoading(false);
@@ -135,11 +156,17 @@ export default function NativeWindowConfigModal({
                   No applications found
                 </p>
                 <button
-                  onClick={loadWindows}
-                  className="mt-3 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm flex items-center gap-2"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('[NativeWindowConfigModal] Refresh button clicked');
+                    loadWindows();
+                  }}
+                  disabled={isLoading}
+                  className="mt-3 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <RefreshCw className="w-4 h-4" />
-                  Refresh
+                  <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                  {isLoading ? 'Loading...' : 'Refresh'}
                 </button>
               </div>
             ) : (

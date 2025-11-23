@@ -1758,14 +1758,32 @@ ipcMain.handle('send-keyboard-event', async (event, keyboardEvent) => {
 // Window discovery for native window widget
 ipcMain.handle('get-window-list', async () => {
   try {
+    console.log('[Window Discovery] get-window-list called');
+    console.log('[Window Discovery] nativeAddon:', nativeAddon ? 'loaded' : 'not loaded');
+    
     if (!nativeAddon) {
+      console.warn('[Window Discovery] Native addon not loaded, returning empty array');
       return [];
     }
     
+    if (typeof nativeAddon.getWindowList !== 'function') {
+      console.error('[Window Discovery] getWindowList is not a function on nativeAddon');
+      console.log('[Window Discovery] Available methods:', Object.keys(nativeAddon));
+      return [];
+    }
+    
+    console.log('[Window Discovery] Calling nativeAddon.getWindowList()...');
     const windows = nativeAddon.getWindowList();
+    console.log('[Window Discovery] Received windows:', windows ? windows.length : 0, 'windows');
+    
+    if (windows && Array.isArray(windows)) {
+      console.log('[Window Discovery] Sample window:', windows[0] || 'none');
+    }
+    
     return windows || [];
   } catch (error) {
-    console.error('[Window Discovery] Error:', error);
+    console.error('[Window Discovery] Error getting window list:', error);
+    console.error('[Window Discovery] Error stack:', error.stack);
     return [];
   }
 });
