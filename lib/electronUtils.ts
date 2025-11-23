@@ -19,6 +19,15 @@ declare global {
       }>>;
       requestScreenPermission?: () => Promise<{ granted: boolean; platform?: string; error?: string }>;
       checkScreenPermission?: () => Promise<{ granted: boolean | null; status?: string; platform?: string; error?: string }>;
+      openCaptureWidget?: () => Promise<void>;
+      moveWidget?: (x: number, y: number) => Promise<void>;
+      getWidgetPosition?: () => Promise<{ x: number; y: number } | null>;
+      openCaptureOverlay?: () => Promise<void>;
+      closeCaptureOverlay?: () => Promise<void>;
+      closeCaptureWidget?: () => Promise<void>;
+      getScreenBounds?: () => Promise<{ x: number; y: number; width: number; height: number }>;
+      confirmCapture?: (selection: { x: number; y: number; width: number; height: number }) => Promise<void>;
+      onCaptureSelection?: (callback: (selection: { x: number; y: number; width: number; height: number; sourceId?: string }) => void) => void;
     };
   }
 }

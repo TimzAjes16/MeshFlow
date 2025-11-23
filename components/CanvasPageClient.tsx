@@ -71,8 +71,11 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
               type: 'live-capture',
               imageUrl,
               cropArea,
+              screenBounds: cropArea, // Store screen bounds for interactive mode
               captureHistory: [...captureHistory, newCapture],
               timestamp: new Date().toISOString(),
+              isLiveStream: true, // Always use live stream mode
+              interactive: false, // Default to non-interactive
             },
           });
           
@@ -121,11 +124,14 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                 type: 'live-capture',
                 imageUrl,
                 cropArea,
+                screenBounds: cropArea, // Store screen bounds for interactive mode
                 captureHistory: [{
                   imageUrl,
                   timestamp: new Date().toISOString(),
                 }],
                 timestamp: new Date().toISOString(),
+                isLiveStream: true, // Always use live stream mode
+                interactive: false, // Default to non-interactive
               },
               tags: ['live-capture'],
               x: storedFlowPos.x,
@@ -1180,11 +1186,17 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                   ? node.content
                   : { type: 'live-capture', imageUrl: '', cropArea: { x: 0, y: 0, width: 0, height: 0 }, captureHistory: [] };
                 
+                // Calculate screen bounds for interactive mode
+                // The area coordinates are relative to the video stream, but we need actual screen coordinates
+                // For now, we'll store the crop area as screen bounds - this will be improved with actual screen coordinate tracking
+                const screenBounds = area; // TODO: Get actual screen coordinates from video metadata
+                
                 updateNode(captureNodeId, {
                   content: {
                     ...currentContent,
                     type: 'live-capture',
                     cropArea: area,
+                    screenBounds, // Store screen bounds for interactive mode
                     imageUrl, // Thumbnail
                     streamId: stream.id, // Store stream ID for reference
                     isLiveStream: true, // Flag to indicate live stream
@@ -1209,9 +1221,11 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                       type: 'live-capture',
                       imageUrl, // Thumbnail
                       cropArea: area,
+                      screenBounds: area, // Store screen bounds for interactive mode (same as crop area for now)
                       streamId: stream.id,
                       isLiveStream: true,
                       captureMode,
+                      interactive: false, // Default to non-interactive
                       captureHistory: imageUrl ? [{
                         imageUrl,
                         timestamp: new Date().toISOString(),
@@ -1242,6 +1256,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
                     (window as any).liveCaptureStreams.set(data.node.id, {
                       stream,
                       cropArea: area,
+                      screenBounds: area, // Store screen bounds for interactive mode
                     });
                     
                     (window as any).lastFlowPosition = null;

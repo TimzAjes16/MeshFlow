@@ -24,7 +24,7 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showEraserTypeMenu, setShowEraserTypeMenu] = useState(false);
   
-  const { nodes } = useWorkspaceStore();
+  const { nodes, updateNode: updateWorkspaceNode } = useWorkspaceStore();
   const { selectNode } = useCanvasStore();
   
   // Get selected node if available
@@ -67,19 +67,23 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     return () => clearTimeout(timer);
   }, [getOriginalPosition]);
 
-  // Reset position when selection changes
+  // Reset position when selection changes - only run when selectedNodeId changes
   useEffect(() => {
     if (selectedNodeId) {
       const original = getOriginalPosition();
-      const threshold = 50;
-      if (
-        Math.abs(position.x - original.x) < threshold &&
-        Math.abs(position.y - original.y) < threshold
-      ) {
-        setPosition(getOriginalPosition());
-      }
+      setPosition((currentPosition) => {
+        const threshold = 50;
+        // Only reset if close to original position
+        if (
+          Math.abs(currentPosition.x - original.x) < threshold &&
+          Math.abs(currentPosition.y - original.y) < threshold
+        ) {
+          return original;
+        }
+        return currentPosition;
+      });
     }
-  }, [selectedNodeId, position, getOriginalPosition]);
+  }, [selectedNodeId, getOriginalPosition]);
 
   // Drag handlers
   const handleDragStart = useCallback((e: React.MouseEvent) => {
@@ -134,17 +138,21 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   useEffect(() => {
     const handleResize = () => {
       const original = getOriginalPosition();
-      const threshold = 50;
-      if (
-        Math.abs(position.x - original.x) < threshold &&
-        Math.abs(position.y - original.y) < threshold
-      ) {
-        setPosition(getOriginalPosition());
-      }
+      setPosition((currentPosition) => {
+        const threshold = 50;
+        // Only reset if close to original position
+        if (
+          Math.abs(currentPosition.x - original.x) < threshold &&
+          Math.abs(currentPosition.y - original.y) < threshold
+        ) {
+          return original;
+        }
+        return currentPosition;
+      });
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [position, getOriginalPosition]);
+  }, [getOriginalPosition]);
 
   // Listen for brush tool activation
   useEffect(() => {
@@ -265,14 +273,15 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     
     const newInteractive = !(currentContent.interactive ?? false);
     
+    const updatedContent = {
+      ...currentContent,
+      type: 'live-capture',
+      interactive: newInteractive,
+    };
+    
     // Update node content
-    const { updateNode } = useWorkspaceStore.getState();
-    updateNode(selectedNodeId, {
-      content: {
-        ...currentContent,
-        type: 'live-capture',
-        interactive: newInteractive,
-      },
+    updateWorkspaceNode(selectedNodeId, {
+      content: updatedContent,
     });
     
     // Persist to API
@@ -282,24 +291,20 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nodeId: selectedNodeId,
-          content: {
-            ...currentContent,
-            type: 'live-capture',
-            interactive: newInteractive,
-          },
+          content: updatedContent,
         }),
       });
       
       if (response.ok) {
         const data = await response.json();
         if (data.node) {
-          updateNode(selectedNodeId, data.node);
+          updateWorkspaceNode(selectedNodeId, data.node);
         }
       }
     } catch (error) {
       console.error('Error toggling interaction:', error);
     }
-  }, [selectedNodeId, isLiveCaptureNode, selectedNode]);
+  }, [selectedNodeId, isLiveCaptureNode, selectedNode, updateWorkspaceNode]);
 
   // Get interaction state
   const isInteractive = selectedNode && isLiveCaptureNode && 

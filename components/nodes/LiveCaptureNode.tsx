@@ -25,9 +25,11 @@ interface CaptureData {
   captureHistory?: Array<{ imageUrl: string; timestamp: string }>;
   autoRefresh?: boolean;
   autoRefreshInterval?: number; // in seconds
-  isLiveStream?: boolean; // If true, show live video feed
+  isLiveStream?: boolean; // If true, show live video feed (should always be true now)
   streamId?: string; // Stream ID for lookup
   captureMode?: 'fullscreen' | 'custom';
+  interactive?: boolean; // If true, allow interactions to pass through to underlying app
+  screenBounds?: { x: number; y: number; width: number; height: number }; // Actual screen bounds of captured area
 }
 
 function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
@@ -57,9 +59,11 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
         captureHistory: node.content.captureHistory || [],
         autoRefresh: node.content.autoRefresh ?? true,
         autoRefreshInterval: node.content.autoRefreshInterval ?? 5, // default 5 seconds
-        isLiveStream: node.content.isLiveStream ?? false,
+        isLiveStream: node.content.isLiveStream ?? true, // Always use live stream (default to true)
         streamId: node.content.streamId,
         captureMode: node.content.captureMode || 'custom',
+        interactive: node.content.interactive ?? false,
+        screenBounds: node.content.screenBounds || node.content.cropArea || { x: 0, y: 0, width: 0, height: 0 },
       }
     : {
         imageUrl: '',
@@ -67,19 +71,38 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
         captureHistory: [],
         autoRefresh: true,
         autoRefreshInterval: 5,
-        isLiveStream: false,
+        isLiveStream: true, // Always use live stream
         captureMode: 'custom',
+        interactive: false,
+        screenBounds: { x: 0, y: 0, width: 0, height: 0 },
       };
   
-  // Get live stream from global registry
+  const isInteractive = captureData.interactive ?? false;
+  
+  // Get live stream from global registry - always try to get stream for live capture
   useEffect(() => {
-    if (captureData.isLiveStream && captureData.streamId) {
-      const streamRegistry = (window as any).liveCaptureStreams;
-      if (streamRegistry && streamRegistry.has(id)) {
-        const streamData = streamRegistry.get(id);
-        if (streamData && streamData.stream) {
-          setLiveStream(streamData.stream);
-        }
+    // Try to get stream from registry first
+    const streamRegistry = (window as any).liveCaptureStreams;
+    if (streamRegistry && streamRegistry.has(id)) {
+      const streamData = streamRegistry.get(id);
+      if (streamData && streamData.stream) {
+        setLiveStream(streamData.stream);
+        return;
+      }
+    }
+    
+    // Fallback: try to get current screen stream (for new captures)
+    if ((window as any).currentScreenStream) {
+      const currentStream = (window as any).currentScreenStream;
+      setLiveStream(currentStream);
+      
+      // Store it in the registry for this node if not already there
+      if (streamRegistry && !streamRegistry.has(id)) {
+        streamRegistry.set(id, {
+          stream: currentStream,
+          cropArea: captureData.cropArea,
+          screenBounds: captureData.screenBounds,
+        });
       }
     }
     
@@ -89,17 +112,17 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
         clearInterval(cropIntervalRef.current);
       }
     };
-  }, [id, captureData.isLiveStream, captureData.streamId]);
+  }, [id, captureData.cropArea, captureData.screenBounds]);
   
-  // Set up video element for live stream
+  // Set up video element for live stream - always use canvas for consistent cropping
   useEffect(() => {
-    if (liveStream && videoRef.current && captureData.isLiveStream) {
+    if (liveStream && videoRef.current) {
       videoRef.current.srcObject = liveStream;
       videoRef.current.autoplay = true;
       videoRef.current.playsInline = true;
       videoRef.current.muted = isMuted;
       
-      // Set up canvas for cropping the video feed
+      // Always use canvas for cropping, even in interactive mode
       if (canvasRef.current && captureData.cropArea && captureData.cropArea.width > 0 && captureData.cropArea.height > 0) {
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
@@ -139,11 +162,11 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
         };
       }
     }
-  }, [liveStream, captureData.isLiveStream, captureData.cropArea, isMuted, isPaused]);
+  }, [liveStream, captureData.cropArea, isMuted, isPaused]);
   
-  // Update node dimensions for live stream
+  // Update node dimensions for live stream - always use crop area dimensions
   useEffect(() => {
-    if (captureData.isLiveStream && captureData.cropArea && captureData.cropArea.width > 0 && captureData.cropArea.height > 0) {
+    if (captureData.cropArea && captureData.cropArea.width > 0 && captureData.cropArea.height > 0) {
       const newWidth = captureData.cropArea.width + 32;
       const newHeight = captureData.cropArea.height + 80; // Extra space for controls
       
@@ -161,8 +184,8 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
       }
     }
     // Remove node.width and node.height from dependencies to prevent infinite loops
-    // Only re-run when live stream state or crop area changes
-  }, [captureData.isLiveStream, captureData.cropArea, id, updateNode]);
+    // Only re-run when crop area changes
+  }, [captureData.cropArea, id, updateNode]);
 
   // Update dimensions when image loads
   useEffect(() => {
@@ -375,7 +398,114 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
     }
   };
 
-  if (!captureData.isLiveStream && !captureData.imageUrl) {
+  // Map coordinates from node display to actual screen coordinates for interactive mode
+  const mapToScreenCoordinates = (clientX: number, clientY: number): { x: number; y: number } | null => {
+    if (!containerRef.current || !captureData.screenBounds || !captureData.cropArea) return null;
+    
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const videoArea = containerRef.current.querySelector('.video-area') as HTMLElement;
+    if (!videoArea) return null;
+    
+    const videoRect = videoArea.getBoundingClientRect();
+    
+    // Calculate relative position within the video area
+    const relX = clientX - videoRect.left;
+    const relY = clientY - videoRect.top;
+    
+    // Calculate scale factors
+    const scaleX = captureData.cropArea.width / videoRect.width;
+    const scaleY = captureData.cropArea.height / videoRect.height;
+    
+    // Map to crop area coordinates
+    const cropX = relX * scaleX;
+    const cropY = relY * scaleY;
+    
+    // Map to screen coordinates
+    const screenX = captureData.screenBounds.x + cropX;
+    const screenY = captureData.screenBounds.y + cropY;
+    
+    return { x: Math.round(screenX), y: Math.round(screenY) };
+  };
+
+  // Forward mouse events to underlying application when interactive mode is enabled
+  const handleInteractiveMouseEvent = (e: React.MouseEvent, eventType: 'click' | 'mousedown' | 'mouseup' | 'mousemove') => {
+    if (!isInteractive || !captureData.screenBounds) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const screenCoords = mapToScreenCoordinates(e.clientX, e.clientY);
+    if (!screenCoords) return;
+    
+    // Forward event to underlying application via Electron IPC or global event
+    if ((window as any).electronAPI?.sendMouseEvent) {
+      (window as any).electronAPI.sendMouseEvent({
+        type: eventType,
+        x: screenCoords.x,
+        y: screenCoords.y,
+        button: e.button,
+        buttons: e.buttons,
+        shiftKey: e.shiftKey,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+        metaKey: e.metaKey,
+      });
+    } else {
+      // Fallback: dispatch global event for other implementations
+      window.dispatchEvent(new CustomEvent('live-capture-interaction', {
+        detail: {
+          nodeId: id,
+          type: eventType,
+          screenX: screenCoords.x,
+          screenY: screenCoords.y,
+          button: e.button,
+          buttons: e.buttons,
+          shiftKey: e.shiftKey,
+          ctrlKey: e.ctrlKey,
+          altKey: e.altKey,
+          metaKey: e.metaKey,
+        },
+      }));
+    }
+  };
+
+  // Forward keyboard events when interactive mode is enabled
+  const handleInteractiveKeyEvent = (e: React.KeyboardEvent, eventType: 'keydown' | 'keyup' | 'keypress') => {
+    if (!isInteractive) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Forward event to underlying application
+    if ((window as any).electronAPI?.sendKeyboardEvent) {
+      (window as any).electronAPI.sendKeyboardEvent({
+        type: eventType,
+        key: e.key,
+        code: e.code,
+        shiftKey: e.shiftKey,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+        metaKey: e.metaKey,
+      });
+    } else {
+      // Fallback: dispatch global event
+      window.dispatchEvent(new CustomEvent('live-capture-keyboard', {
+        detail: {
+          nodeId: id,
+          type: eventType,
+          key: e.key,
+          code: e.code,
+          shiftKey: e.shiftKey,
+          ctrlKey: e.ctrlKey,
+          altKey: e.altKey,
+          metaKey: e.metaKey,
+        },
+      }));
+    }
+  };
+
+  // Empty state - no stream or crop area yet
+  if (!liveStream && !captureData.cropArea) {
     return (
       <BaseNode node={node} selected={selected} nodeId={id}>
         <div 
@@ -399,13 +529,13 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
     ? captureHistory[captureHistory.length - 1]
     : null;
 
-  // Determine display dimensions
-  const displayWidth = captureData.isLiveStream && captureData.cropArea.width > 0
+  // Determine display dimensions - always use crop area for live capture
+  const displayWidth = captureData.cropArea.width > 0
     ? captureData.cropArea.width
-    : imageDimensions?.width || 300;
-  const displayHeight = captureData.isLiveStream && captureData.cropArea.height > 0
+    : 300;
+  const displayHeight = captureData.cropArea.height > 0
     ? captureData.cropArea.height
-    : imageDimensions?.height || 200;
+    : 200;
 
   return (
     <BaseNode node={node} selected={selected} nodeId={id}>
@@ -423,16 +553,11 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
           <div className="flex items-center gap-2">
             <Camera className="w-4 h-4 text-white" />
             <span className="text-xs font-medium text-white">
-              {captureData.isLiveStream ? 'Live Feed' : 'Live Capture'}
+              Live Feed {isInteractive && '(Interactive)'}
             </span>
-            {captureHistory.length > 0 && !captureData.isLiveStream && (
-              <span className="text-xs text-white/80">
-                ({captureHistory.length} {captureHistory.length === 1 ? 'capture' : 'captures'})
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-1">
-            {captureData.isLiveStream && liveStream && (
+            {liveStream && (
               <>
                 <button
                   onClick={handleTogglePause}
@@ -458,30 +583,20 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
                 </button>
               </>
             )}
-            {captureHistory.length > 0 && !captureData.isLiveStream && (
-              <button
-                onClick={() => setShowHistory(!showHistory)}
-                className="p-1 hover:bg-white/20 rounded transition-colors"
-                title="View history"
-              >
-                <History className="w-3.5 h-3.5 text-white" />
-              </button>
-            )}
-            {!captureData.isLiveStream && (
-              <button
-                onClick={handleUpdateCapture}
-                className="p-1 hover:bg-white/20 rounded transition-colors"
-                title="Update capture"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-white" />
-              </button>
-            )}
           </div>
         </div>
         
-        {/* Live Video Feed or Static Image */}
-        <div className="relative bg-black flex items-center justify-center" style={{ width: `${displayWidth}px`, height: `${displayHeight}px` }}>
-          {captureData.isLiveStream && liveStream ? (
+        {/* Live Video Feed - Always use video for live capture */}
+        <div 
+          className="relative bg-black flex items-center justify-center video-area"
+          style={{ 
+            width: `${displayWidth}px`, 
+            height: `${displayHeight}px`,
+            pointerEvents: isInteractive ? 'auto' : 'none',
+            cursor: isInteractive ? 'pointer' : 'default',
+          }}
+        >
+          {liveStream ? (
             <>
               {/* Hidden video element for source */}
               <video
@@ -491,24 +606,51 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
                 muted={isMuted}
                 className="hidden"
               />
-              {/* Canvas showing cropped live feed */}
+              {/* Canvas showing cropped live feed - always use canvas for consistent cropping */}
               <canvas
                 ref={canvasRef}
                 className="max-w-full max-h-full object-contain"
-                style={{ width: '100%', height: '100%' }}
+                style={{ 
+                  width: '100%', 
+                  height: '100%',
+                  pointerEvents: isInteractive ? 'auto' : 'none',
+                  cursor: isInteractive ? 'pointer' : 'default',
+                }}
+                onClick={isInteractive ? (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleInteractiveMouseEvent(e, 'click');
+                } : undefined}
+                onMouseDown={isInteractive ? (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleInteractiveMouseEvent(e, 'mousedown');
+                } : undefined}
+                onMouseUp={isInteractive ? (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleInteractiveMouseEvent(e, 'mouseup');
+                } : undefined}
+                onMouseMove={isInteractive ? (e) => {
+                  handleInteractiveMouseEvent(e, 'mousemove');
+                } : undefined}
+                onKeyDown={isInteractive ? (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleInteractiveKeyEvent(e, 'keydown');
+                } : undefined}
+                onKeyUp={isInteractive ? (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleInteractiveKeyEvent(e, 'keyup');
+                } : undefined}
+                tabIndex={isInteractive ? 0 : -1}
               />
             </>
-          ) : captureData.imageUrl ? (
-            <img
-              ref={imageRef}
-              src={latestCapture?.imageUrl || captureData.imageUrl}
-              alt="Captured area"
-              className="max-w-full max-h-full object-contain"
-              style={{ width: '100%', height: '100%' }}
-            />
           ) : (
             <div className="flex items-center justify-center text-black">
               <Camera className="w-8 h-8" />
+              <span className="ml-2 text-sm text-white">Waiting for stream...</span>
             </div>
           )}
         </div>

@@ -153,19 +153,100 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
       }
       delete (window as any).currentScreenStream;
     } else if (isLiveCapture && isOpen && !screenStream) {
-      // If this is for live capture, check support first
-      if (!isScreenCaptureSupported()) {
-        setError('Screen capture is not supported.');
+      // If this is for live capture in Electron, open capture widget first
+      if (typeof window !== 'undefined' && (window as any).electronAPI?.openCaptureWidget) {
+        (window as any).electronAPI.openCaptureWidget().catch((error: any) => {
+          console.error('Error opening capture widget:', error);
+          setError('Failed to open capture widget.');
+        });
+        
+        // Listen for capture selection from overlay
+        if ((window as any).electronAPI?.onCaptureSelection) {
+          (window as any).electronAPI.onCaptureSelection((selection: { x: number; y: number; width: number; height: number }) => {
+            // Capture the selected area from screen
+            handleCaptureFromSelection(selection);
+            // Close the modal after capture
+            onClose();
+          });
+        }
+        
+        // Close the modal immediately since widget will handle the capture
         setTimeout(() => {
-          alert('Screen capture is not supported.');
           onClose();
         }, 100);
-        return;
+      } else {
+        // Fallback to browser-based screen capture
+        if (!isScreenCaptureSupported()) {
+          setError('Screen capture is not supported.');
+          setTimeout(() => {
+            alert('Screen capture is not supported.');
+            onClose();
+          }, 100);
+          return;
+        }
+        // Immediately start screen capture if supported
+        handleStartScreenCapture();
       }
-      // Immediately start screen capture if supported
-      handleStartScreenCapture();
     }
   }, [isOpen, isLiveCapture, screenStream, handleStartScreenCapture, onClose]);
+
+  // Handle capturing from overlay selection
+  const handleCaptureFromSelection = useCallback(async (selection: { x: number; y: number; width: number; height: number }) => {
+    try {
+      // Get screen capture stream
+      const stream = await getScreenCaptureStream();
+      
+      // Create video element to capture from
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.autoplay = true;
+      video.playsInline = true;
+      video.muted = true;
+      
+      await new Promise((resolve) => {
+        video.addEventListener('loadedmetadata', resolve, { once: true });
+        setTimeout(resolve, 1000);
+      });
+      
+      // Create canvas and draw the selected area
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Failed to get canvas context');
+      }
+      
+      canvas.width = selection.width;
+      canvas.height = selection.height;
+      
+      // Wait for video to be ready
+      if (video.readyState < 2) {
+        await new Promise((resolve) => {
+          video.addEventListener('loadeddata', resolve, { once: true });
+          setTimeout(resolve, 2000);
+        });
+      }
+      
+      // Draw the selected area from the video
+      ctx.drawImage(
+        video,
+        selection.x, selection.y, selection.width, selection.height,
+        0, 0, selection.width, selection.height
+      );
+      
+      const imageUrl = canvas.toDataURL('image/png');
+      
+      // Stop the stream
+      stream.getTracks().forEach(track => track.stop());
+      
+      // Call onCapture with the image
+      onCapture(imageUrl, selection);
+      onClose();
+    } catch (error) {
+      console.error('Error capturing from selection:', error);
+      setError('Failed to capture selected area.');
+      alert('Failed to capture selected area. Please try again.');
+    }
+  }, [onCapture, onClose]);
 
   // Check if point is within crop area
   const isPointInCropArea = useCallback((x: number, y: number, area: CropArea, scaleX: number, scaleY: number, offsetX: number, offsetY: number) => {
@@ -536,12 +617,15 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
         
         // If onScreenCapture is provided, use it (for starting monitoring)
         if (onScreenCapture) {
-          onScreenCapture(cropArea);
+          onScreenCapture(cropArea, screenStream);
           // Store the image URL in window for parent to access
           (window as any).lastCapturedImageUrl = croppedImageUrl;
+          // Close modal after starting screen capture
+          onClose();
         } else {
-          // Otherwise, just call onCapture with the image
+          // Otherwise, just call onCapture with the image (this creates the node on canvas)
           onCapture(croppedImageUrl, cropArea);
+          // Close modal after capturing
           onClose();
         }
       } catch (error) {
@@ -560,16 +644,16 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-[95vw] h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-black">Live Capture</h2>
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <h2 className="text-lg font-semibold text-black dark:text-white">Live Capture</h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
           >
-            <X className="w-5 h-5 text-black" />
+            <X className="w-5 h-5 text-black dark:text-white" />
           </button>
         </div>
 
@@ -595,31 +679,38 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
             // Crop section - show video with draggable/resizable selection
             <div className="space-y-4">
               <div className="mb-4">
-                <p className="text-sm text-black">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
                   Drag the selection box to move it, or drag the corners to resize. Click outside to create a new selection.
                 </p>
               </div>
               
               <div
                 ref={containerRef}
-                className="relative border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-100"
+                className="relative border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg overflow-auto bg-gray-900 flex items-center justify-center"
                 onMouseDown={handleMouseDown}
-                style={{ cursor: isDrawing ? 'crosshair' : isDragging ? 'move' : isResizing ? 'nwse-resize' : 'default' }}
+                onMouseMove={handleMouseMove}
+                style={{ 
+                  cursor: isDrawing ? 'crosshair' : isDragging ? 'move' : isResizing ? 'nwse-resize' : 'default',
+                  minHeight: '500px',
+                  height: 'calc(90vh - 200px)'
+                }}
               >
                 {/* Show video for live capture */}
-                {videoRef.current && screenStream && (
+                {screenStream && (
                   <video
                     ref={videoRef}
                     autoPlay
                     playsInline
                     muted
-                    className="max-w-full h-auto block"
-                    style={{ display: 'block', maxHeight: '70vh' }}
+                    className="block w-full h-full object-contain"
+                    style={{ 
+                      display: 'block'
+                    }}
                   />
                 )}
                 
                 {/* Crop area overlay with resize handles */}
-                {displayCropArea && videoRef.current && containerRef.current && (
+                {displayCropArea && videoRef.current && containerRef.current && videoRef.current.videoWidth > 0 && (
                   (() => {
                     const elementRect = videoRef.current.getBoundingClientRect();
                     const containerRect = containerRef.current.getBoundingClientRect();
@@ -636,7 +727,7 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
                     
                     return (
                       <div
-                        className="absolute border-2 border-blue-500 bg-blue-500/20 z-10"
+                        className="absolute border-2 border-blue-500 bg-blue-500/10 z-10"
                         style={{
                           left: `${left}px`,
                           top: `${top}px`,
@@ -646,25 +737,25 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
                         }}
                       >
                         {/* Size label */}
-                        <div className="absolute -top-6 left-0 text-xs font-medium text-blue-600 bg-white px-2 py-1 rounded shadow-sm whitespace-nowrap">
+                        <div className="absolute -top-7 left-0 text-xs font-medium text-blue-600 bg-white dark:bg-gray-800 dark:text-blue-400 px-2 py-1 rounded shadow-sm whitespace-nowrap pointer-events-auto">
                           {Math.round(displayCropArea.width)} × {Math.round(displayCropArea.height)}px
                         </div>
                         
-                        {/* Resize handles */}
+                        {/* Resize handles - make them larger and more visible */}
                         <div
-                          className="absolute -top-1 -left-1 w-3 h-3 bg-blue-500 border-2 border-white rounded-full cursor-nwse-resize"
+                          className="absolute -top-2 -left-2 w-4 h-4 bg-blue-500 border-2 border-white dark:border-gray-800 rounded-full cursor-nwse-resize pointer-events-auto shadow-lg"
                           style={{ cursor: 'nwse-resize' }}
                         />
                         <div
-                          className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 border-2 border-white rounded-full cursor-nesw-resize"
+                          className="absolute -top-2 -right-2 w-4 h-4 bg-blue-500 border-2 border-white dark:border-gray-800 rounded-full cursor-nesw-resize pointer-events-auto shadow-lg"
                           style={{ cursor: 'nesw-resize' }}
                         />
                         <div
-                          className="absolute -bottom-1 -left-1 w-3 h-3 bg-blue-500 border-2 border-white rounded-full cursor-nesw-resize"
+                          className="absolute -bottom-2 -left-2 w-4 h-4 bg-blue-500 border-2 border-white dark:border-gray-800 rounded-full cursor-nesw-resize pointer-events-auto shadow-lg"
                           style={{ cursor: 'nesw-resize' }}
                         />
                         <div
-                          className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-500 border-2 border-white rounded-full cursor-nwse-resize"
+                          className="absolute -bottom-2 -right-2 w-4 h-4 bg-blue-500 border-2 border-white dark:border-gray-800 rounded-full cursor-nwse-resize pointer-events-auto shadow-lg"
                           style={{ cursor: 'nwse-resize' }}
                         />
                       </div>
@@ -677,30 +768,35 @@ export default function CaptureModal({ isOpen, onClose, onCapture, isLiveCapture
         </div>
 
         {/* Footer */}
-        {screenStream && cropArea && (
-          <div className="flex items-center justify-between gap-3 p-4 border-t border-gray-200">
-            {cropArea && (
-              <div className="text-sm text-black font-mono">
+        {screenStream && (
+          <div className="flex items-center justify-between gap-3 p-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+            {cropArea ? (
+              <div className="text-sm text-black dark:text-white font-mono">
                 {Math.round(cropArea.width)} × {Math.round(cropArea.height)}px
                 {captureMode === 'fullscreen' && (
-                  <span className="ml-2 text-xs text-black">(Full Screen)</span>
+                  <span className="ml-2 text-xs text-black dark:text-white">(Full Screen)</span>
                 )}
               </div>
+            ) : (
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                Select an area to capture
+              </div>
             )}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 ml-auto">
               <button
                 onClick={onClose}
-                className="px-4 py-2 text-sm text-black hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-3 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors group"
+                title="Cancel"
               >
-                Cancel
+                <X className="w-6 h-6 text-red-600 dark:text-red-400 group-hover:text-red-700 dark:group-hover:text-red-300" />
               </button>
               <button
                 onClick={handleConfirm}
                 disabled={!cropArea || (cropArea.width < 50 || cropArea.height < 50)}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2 font-medium"
+                className="p-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors group"
+                title={cropArea ? "Confirm and add to canvas" : "Select an area first"}
               >
-                <Check className="w-5 h-5" />
-                Start Live Feed
+                <Check className="w-6 h-6 group-hover:scale-110 transition-transform" />
               </button>
             </div>
           </div>
