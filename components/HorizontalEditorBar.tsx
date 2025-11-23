@@ -43,6 +43,11 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     selectedNode.tags?.includes('live-capture')
   );
   
+  // Check widget types
+  const isIframeWidget = selectedNode && typeof selectedNode.content === 'object' && selectedNode.content?.type === 'iframe-widget';
+  const isWebViewWidget = selectedNode && typeof selectedNode.content === 'object' && selectedNode.content?.type === 'webview-widget';
+  const isNativeWindowWidget = selectedNode && typeof selectedNode.content === 'object' && selectedNode.content?.type === 'native-window-widget';
+  
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
     if (typeof window !== 'undefined') {
       return { x: window.innerWidth / 2, y: window.innerHeight - MARGIN_BOTTOM };
