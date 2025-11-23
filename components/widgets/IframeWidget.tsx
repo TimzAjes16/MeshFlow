@@ -37,9 +37,11 @@ function IframeWidget(props: IframeWidgetProps) {
       };
 
   const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const previousUrlRef = useRef<string>('');
+  const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Reload iframe when URL changes
   useEffect(() => {
@@ -48,6 +50,13 @@ function IframeWidget(props: IframeWidgetProps) {
       previousUrlRef.current = currentUrl;
       setIsLoading(true);
       setHasError(false);
+      setErrorMessage('');
+      
+      // Clear any existing timeout
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+      }
+      
       // Force iframe reload by setting src to empty and then back to URL
       iframeRef.current.src = '';
       setTimeout(() => {
@@ -55,17 +64,52 @@ function IframeWidget(props: IframeWidgetProps) {
           iframeRef.current.src = currentUrl;
         }
       }, 10);
+      
+      // Set a timeout to detect if the iframe fails to load (e.g., X-Frame-Options)
+      loadTimeoutRef.current = setTimeout(() => {
+        if (isLoading) {
+          // Check if iframe content is accessible
+          try {
+            const iframe = iframeRef.current;
+            if (iframe && iframe.contentWindow) {
+              // Try to access iframe content - if blocked, this will throw
+              iframe.contentWindow.location.href;
+            }
+          } catch (e: any) {
+            // Iframe is blocked (X-Frame-Options or CSP)
+            setIsLoading(false);
+            setHasError(true);
+            setErrorMessage('This website cannot be embedded in an iframe due to security restrictions (X-Frame-Options). Try using the WebView widget instead, which can bypass some restrictions.');
+          }
+        }
+      }, 3000); // 3 second timeout
     }
-  }, [iframeConfig.url]);
+    
+    return () => {
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+      }
+    };
+  }, [iframeConfig.url, isLoading]);
 
   const handleLoad = useCallback(() => {
+    if (loadTimeoutRef.current) {
+      clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = null;
+    }
     setIsLoading(false);
     setHasError(false);
+    setErrorMessage('');
   }, []);
 
   const handleError = useCallback(() => {
+    if (loadTimeoutRef.current) {
+      clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = null;
+    }
     setIsLoading(false);
     setHasError(true);
+    setErrorMessage('Failed to load the website. It may be blocked by security restrictions (X-Frame-Options). Try using the WebView widget instead.');
   }, []);
 
   return (
@@ -80,13 +124,19 @@ function IframeWidget(props: IframeWidgetProps) {
     >
       {hasError ? (
         <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-          <AlertCircle className="w-8 h-8 text-red-500 mb-2" />
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Failed to load content
+          <AlertCircle className="w-8 h-8 text-red-500 mb-3" />
+          <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+            Cannot Load Website
           </p>
-          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-            {iframeConfig.url}
+          <p className="text-xs text-gray-600 dark:text-gray-400 mb-3 max-w-sm">
+            {errorMessage || 'This website cannot be embedded in an iframe due to security restrictions.'}
           </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">
+            URL: {iframeConfig.url}
+          </p>
+          <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded">
+            💡 Tip: Use the <strong>WebView Widget</strong> instead, which can bypass some restrictions in Electron.
+          </div>
         </div>
       ) : !iframeConfig.url ? (
         <div className="flex flex-col items-center justify-center h-full p-4 text-center">
