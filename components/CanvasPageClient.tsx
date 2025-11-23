@@ -40,6 +40,13 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
   // Use a ref to track if we're currently creating a node to prevent duplicates
   const isCreatingLiveCaptureRef = useRef(false);
 
+  // Use refs to store event handlers to avoid Turbopack evaluation issues
+  const handleUpdateCaptureNodeRef = useRef<((event: CustomEvent) => Promise<void>) | null>(null);
+  const handleOpenLiveCaptureModalRef = useRef<((event: CustomEvent) => void) | null>(null);
+  const handleRecropLiveCaptureRef = useRef<((event: CustomEvent) => void) | null>(null);
+  const handleCreateLiveCaptureFromAreaRef = useRef<((event: CustomEvent) => Promise<void>) | null>(null);
+  const handleCreateWidgetRef = useRef<((event: CustomEvent) => Promise<void>) | null>(null);
+
   // Clear selectedNodeType when node is deselected
   useEffect(() => {
     if (!selectedNodeId) {
@@ -158,7 +165,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
 
   // Listen for capture node updates
   useEffect(() => {
-    const handleUpdateCaptureNode = (event: CustomEvent) => {
+    handleUpdateCaptureNodeRef.current = async (event: CustomEvent) => {
       const nodeId = event.detail.nodeId;
       // Access nodes from store directly to avoid dependency issues
       const currentNodes = useWorkspaceStore.getState().nodes;
@@ -179,7 +186,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     // Removed handleStartScreenCaptureForNode and handleStartScreenCapture - now using CaptureModal instead
     
     // Handle open live capture modal from toolbar
-    const handleOpenLiveCaptureModal = (event: CustomEvent) => {
+    handleOpenLiveCaptureModalRef.current = (event: CustomEvent) => {
       const { nodeId } = event.detail;
       if (nodeId) {
         // Update existing node
@@ -192,7 +199,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     };
 
     // Handle recrop live capture node
-    const handleRecropLiveCapture = (event: CustomEvent) => {
+    handleRecropLiveCaptureRef.current = (event: CustomEvent) => {
       const { nodeId } = event.detail;
       // Access nodes from store directly to avoid dependency issues
       const currentNodes = useWorkspaceStore.getState().nodes;
@@ -206,7 +213,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     };
     
     // Handle create live capture from floating crop area
-    const handleCreateLiveCaptureFromArea = async (event: CustomEvent) => {
+    handleCreateLiveCaptureFromAreaRef.current = async (event: CustomEvent) => {
       console.log('[CanvasPageClient] handleCreateLiveCaptureFromArea called with:', event.detail);
       const { area, stream } = event.detail;
       
@@ -420,18 +427,40 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       }
     };
 
-    window.addEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
-    window.addEventListener('open-live-capture-modal', handleOpenLiveCaptureModal as EventListener);
-    window.addEventListener('recrop-live-capture', handleRecropLiveCapture as EventListener);
-    window.addEventListener('create-live-capture-from-area', handleCreateLiveCaptureFromArea as unknown as EventListener);
+    // Wrapper functions that call the ref handlers
+    const handleUpdateCaptureNodeWrapper = (event: Event) => {
+      if (handleUpdateCaptureNodeRef.current) {
+        handleUpdateCaptureNodeRef.current(event as CustomEvent);
+      }
+    };
+    const handleOpenLiveCaptureModalWrapper = (event: Event) => {
+      if (handleOpenLiveCaptureModalRef.current) {
+        handleOpenLiveCaptureModalRef.current(event as CustomEvent);
+      }
+    };
+    const handleRecropLiveCaptureWrapper = (event: Event) => {
+      if (handleRecropLiveCaptureRef.current) {
+        handleRecropLiveCaptureRef.current(event as CustomEvent);
+      }
+    };
+    const handleCreateLiveCaptureFromAreaWrapper = (event: Event) => {
+      if (handleCreateLiveCaptureFromAreaRef.current) {
+        handleCreateLiveCaptureFromAreaRef.current(event as CustomEvent);
+      }
+    };
+
+    window.addEventListener('update-capture-node', handleUpdateCaptureNodeWrapper);
+    window.addEventListener('open-live-capture-modal', handleOpenLiveCaptureModalWrapper);
+    window.addEventListener('recrop-live-capture', handleRecropLiveCaptureWrapper);
+    window.addEventListener('create-live-capture-from-area', handleCreateLiveCaptureFromAreaWrapper);
     
     return () => {
-      window.removeEventListener('update-capture-node', handleUpdateCaptureNode as EventListener);
-      window.removeEventListener('open-live-capture-modal', handleOpenLiveCaptureModal as EventListener);
-      window.removeEventListener('recrop-live-capture', handleRecropLiveCapture as EventListener);
-      window.removeEventListener('create-live-capture-from-area', handleCreateLiveCaptureFromArea as unknown as EventListener);
+      window.removeEventListener('update-capture-node', handleUpdateCaptureNodeWrapper);
+      window.removeEventListener('open-live-capture-modal', handleOpenLiveCaptureModalWrapper);
+      window.removeEventListener('recrop-live-capture', handleRecropLiveCaptureWrapper);
+      window.removeEventListener('create-live-capture-from-area', handleCreateLiveCaptureFromAreaWrapper);
     };
-  }, []); // No dependencies needed - handlers access store directly
+  }, [workspaceId, nodes, addNode, selectNode]); // Include dependencies that handlers use
 
   // Handle clipboard image detection for live capture nodes
   const handleClipboardImage = useCallback(
@@ -850,7 +879,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
 
   // Listen for widget creation events (must be after handleCreateNode is defined)
   useEffect(() => {
-    const handleCreateWidget = async (event: CustomEvent) => {
+    handleCreateWidgetRef.current = async (event: CustomEvent) => {
       const { type } = event.detail;
       const position = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
       
@@ -868,12 +897,18 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       await handleCreateNode(type, flowPosition);
     };
 
-    window.addEventListener('create-widget', handleCreateWidget as unknown as EventListener);
+    const handleCreateWidgetWrapper = (event: Event) => {
+      if (handleCreateWidgetRef.current) {
+        handleCreateWidgetRef.current(event as CustomEvent);
+      }
+    };
+
+    window.addEventListener('create-widget', handleCreateWidgetWrapper);
     
     return () => {
-      window.removeEventListener('create-widget', handleCreateWidget as unknown as EventListener);
+      window.removeEventListener('create-widget', handleCreateWidgetWrapper);
     };
-  }, [handleCreateNode]);
+  }, [handleCreateNode, setPendingNativeWindowType, setNativeWindowConfigOpen]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
