@@ -36,7 +36,7 @@ const DrawingCanvas = ({ workspaceId }: DrawingCanvasProps) => {
 
   // Listen for drawing mode toggle
   useEffect(() => {
-    const handleToggleDrawing = (event: CustomEvent) => {
+    handleToggleDrawingRef.current = (event: CustomEvent) => {
       setDrawingMode(event.detail.enabled);
       if (!event.detail.enabled) {
         setIsDrawing(false);
@@ -44,15 +44,21 @@ const DrawingCanvas = ({ workspaceId }: DrawingCanvasProps) => {
       }
     };
 
-    window.addEventListener('toggle-drawing-mode', handleToggleDrawing as EventListener);
+    const handleToggleDrawingWrapper = (event: Event) => {
+      if (handleToggleDrawingRef.current) {
+        handleToggleDrawingRef.current(event as CustomEvent);
+      }
+    };
+
+    window.addEventListener('toggle-drawing-mode', handleToggleDrawingWrapper);
     return () => {
-      window.removeEventListener('toggle-drawing-mode', handleToggleDrawing as EventListener);
+      window.removeEventListener('toggle-drawing-mode', handleToggleDrawingWrapper);
     };
   }, []);
 
   // Listen for eraser mode toggle
   useEffect(() => {
-    const handleToggleEraser = (event: CustomEvent) => {
+    handleToggleEraserRef.current = (event: CustomEvent) => {
       setEraserMode(event.detail.enabled);
       if (!event.detail.enabled) {
         setIsErasing(false);
@@ -60,89 +66,113 @@ const DrawingCanvas = ({ workspaceId }: DrawingCanvasProps) => {
       }
     };
 
-    window.addEventListener('toggle-eraser-mode', handleToggleEraser as EventListener);
+    const handleToggleEraserWrapper = (event: Event) => {
+      if (handleToggleEraserRef.current) {
+        handleToggleEraserRef.current(event as CustomEvent);
+      }
+    };
+
+    window.addEventListener('toggle-eraser-mode', handleToggleEraserWrapper);
     return () => {
-      window.removeEventListener('toggle-eraser-mode', handleToggleEraser as EventListener);
+      window.removeEventListener('toggle-eraser-mode', handleToggleEraserWrapper);
     };
   }, []);
 
   // Listen for eraser settings updates
   useEffect(() => {
-    const handleUpdateEraserSettings = (event: CustomEvent) => {
+    handleUpdateEraserSettingsRef.current = (event: CustomEvent) => {
       if (event.detail.eraserType) setEraserType(event.detail.eraserType);
       if (event.detail.eraserSize) setEraserSize(event.detail.eraserSize);
     };
 
-    window.addEventListener('update-eraser-settings', handleUpdateEraserSettings as EventListener);
+    const handleUpdateEraserSettingsWrapper = (event: Event) => {
+      if (handleUpdateEraserSettingsRef.current) {
+        handleUpdateEraserSettingsRef.current(event as CustomEvent);
+      }
+    };
+
+    window.addEventListener('update-eraser-settings', handleUpdateEraserSettingsWrapper);
     return () => {
-      window.removeEventListener('update-eraser-settings', handleUpdateEraserSettings as EventListener);
+      window.removeEventListener('update-eraser-settings', handleUpdateEraserSettingsWrapper);
     };
   }, []);
 
   // Listen for drawing settings updates
   useEffect(() => {
-    const handleUpdateSettings = (event: CustomEvent) => {
+    handleUpdateSettingsRef.current = (event: CustomEvent) => {
       if (event.detail.color) setColor(event.detail.color);
       if (event.detail.strokeWidth) setStrokeWidth(event.detail.strokeWidth);
     };
 
-    window.addEventListener('update-drawing-settings', handleUpdateSettings as EventListener);
+    const handleUpdateSettingsWrapper = (event: Event) => {
+      if (handleUpdateSettingsRef.current) {
+        handleUpdateSettingsRef.current(event as CustomEvent);
+      }
+    };
+
+    window.addEventListener('update-drawing-settings', handleUpdateSettingsWrapper);
     return () => {
-      window.removeEventListener('update-drawing-settings', handleUpdateSettings as EventListener);
+      window.removeEventListener('update-drawing-settings', handleUpdateSettingsWrapper);
     };
   }, []);
 
-  // Listen for undo/redo events
-  useEffect(() => {
-    const handleUndo = () => {
-      if (historyIndex > 0 && history.length > 0) {
-        const newIndex = historyIndex - 1;
-        setHistoryIndex(newIndex);
-        setPaths([...history[newIndex]]);
-      }
-    };
-
-    const handleRedo = () => {
-      if (historyIndex < history.length - 1 && history.length > 0) {
-        const newIndex = historyIndex + 1;
-        setHistoryIndex(newIndex);
-        setPaths([...history[newIndex]]);
-      }
-    };
-
-    window.addEventListener('drawing-undo', handleUndo);
-    window.addEventListener('drawing-redo', handleRedo);
-    return () => {
-      window.removeEventListener('drawing-undo', handleUndo);
-      window.removeEventListener('drawing-redo', handleRedo);
-    };
-  }, [history, historyIndex]);
+  // Use refs to store event handlers to avoid Turbopack evaluation issues
+  const handleToggleDrawingRef = useRef<((event: CustomEvent) => void) | null>(null);
+  const handleToggleEraserRef = useRef<((event: CustomEvent) => void) | null>(null);
+  const handleUpdateEraserSettingsRef = useRef<((event: CustomEvent) => void) | null>(null);
+  const handleUpdateSettingsRef = useRef<((event: CustomEvent) => void) | null>(null);
+  const handleUndoRef = useRef<(() => void) | null>(null);
+  const handleRedoRef = useRef<(() => void) | null>(null);
 
   // Listen for undo/redo events
   useEffect(() => {
-    const handleUndo = () => {
-      if (historyIndex > 0) {
-        const newIndex = historyIndex - 1;
-        setHistoryIndex(newIndex);
-        setPaths([...history[newIndex]]);
+    handleUndoRef.current = () => {
+      setHistoryIndex((currentIndex) => {
+        setHistory((currentHistory) => {
+          if (currentIndex > 0 && currentHistory.length > 0) {
+            const newIndex = currentIndex - 1;
+            setPaths([...currentHistory[newIndex]]);
+            return currentHistory;
+          }
+          return currentHistory;
+        });
+        return currentIndex;
+      });
+    };
+
+    handleRedoRef.current = () => {
+      setHistoryIndex((currentIndex) => {
+        setHistory((currentHistory) => {
+          if (currentIndex < currentHistory.length - 1 && currentHistory.length > 0) {
+            const newIndex = currentIndex + 1;
+            setPaths([...currentHistory[newIndex]]);
+            return currentHistory;
+          }
+          return currentHistory;
+        });
+        return currentIndex;
+      });
+    };
+
+    const handleUndoWrapper = () => {
+      if (handleUndoRef.current) {
+        handleUndoRef.current();
       }
     };
 
-    const handleRedo = () => {
-      if (historyIndex < history.length - 1) {
-        const newIndex = historyIndex + 1;
-        setHistoryIndex(newIndex);
-        setPaths([...history[newIndex]]);
+    const handleRedoWrapper = () => {
+      if (handleRedoRef.current) {
+        handleRedoRef.current();
       }
     };
 
-    window.addEventListener('drawing-undo', handleUndo);
-    window.addEventListener('drawing-redo', handleRedo);
+    window.addEventListener('drawing-undo', handleUndoWrapper);
+    window.addEventListener('drawing-redo', handleRedoWrapper);
     return () => {
-      window.removeEventListener('drawing-undo', handleUndo);
-      window.removeEventListener('drawing-redo', handleRedo);
+      window.removeEventListener('drawing-undo', handleUndoWrapper);
+      window.removeEventListener('drawing-redo', handleRedoWrapper);
     };
-  }, [history, historyIndex]);
+  }, []); // Empty deps - handlers use functional setState
 
   // Get canvas coordinates from screen coordinates using React Flow's transform
   const screenToCanvas = useCallback((screenX: number, screenY: number): { x: number; y: number } => {
