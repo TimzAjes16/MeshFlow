@@ -1,21 +1,16 @@
 /**
- * Custom hook for widget resize functionality
- * Provides stable resize handlers that don't cause dependency array issues
+ * Widget Resize Hook - Rebuilt from scratch
+ * Works like OBS/ShareScreen - direct manipulation of React Flow node dimensions
+ * Properly handles zoom level for accurate resizing
  */
 
-import React, { useCallback, useRef, useEffect, RefObject, useState } from 'react';
-
-export interface ResizeState {
-  startX: number;
-  startY: number;
-  startWidth: number;
-  startHeight: number;
-}
+import { useCallback, useRef, useState, useEffect, RefObject } from 'react';
+import { useReactFlow } from 'reactflow';
 
 export interface UseResizeOptions {
+  nodeId: string;
   minWidth?: number;
   minHeight?: number;
-  onResize?: (width: number, height: number) => void;
   enabled?: boolean;
 }
 
@@ -25,176 +20,227 @@ export interface UseResizeReturn {
   resizeHandleRef: RefObject<HTMLDivElement>;
 }
 
+// Global set to track resizing nodes
+const resizingNodes = new Set<string>();
+if (typeof window !== 'undefined') {
+  (window as any).__resizingNodes = resizingNodes;
+}
+
+export function isNodeResizing(nodeId: string): boolean {
+  return resizingNodes.has(nodeId);
+}
+
 /**
- * Custom hook for handling resize functionality
- * Uses refs for all mutable values to ensure stable dependencies
+ * Helper to find React Flow node element in DOM
+ * React Flow uses data-id attribute on the node wrapper
  */
+function findNodeElement(nodeId: string): HTMLElement | null {
+  // Try multiple selectors to be robust
+  let element = document.querySelector(`.react-flow__node[data-id="${nodeId}"]`) as HTMLElement;
+  if (element) return element;
+  
+  // Fallback: find by ID in any react-flow node
+  element = document.querySelector(`[data-id="${nodeId}"].react-flow__node`) as HTMLElement;
+  if (element) return element;
+  
+  // Fallback: find any element with data-id matching nodeId
+  element = document.querySelector(`[data-id="${nodeId}"]`) as HTMLElement;
+  return element;
+}
+
 export function useResize({
+  nodeId,
   minWidth = 200,
   minHeight = 150,
-  onResize,
   enabled = true,
 }: UseResizeOptions): UseResizeReturn {
-  const isResizingRef = useRef(false);
-  const resizeStateRef = useRef<ResizeState | null>(null);
-  const onResizeRef = useRef(onResize);
-  const resizeHandleRef = useRef<HTMLDivElement>(null);
-  const nodeElementRef = useRef<HTMLElement | null>(null);
+  const { setNodes, getNode, getViewport } = useReactFlow();
   const [isResizing, setIsResizing] = useState(false);
+  const resizeHandleRef = useRef<HTMLDivElement>(null);
+  
+  const startStateRef = useRef<{
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+  } | null>(null);
 
-  // Update refs when values change (doesn't affect dependency arrays)
-  useEffect(() => {
-    onResizeRef.current = onResize;
-  }, [onResize]);
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    if (!enabled) return;
 
-  // Global mouse move handler - defined once and stable
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isResizingRef.current || !resizeStateRef.current) {
+    // Stop all propagation immediately
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.nativeEvent) {
+      e.nativeEvent.stopImmediatePropagation();
+    }
+
+    // Get current node from React Flow
+    const node = getNode(nodeId);
+    if (!node) {
+      console.error('[useResize] Node not found:', nodeId);
       return;
     }
 
-    // Prevent default and stop propagation
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
+    // Get current dimensions - prioritize node.width/height, fallback to DOM measurement
+    const nodeElement = findNodeElement(nodeId);
+    let currentWidth = (node.width as number) || 0;
+    let currentHeight = (node.height as number) || 0;
+    
+    // If node doesn't have dimensions, get from DOM and convert to flow coordinates
+    if (!currentWidth || !currentHeight) {
+      if (nodeElement) {
+        const rect = nodeElement.getBoundingClientRect();
+        const viewport = getViewport();
+        const zoom = viewport.zoom || 1;
+        // Convert screen pixels to flow coordinates
+        currentWidth = rect.width / zoom;
+        currentHeight = rect.height / zoom;
+      }
+      
+      // Final fallback to defaults
+      if (!currentWidth || !currentHeight) {
+        currentWidth = 400;
+        currentHeight = 300;
+      }
+    }
 
-    const state = resizeStateRef.current;
+    console.log('[useResize] Starting resize:', {
+      nodeId,
+      currentWidth,
+      currentHeight,
+      nodeWidth: node.width,
+      nodeHeight: node.height,
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+    });
 
-    // Calculate mouse movement delta
-    const deltaX = e.clientX - state.startX;
-    const deltaY = e.clientY - state.startY;
+    // Store initial state
+    startStateRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth: currentWidth,
+      startHeight: currentHeight,
+    };
 
-    // Calculate new dimensions (bottom-right corner resize)
-    const newWidth = Math.max(minWidth, state.startWidth + deltaX);
-    const newHeight = Math.max(minHeight, state.startHeight + deltaY);
+    // Mark as resizing
+    setIsResizing(true);
+    resizingNodes.add(nodeId);
 
-    // Round to avoid fractional pixels
-    const roundedWidth = Math.round(newWidth);
-    const roundedHeight = Math.round(newHeight);
+    // Disable React Flow dragging on this node
+    if (nodeElement) {
+      nodeElement.setAttribute('data-resizing', 'true');
+      nodeElement.style.pointerEvents = 'none';
+    }
 
-    // Call resize handler
-    onResizeRef.current?.(roundedWidth, roundedHeight);
-  }, [minWidth, minHeight]);
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'nwse-resize';
+  }, [enabled, nodeId, getNode, getViewport]);
 
-  // Global mouse up handler - defined once and stable
-  const handleMouseUp = useCallback((e?: MouseEvent) => {
-    if (e) {
+  useEffect(() => {
+    if (!isResizing || !startStateRef.current) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!startStateRef.current) return;
+
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-    }
 
-    if (!isResizingRef.current) {
-      return;
-    }
+      const { startX, startY, startWidth, startHeight } = startStateRef.current;
+      
+      // Get current viewport to account for zoom
+      const viewport = getViewport();
+      const zoom = viewport.zoom || 1;
+      
+      // Calculate delta in screen pixels
+      const deltaXScreen = e.clientX - startX;
+      const deltaYScreen = e.clientY - startY;
+      
+      // CRITICAL: Convert screen pixel delta to flow coordinate delta
+      // When zoomed out (zoom < 1), same screen movement = larger flow movement
+      // When zoomed in (zoom > 1), same screen movement = smaller flow movement
+      const deltaXFlow = deltaXScreen / zoom;
+      const deltaYFlow = deltaYScreen / zoom;
 
-    // Clean up
-    if (nodeElementRef.current) {
-      nodeElementRef.current.removeAttribute('data-resizing');
-      nodeElementRef.current.style.pointerEvents = '';
-    }
+      // Calculate new dimensions in flow coordinates
+      const newWidth = Math.max(minWidth, startWidth + deltaXFlow);
+      const newHeight = Math.max(minHeight, startHeight + deltaYFlow);
 
-    // Reset state
-    resizeStateRef.current = null;
-    isResizingRef.current = false;
-    setIsResizing(false);
+      const roundedWidth = Math.round(newWidth);
+      const roundedHeight = Math.round(newHeight);
 
-    // Reset body styles
-    document.body.style.userSelect = '';
-    document.body.style.cursor = '';
-  }, []);
+      console.log('[useResize] Resizing:', {
+        zoom,
+        deltaXScreen,
+        deltaYScreen,
+        deltaXFlow,
+        deltaYFlow,
+        newWidth: roundedWidth,
+        newHeight: roundedHeight,
+      });
 
-  // Set up global event listeners when resizing
-  useEffect(() => {
-    if (!isResizing) {
-      return;
-    }
-
-    // Use capture phase to intercept events before React Flow
-    const options = { capture: true, passive: false };
-
-    // Add listeners
-    document.addEventListener('mousemove', handleMouseMove, options);
-    document.addEventListener('mouseup', handleMouseUp, options);
-    document.addEventListener('mouseleave', handleMouseUp, options);
-
-    // Prevent React Flow from handling these events
-    const preventReactFlowDrag = (e: Event) => {
-      if (isResizingRef.current) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-      }
+      // Update React Flow node directly
+      setNodes((nodes) =>
+        nodes.map((node) => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              width: roundedWidth,
+              height: roundedHeight,
+              style: {
+                ...node.style,
+                width: roundedWidth,
+                height: roundedHeight,
+              },
+            };
+          }
+          return node;
+        })
+      );
     };
 
-    window.addEventListener('mousemove', preventReactFlowDrag, { capture: true, passive: false });
-    window.addEventListener('mouseup', preventReactFlowDrag, { capture: true, passive: false });
+    const handleMouseUp = () => {
+      const nodeElement = findNodeElement(nodeId);
+      if (nodeElement) {
+        nodeElement.removeAttribute('data-resizing');
+        nodeElement.style.pointerEvents = '';
+      }
+
+      resizingNodes.delete(nodeId);
+      setIsResizing(false);
+      startStateRef.current = null;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+
+      console.log('[useResize] Resize ended, dispatching event for node:', nodeId);
+
+      // Trigger resize callback by dispatching a custom event
+      // The widget handler will listen for this
+      window.dispatchEvent(new CustomEvent('widget-resize-end', { detail: { nodeId } }));
+    };
+
+    const options = { capture: true, passive: false };
+    document.addEventListener('mousemove', handleMouseMove, options);
+    document.addEventListener('mouseup', handleMouseUp, options);
+    window.addEventListener('mouseup', handleMouseUp, options);
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove, options);
       document.removeEventListener('mouseup', handleMouseUp, options);
-      document.removeEventListener('mouseleave', handleMouseUp, options);
-      window.removeEventListener('mousemove', preventReactFlowDrag, { capture: true });
-      window.removeEventListener('mouseup', preventReactFlowDrag, { capture: true });
-
-      // Final cleanup
-      if (nodeElementRef.current) {
-        nodeElementRef.current.removeAttribute('data-resizing');
-        nodeElementRef.current.style.pointerEvents = '';
+      window.removeEventListener('mouseup', handleMouseUp, options);
+      
+      // Cleanup
+      const nodeElement = findNodeElement(nodeId);
+      if (nodeElement) {
+        nodeElement.removeAttribute('data-resizing');
+        nodeElement.style.pointerEvents = '';
       }
+      resizingNodes.delete(nodeId);
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
     };
-  }, [isResizing, handleMouseMove, handleMouseUp]);
-
-  // Handle resize start
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    if (!enabled || !resizeHandleRef.current) {
-      return;
-    }
-
-    // Stop all event propagation immediately
-    e.preventDefault();
-    e.stopPropagation();
-    e.nativeEvent.stopImmediatePropagation();
-
-    // Find the React Flow node wrapper
-    const nodeWrapper = resizeHandleRef.current.closest('.react-flow__node') as HTMLElement;
-    if (!nodeWrapper) {
-      console.warn('[useResize] Could not find React Flow node wrapper');
-      return;
-    }
-
-    nodeElementRef.current = nodeWrapper;
-
-    // Get current dimensions from the node wrapper
-    const rect = nodeWrapper.getBoundingClientRect();
-
-    // Store resize state
-    resizeStateRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      startWidth: rect.width,
-      startHeight: rect.height,
-    };
-
-    // Mark as resizing
-    isResizingRef.current = true;
-    setIsResizing(true);
-
-    // Disable React Flow dragging on this specific node
-    nodeWrapper.setAttribute('data-resizing', 'true');
-    nodeWrapper.style.pointerEvents = 'none';
-
-    // Re-enable pointer events only on the resize handle
-    if (resizeHandleRef.current) {
-      resizeHandleRef.current.style.pointerEvents = 'auto';
-    }
-
-    // Prevent default browser behaviors
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'nwse-resize';
-  }, [enabled]);
+  }, [isResizing, nodeId, minWidth, minHeight, setNodes, getViewport]);
 
   return {
     isResizing,
@@ -202,5 +248,3 @@ export function useResize({
     resizeHandleRef,
   };
 }
-
-

@@ -175,6 +175,16 @@ namespace WindowEmbedding {
           continue; // Skip desktop elements
         }
         
+        // Get window bounds
+        CGRect bounds = {};
+        NSDictionary* boundsDict = windowInfo[(id)kCGWindowBounds];
+        if (boundsDict) {
+          bounds.origin.x = [boundsDict[@"X"] doubleValue];
+          bounds.origin.y = [boundsDict[@"Y"] doubleValue];
+          bounds.size.width = [boundsDict[@"Width"] doubleValue];
+          bounds.size.height = [boundsDict[@"Height"] doubleValue];
+        }
+        
         WindowInfo info;
         info.processName = [app.localizedName UTF8String] ?: "";
         info.windowTitle = [windowName UTF8String] ?: "";
@@ -182,6 +192,11 @@ namespace WindowEmbedding {
         NSNumber* windowID = windowInfo[(id)kCGWindowNumber];
         CGWindowID cgWindowID = windowID ? windowID.unsignedIntValue : 0;
         info.handle = reinterpret_cast<void*>((uintptr_t)cgWindowID | 0x8000000000000000ULL);
+        // Store window bounds
+        info.x = (int)bounds.origin.x;
+        info.y = (int)bounds.origin.y;
+        info.width = (int)bounds.size.width;
+        info.height = (int)bounds.size.height;
         
         windows.push_back(info);
       }

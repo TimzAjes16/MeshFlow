@@ -26,7 +26,19 @@ export type NodeTypeId =
   | 'iframe-widget'
   | 'webview-widget'
   | 'live-capture-widget'
-  | 'native-window-widget';
+  | 'native-window-widget'
+  // Tool types
+  | 'timer'
+  | 'voting'
+  | 'frame'
+  | 'card'
+  | 'code-block'
+  | 'sticker'
+  | 'visual-note'
+  | 'mind-map'
+  | 'org-chart'
+  | 'timeline'
+  | 'wireframe';
 
 // Node type definition (inspired by Notion's block structure)
 export interface NodeTypeDefinition {
@@ -255,6 +267,138 @@ export const NODE_TYPE_REGISTRY: Record<NodeTypeId, NodeTypeDefinition> = {
       processName: '',
       windowTitle: '',
       windowHandle: undefined,
+    },
+  },
+  // Tool types
+  'timer': {
+    id: 'timer',
+    label: 'Timer',
+    category: 'special',
+    hasEditableText: false,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      duration: 300,
+      isRunning: false,
+      timeRemaining: 300,
+    },
+  },
+  'voting': {
+    id: 'voting',
+    label: 'Voting',
+    category: 'special',
+    hasEditableText: false,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      question: '',
+      options: [],
+      votes: {},
+    },
+  },
+  'frame': {
+    id: 'frame',
+    label: 'Frame',
+    category: 'special',
+    hasEditableText: false,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      title: 'Frame',
+      width: 800,
+      height: 600,
+    },
+  },
+  'card': {
+    id: 'card',
+    label: 'Card',
+    category: 'content',
+    hasEditableText: true,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      title: 'Card',
+      description: '',
+    },
+  },
+  'code-block': {
+    id: 'code-block',
+    label: 'Code Block',
+    category: 'content',
+    hasEditableText: false,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      language: 'javascript',
+      code: '',
+    },
+  },
+  'sticker': {
+    id: 'sticker',
+    label: 'Sticker',
+    category: 'special',
+    hasEditableText: false,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      emoji: '😀',
+    },
+  },
+  'visual-note': {
+    id: 'visual-note',
+    label: 'Visual Note',
+    category: 'content',
+    hasEditableText: true,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      content: '',
+    },
+  },
+  'mind-map': {
+    id: 'mind-map',
+    label: 'Mind Map',
+    category: 'special',
+    hasEditableText: false,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      rootNode: { id: 'root', text: 'Central Idea' },
+      nodes: [],
+    },
+  },
+  'org-chart': {
+    id: 'org-chart',
+    label: 'Org Chart',
+    category: 'special',
+    hasEditableText: false,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      rootNode: { id: 'root', name: 'CEO', role: '' },
+      nodes: [],
+    },
+  },
+  'timeline': {
+    id: 'timeline',
+    label: 'Timeline',
+    category: 'special',
+    hasEditableText: false,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      events: [],
+    },
+  },
+  'wireframe': {
+    id: 'wireframe',
+    label: 'Wireframe',
+    category: 'special',
+    hasEditableText: false,
+    isResizable: true,
+    isRotatable: false,
+    defaultProperties: {
+      elements: [],
     },
   },
 };

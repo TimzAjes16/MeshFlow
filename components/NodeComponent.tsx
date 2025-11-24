@@ -9,7 +9,8 @@ import { memo } from 'react';
 import { NodeProps } from 'reactflow';
 import type { Node as NodeType } from '@/types/Node';
 import { getNodeType } from '@/lib/nodeTypes';
-import { NODE_RENDERERS } from './nodes';
+import { NODE_RENDERERS, TOOL_NODE_RENDERERS } from './nodes';
+import StickyNoteNode from './nodes/StickyNoteNode';
 
 interface NodeData {
   node: NodeType;
@@ -26,6 +27,14 @@ interface CustomNodeProps extends NodeProps {
 function NodeComponent(props: CustomNodeProps) {
   const { data } = props;
   const { node } = data;
+  
+  // Check if this is a sticky note (has color property in content)
+  const isStickyNote = typeof node.content === 'object' && node.content && 
+    ('color' in node.content || (node.content as any).type === 'sticky-note');
+  
+  if (isStickyNote) {
+    return <StickyNoteNode {...props} />;
+  }
   
   // Get node type (supports both explicit type and tag-based for backwards compatibility)
   const nodeType = getNodeType(node);

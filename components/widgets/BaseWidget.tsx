@@ -1,35 +1,22 @@
 /**
- * Base Widget Component
- * All widgets inherit from this base component for consistent behavior
- * Provides: drag, resize, dock, minimize, close functionality
+ * Base Widget Component - Rebuilt from scratch
+ * Uses React Flow's built-in NodeResizer for proper resizing
+ * All widgets inherit from this base component
  */
 
 'use client';
 
-import React, { memo, useRef, useState, useCallback, useEffect } from 'react';
+import React, { memo, useState, useCallback, useEffect, useRef } from 'react';
 import { X, Minimize2, Maximize2 } from 'lucide-react';
+import { NodeResizer } from '@reactflow/node-resizer';
 import type { Node as NodeType } from '@/types/Node';
 import { NodeProps } from 'reactflow';
-import { useResize } from './useResize';
-
-// Global tracking of nodes being resized (more reliable than DOM attributes)
-const resizingNodes = new Set<string>();
-
-// Expose to window for CanvasContainer to access
-if (typeof window !== 'undefined') {
-  (window as any).__resizingNodes = resizingNodes;
-}
-
-// Export function to check if a node is being resized
-export function isNodeResizing(nodeId: string): boolean {
-  return resizingNodes.has(nodeId);
-}
+import '@reactflow/node-resizer/dist/style.css';
 
 export interface WidgetProps extends NodeProps {
   data: {
     node: NodeType;
   };
-  onResize?: (width: number, height: number) => void;
   onMinimize?: () => void;
   onClose?: () => void;
   onTitleChange?: (title: string) => void;
@@ -37,21 +24,26 @@ export interface WidgetProps extends NodeProps {
   canResize?: boolean;
   canMinimize?: boolean;
   canClose?: boolean;
-  width?: number;
-  height?: number;
 }
 
-interface BaseWidgetProps extends WidgetProps {
+interface BaseWidgetProps extends Partial<NodeProps> {
+  data: {
+    node: NodeType;
+  };
+  selected?: boolean;
   children: React.ReactNode;
   title?: string;
   icon?: React.ReactNode;
   className?: string;
+  onMinimize?: () => void;
+  onClose?: () => void;
+  onTitleChange?: (title: string) => void;
+  isDocked?: boolean;
+  canResize?: boolean;
+  canMinimize?: boolean;
+  canClose?: boolean;
 }
 
-/**
- * Base Widget - Provides common widget functionality
- * All widget types should wrap their content with this component
- */
 function BaseWidget({
   data,
   selected,
@@ -59,7 +51,6 @@ function BaseWidget({
   title,
   icon,
   className = '',
-  onResize,
   onMinimize,
   onClose,
   onTitleChange,
@@ -67,41 +58,17 @@ function BaseWidget({
   canResize = true,
   canMinimize = true,
   canClose = true,
-  width,
-  height,
 }: BaseWidgetProps) {
   const { node } = data;
   const [isMinimized, setIsMinimized] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editingTitle, setEditingTitle] = useState('');
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const resizeRef = useRef<HTMLDivElement>(null);
-  
-  // Use the custom resize hook
-  const { isResizing, handleResizeStart, resizeHandleRef } = useResize({
-    minWidth: 200,
-    minHeight: 150,
-    onResize,
-    enabled: canResize,
-  });
-  
-  // Track resizing state globally for React Flow
-  useEffect(() => {
-    if (isResizing) {
-      resizingNodes.add(node.id);
-    } else {
-      resizingNodes.delete(node.id);
-    }
-    return () => {
-      resizingNodes.delete(node.id);
-    };
-  }, [isResizing, node.id]);
 
   const handleMinimize = useCallback(() => {
     setIsMinimized(!isMinimized);
     onMinimize?.();
   }, [isMinimized, onMinimize]);
-
 
   const displayTitle = title || node.title || 'New Widget';
   const displayIcon = icon;
@@ -109,11 +76,9 @@ function BaseWidget({
   // Handle title editing
   const handleTitleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isResizing) {
-      setIsEditingTitle(true);
-      setEditingTitle(displayTitle);
-    }
-  }, [displayTitle, isResizing]);
+    setIsEditingTitle(true);
+    setEditingTitle(displayTitle);
+  }, [displayTitle]);
 
   const handleTitleSave = useCallback(() => {
     if (editingTitle.trim() && editingTitle !== displayTitle) {
@@ -152,7 +117,6 @@ function BaseWidget({
 
   return (
     <div
-      ref={resizeRef}
       className={`
         relative bg-white dark:bg-gray-800 rounded-lg border-2 shadow-lg
         ${selected ? 'border-blue-500' : 'border-gray-200 dark:border-gray-700'}
@@ -168,28 +132,26 @@ function BaseWidget({
         flexDirection: 'column',
         overflow: 'hidden',
       }}
-      onMouseDown={(e) => {
-        // Prevent React Flow from handling drag when clicking on widget content
-        // Only allow dragging from header (which has data-widget-header attribute)
-        // OR if we're resizing
-        const target = e.target as HTMLElement;
-        if (!target.closest('[data-widget-header]') && 
-            !target.closest('[data-resize-handle]') &&
-            !target.closest('[data-no-drag]') &&
-            !isResizing) {
-          e.stopPropagation();
-        }
-        
-        // If resizing, prevent all drag events
-        if (isResizing) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.nativeEvent.stopImmediatePropagation();
-        }
-      }}
     >
+      {/* React Flow NodeResizer - handles all resizing */}
+      {canResize && !isMinimized && selected && (
+        <NodeResizer
+          minWidth={200}
+          minHeight={150}
+          color="#3b82f6"
+          isVisible={selected}
+          onResizeEnd={() => {
+            // Dispatch event for persistence
+            window.dispatchEvent(new CustomEvent('widget-resize-end', { 
+              detail: { nodeId: node.id } 
+            }));
+          }}
+        />
+      )}
+
       {/* Widget Header */}
       <div
+        data-widget-header
         className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 cursor-move"
         style={{ userSelect: 'none' }}
       >
@@ -225,7 +187,10 @@ function BaseWidget({
         <div className="flex items-center gap-1 flex-shrink-0">
           {canMinimize && (
             <button
-              onClick={handleMinimize}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleMinimize();
+              }}
               className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
               title={isMinimized ? 'Restore' : 'Minimize'}
             >
@@ -258,53 +223,8 @@ function BaseWidget({
           {children}
         </div>
       )}
-
-      {/* Resize Handle */}
-      {canResize && !isMinimized && (
-        <div
-          ref={resizeHandleRef}
-          data-resize-handle
-          data-no-drag
-          className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-50"
-          style={{
-            background: 'linear-gradient(135deg, transparent 0%, transparent 40%, rgba(59, 130, 246, 0.5) 40%, rgba(59, 130, 246, 0.5) 100%)',
-            clipPath: 'polygon(100% 0, 0 100%, 100% 100%)',
-            pointerEvents: 'auto',
-          }}
-          onMouseDown={(e) => {
-            // CRITICAL: Stop all propagation immediately
-            e.preventDefault();
-            e.stopPropagation();
-            e.nativeEvent.stopImmediatePropagation();
-            handleResizeStart(e);
-          }}
-          onMouseEnter={(e) => {
-            if (!isResizing) {
-              (e.currentTarget as HTMLElement).style.background = 'linear-gradient(135deg, transparent 0%, transparent 40%, rgba(59, 130, 246, 0.8) 40%, rgba(59, 130, 246, 0.8) 100%)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isResizing) {
-              (e.currentTarget as HTMLElement).style.background = 'linear-gradient(135deg, transparent 0%, transparent 40%, rgba(59, 130, 246, 0.5) 40%, rgba(59, 130, 246, 0.5) 100%)';
-            }
-          }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            e.nativeEvent.stopImmediatePropagation();
-          }}
-          onMouseMove={(e) => {
-            if (isResizing) {
-              e.preventDefault();
-              e.stopPropagation();
-              e.nativeEvent.stopImmediatePropagation();
-            }
-          }}
-        />
-      )}
     </div>
   );
 }
 
 export default memo(BaseWidget);
-

@@ -28,6 +28,11 @@ namespace WindowEmbedding {
     void* handle;
     std::string processName;
     std::string windowTitle;
+    // Window bounds in screen coordinates
+    int x;
+    int y;
+    int width;
+    int height;
   };
   
   // Get list of all visible windows (platform-specific)

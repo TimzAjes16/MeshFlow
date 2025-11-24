@@ -21,7 +21,7 @@ function WebViewWidget(props: WebViewWidgetProps) {
   const { data } = props;
   const node = data.node;
   const webviewRef = useRef<HTMLWebViewElement>(null);
-  const { handleClose, handleResize, handleTitleChange } = useWidgetHandlers(node.id);
+  const { handleClose, handleTitleChange } = useWidgetHandlers(node.id);
   
   // Extract webview config from node content
   const webviewConfig = typeof node.content === 'object' && node.content?.type === 'webview-widget'
@@ -202,7 +202,6 @@ function WebViewWidget(props: WebViewWidgetProps) {
         icon={<Globe2 className="w-4 h-4" />}
         className="webview-widget"
         onClose={handleClose}
-        onResize={handleResize}
       >
         {!webviewConfig.url ? (
           <div className="flex flex-col items-center justify-center h-full p-4 text-center">
@@ -243,7 +242,6 @@ function WebViewWidget(props: WebViewWidgetProps) {
       icon={<Globe2 className="w-4 h-4" />}
       className="webview-widget"
       onClose={handleClose}
-      onResize={handleResize}
       onTitleChange={handleTitleChange}
     >
       {hasError ? (
@@ -281,10 +279,12 @@ function WebViewWidget(props: WebViewWidgetProps) {
             ref={webviewRef}
             src={webviewConfig.url || undefined}
             className="w-full h-full"
+            // @ts-ignore - Electron webview tag allows string attributes
             allowpopups="true"
+            // @ts-ignore - Electron webview tag allows string attributes
             webpreferences="allowRunningInsecureContent, javascript=yes"
             style={{ 
-              display: isLoading || hasError ? 'none' : 'block',
+              display: (isLoading || hasError) ? 'none' : 'block',
               width: '100%',
               height: '100%',
             }}

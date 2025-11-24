@@ -261,6 +261,37 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         : {};
       const zIndex = nodeMetadata.zIndex || 0;
 
+      // Determine if this is a widget type
+      const nodeType = node.content?.type || '';
+      const isWidget = nodeType.includes('-widget') || nodeType === 'live-capture';
+      
+      // Use node dimensions from store if available
+      let nodeWidth = node.width;
+      let nodeHeight = node.height;
+      
+      // Set default dimensions if not set
+      if (!nodeWidth || !nodeHeight) {
+        if (isChart) {
+          nodeWidth = 400;
+          nodeHeight = 300;
+        } else if (isWidget) {
+          // Widget-specific defaults
+          if (nodeType === 'iframe-widget' || nodeType === 'webview-widget') {
+            nodeWidth = 800;
+            nodeHeight = 600;
+          } else if (nodeType === 'native-window-widget') {
+            nodeWidth = 800;
+            nodeHeight = 600;
+          } else if (nodeType === 'live-capture-widget') {
+            nodeWidth = 779;
+            nodeHeight = 513;
+          } else {
+            nodeWidth = 400;
+            nodeHeight = 300;
+          }
+        }
+      }
+
       return {
         id: node.id,
         type: 'custom',
@@ -269,14 +300,9 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
           label: node.title || 'Untitled',
           node,
         },
-        // Use node dimensions from store if available, otherwise use defaults
-        ...(node.width && { width: node.width }),
-        ...(node.height && { height: node.height }),
-        // Set default dimensions for chart nodes if not set
-        ...(isChart && !node.width && !node.height && {
-          width: 400,
-          height: 300,
-        }),
+        // Apply dimensions
+        ...(nodeWidth && { width: nodeWidth }),
+        ...(nodeHeight && { height: nodeHeight }),
         // Apply zIndex for layering
         zIndex,
         // Sync selected state with canvas store
@@ -498,14 +524,31 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
   // Handle node drag start
   const onNodeDragStart = useCallback(
     (event: React.MouseEvent, node: Node) => {
+      // CRITICAL: Check if the event originated from a resize handle
+      const target = event.target as HTMLElement;
+      const isResizeHandle = target?.hasAttribute('data-resize-handle') || 
+                             target?.closest('[data-resize-handle]');
+      
+      if (isResizeHandle) {
+        console.log('[CanvasContainer] Prevented drag - event from resize handle');
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.nativeEvent) {
+          event.nativeEvent.stopImmediatePropagation();
+        }
+        return;
+      }
+      
       // Prevent dragging if node is being resized
       // Check global resizing set
       const globalResizingNodes = (window as any).__resizingNodes as Set<string> | undefined;
       if (globalResizingNodes && globalResizingNodes.has(node.id)) {
+        console.log('[CanvasContainer] Prevented drag on resizing node:', node.id);
         event.preventDefault();
         event.stopPropagation();
-        event.nativeEvent.stopImmediatePropagation();
-        console.log('[CanvasContainer] Prevented drag on resizing node:', node.id);
+        if (event.nativeEvent) {
+          event.nativeEvent.stopImmediatePropagation();
+        }
         return;
       }
       
@@ -514,10 +557,12 @@ function CanvasInner({ workspaceId, onCreateNode }: CanvasContainerProps) {
         try {
           const nodeElement = document.querySelector(`.react-flow__node[data-id="${node.id}"]`) as HTMLElement;
           if (nodeElement && nodeElement.hasAttribute('data-resizing')) {
+            console.log('[CanvasContainer] Prevented drag on resizing node (DOM check):', node.id);
             event.preventDefault();
             event.stopPropagation();
-            event.nativeEvent.stopImmediatePropagation();
-            console.log('[CanvasContainer] Prevented drag on resizing node (DOM check):', node.id);
+            if (event.nativeEvent) {
+              event.nativeEvent.stopImmediatePropagation();
+            }
             return;
           }
         } catch (error) {

@@ -21,9 +21,27 @@ function ShapeNode({ data, selected }: ShapeNodeProps) {
   const isCircle = nodeType === 'circle';
   
   // Extract shape config from content
-  const shapeConfig = typeof node.content === 'object' && node.content?.type === nodeType
-    ? node.content
-    : { fill: true, fillColor: '#ffffff', borderColor: '#000000', borderWidth: 1 };
+  // Handle both new format (type: 'box'/'circle') and old format (type: 'shape' with shapeType)
+  let shapeConfig: any = {};
+  if (typeof node.content === 'object' && node.content) {
+    if (node.content.type === nodeType) {
+      // New format: content.type matches node type
+      shapeConfig = node.content;
+    } else if (node.content.type === 'shape' && (node.content as any).shapeType) {
+      // Old format: type is 'shape' with shapeType property
+      shapeConfig = {
+        fill: true,
+        fillColor: (node.content as any).fillColor || '#ffffff',
+        borderColor: (node.content as any).strokeColor || '#000000',
+        borderWidth: 1,
+      };
+    } else {
+      // Fallback
+      shapeConfig = { fill: true, fillColor: '#ffffff', borderColor: '#000000', borderWidth: 1 };
+    }
+  } else {
+    shapeConfig = { fill: true, fillColor: '#ffffff', borderColor: '#000000', borderWidth: 1 };
+  }
 
   const { 
     fill = true, 

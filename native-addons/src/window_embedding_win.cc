@@ -66,10 +66,20 @@ namespace WindowEmbedding {
       }
     }
     
+    // Get window bounds
+    RECT rect;
+    if (!GetWindowRect(hwnd, &rect)) {
+      return TRUE; // Skip if we can't get bounds
+    }
+    
     WindowInfo info;
     info.handle = reinterpret_cast<void*>(hwnd);
     info.windowTitle = title;
     info.processName = filename;
+    info.x = rect.left;
+    info.y = rect.top;
+    info.width = rect.right - rect.left;
+    info.height = rect.bottom - rect.top;
     data->windows->push_back(info);
     
     return TRUE;

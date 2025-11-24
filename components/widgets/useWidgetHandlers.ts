@@ -3,7 +3,7 @@
  * Provides consistent behavior across all widget types
  */
 
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useReactFlow } from 'reactflow';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
@@ -46,64 +46,87 @@ export function useWidgetHandlers(nodeId: string) {
     }
   }, [nodeId, workspaceId, deleteElements, deleteWorkspaceNode, deleteCanvasNode, selectNode]);
 
-  const handleResize = useCallback((width: number, height: number) => {
-    if (!nodeId) return;
-    
-    // Get current node from React Flow
-    const currentNode = getNode(nodeId);
-    if (!currentNode) {
-      console.warn(`[useWidgetHandlers] Node ${nodeId} not found for resize`);
-      return;
-    }
-    
-    // Update React Flow node dimensions immediately
-    setNodes((nodes) =>
-      nodes.map((node) => {
-        if (node.id === nodeId) {
-          return {
-            ...node,
-            width: Math.round(width),
-            height: Math.round(height),
-            style: {
-              ...node.style,
-              width: Math.round(width),
-              height: Math.round(height),
-            },
-          };
+  // Listen for React Flow node resize via NodeResizer
+  // React Flow automatically updates node.width and node.height when NodeResizer is used
+  useEffect(() => {
+    let resizeTimeout: NodeJS.Timeout | null = null;
+    let lastWidth = 0;
+    let lastHeight = 0;
+
+    const checkNodeSize = () => {
+      const node = getNode(nodeId);
+      if (!node || !workspaceId) return;
+
+      const width = (node.width as number) || 0;
+      const height = (node.height as number) || 0;
+
+      // Only persist if dimensions actually changed
+      if (width !== lastWidth || height !== lastHeight) {
+        lastWidth = width;
+        lastHeight = height;
+
+        // Debounce: wait for resize to finish
+        if (resizeTimeout) {
+          clearTimeout(resizeTimeout);
         }
-        return node;
-      })
-    );
-    
-    // Update workspace store
-    updateWorkspaceNode(nodeId, {
-      width: Math.round(width),
-      height: Math.round(height),
-    });
-    
-    // Persist to API (debounced to avoid too many requests)
-    if (workspaceId) {
-      // Clear any existing timeout
-      if ((handleResize as any).timeoutId) {
-        clearTimeout((handleResize as any).timeoutId);
+
+        resizeTimeout = setTimeout(async () => {
+          if (width > 0 && height > 0) {
+            const roundedWidth = Math.round(width);
+            const roundedHeight = Math.round(height);
+
+            // Update workspace store
+            try {
+              updateWorkspaceNode(nodeId, {
+                width: roundedWidth,
+                height: roundedHeight,
+              });
+            } catch (error) {
+              console.error('[useWidgetHandlers] Error updating workspace store:', error);
+            }
+
+            // Persist to API
+            try {
+              const response = await fetch(`/api/nodes/update`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  nodeId,
+                  width: roundedWidth,
+                  height: roundedHeight,
+                }),
+              });
+
+              if (!response.ok) {
+                console.error(`[useWidgetHandlers] Failed to persist size: ${response.status}`);
+              }
+            } catch (error) {
+              console.error('[useWidgetHandlers] Error persisting size:', error);
+            }
+          }
+        }, 500); // 500ms debounce
       }
-      
-      // Use a small delay to batch resize updates
-      (handleResize as any).timeoutId = setTimeout(() => {
-        fetch(`/api/nodes/update`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nodeId,
-            width: Math.round(width),
-            height: Math.round(height),
-          }),
-        }).catch((error) => {
-          console.error('Error updating node size:', error);
-        });
-      }, 300);
-    }
-  }, [nodeId, workspaceId, getNode, setNodes, updateWorkspaceNode]);
+    };
+
+    // Check on mount
+    checkNodeSize();
+
+    // Poll for changes (NodeResizer updates node dimensions directly)
+    const interval = setInterval(checkNodeSize, 200);
+
+    return () => {
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+      }
+      clearInterval(interval);
+    };
+  }, [nodeId, workspaceId, getNode, updateWorkspaceNode]);
+
+  // This is now a no-op - resize is handled directly by useResize hook
+  const handleResize = useCallback(() => {
+    // Resize is handled directly by useResize hook via React Flow setNodes
+    // This callback is kept for compatibility but does nothing
+  }, []);
 
   const handleTitleChange = useCallback(async (newTitle: string) => {
     if (!nodeId || !workspaceId) return;

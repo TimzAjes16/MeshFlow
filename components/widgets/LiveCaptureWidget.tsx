@@ -1,7 +1,6 @@
 /**
- * Live Capture Widget Component
- * Enhanced version of LiveCaptureNode with improved input injection
- * Captures screen areas and allows interactive control via input injection
+ * Live Capture Widget Component - Rebuilt from scratch
+ * Captures screen areas and displays live video feed
  */
 
 'use client';
@@ -9,70 +8,47 @@
 import { memo, useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import BaseWidget, { WidgetProps } from './BaseWidget';
 import { Camera, Volume2, VolumeX, Pause, Play } from 'lucide-react';
-import { useWorkspaceStore } from '@/state/workspaceStore';
-import type { Node as NodeType } from '@/types/Node';
 import { useWidgetHandlers } from './useWidgetHandlers';
 
-interface LiveCaptureWidgetProps extends WidgetProps {
-  // Live capture specific props
-}
-
 interface CaptureData {
-  imageUrl: string;
   cropArea: { x: number; y: number; width: number; height: number };
-  sourceUrl?: string;
-  timestamp?: string;
-  captureHistory?: Array<{ imageUrl: string; timestamp: string }>;
-  autoRefresh?: boolean;
-  autoRefreshInterval?: number;
+  screenBounds?: { x: number; y: number; width: number; height: number };
   isLiveStream?: boolean;
   streamId?: string;
-  captureMode?: 'fullscreen' | 'custom';
   interactive?: boolean;
-  screenBounds?: { x: number; y: number; width: number; height: number };
 }
 
-function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
+function LiveCaptureWidget(props: WidgetProps) {
   const { data } = props;
-  const { node } = data;
+  const node = data.node;
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const updateNode = useWorkspaceStore((state) => state.updateNode);
-  const { handleClose, handleResize, handleTitleChange } = useWidgetHandlers(node.id);
+  const { handleClose, handleTitleChange } = useWidgetHandlers(node.id);
+  
   const [isMuted, setIsMuted] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
   const cropIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Extract capture config from content
-  const captureData: CaptureData = typeof node.content === 'object' && node.content?.type === 'live-capture'
-    ? {
-        imageUrl: node.content.imageUrl || '',
+  // Extract capture config
+  const captureData: CaptureData = useMemo(() => {
+    if (typeof node.content === 'object' && node.content?.type === 'live-capture-widget') {
+      return {
         cropArea: node.content.cropArea || { x: 0, y: 0, width: 0, height: 0 },
-        sourceUrl: node.content.sourceUrl || '',
-        timestamp: node.content.timestamp || new Date().toISOString(),
-        captureHistory: node.content.captureHistory || [],
-        autoRefresh: node.content.autoRefresh ?? true,
-        autoRefreshInterval: node.content.autoRefreshInterval ?? 5,
+        screenBounds: node.content.screenBounds || node.content.cropArea,
         isLiveStream: node.content.isLiveStream ?? true,
         streamId: node.content.streamId,
-        captureMode: node.content.captureMode || 'custom',
         interactive: node.content.interactive ?? false,
-        screenBounds: node.content.screenBounds || node.content.cropArea || { x: 0, y: 0, width: 0, height: 0 },
-      }
-    : {
-        imageUrl: '',
-        cropArea: { x: 0, y: 0, width: 0, height: 0 },
-        captureHistory: [],
-        autoRefresh: true,
-        autoRefreshInterval: 5,
-        isLiveStream: true,
-        captureMode: 'custom',
-        interactive: false,
-        screenBounds: { x: 0, y: 0, width: 0, height: 0 },
       };
-  
+    }
+    return {
+      cropArea: { x: 0, y: 0, width: 0, height: 0 },
+      isLiveStream: true,
+      interactive: false,
+    };
+  }, [node.content?.type === 'live-capture-widget' ? JSON.stringify(node.content) : '']);
+
   const cropArea = useMemo(() => captureData.cropArea, [
     captureData.cropArea?.x,
     captureData.cropArea?.y,
@@ -87,62 +63,10 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
     captureData.screenBounds?.height,
   ]);
 
-  // Enhanced input injection for interactive mode
-  const handleInteractiveClick = useCallback((e: React.MouseEvent) => {
-    if (!captureData.interactive || !containerRef.current || !screenBounds || !cropArea) return;
-    
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const rect = containerRef.current.getBoundingClientRect();
-    const relativeX = e.clientX - rect.left;
-    const relativeY = e.clientY - rect.top;
-    
-    // Convert widget coordinates to screen coordinates
-    const scaleX = cropArea.width / rect.width;
-    const scaleY = cropArea.height / rect.height;
-    
-    const screenX = cropArea.x + (relativeX * scaleX);
-    const screenY = cropArea.y + (relativeY * scaleY);
-    
-    // Send click event to Electron main process for input injection
-    if (typeof window !== 'undefined' && (window as any).electronAPI?.sendMouseEvent) {
-      (window as any).electronAPI.sendMouseEvent({
-        x: screenX,
-        y: screenY,
-        button: e.button === 0 ? 'left' : e.button === 2 ? 'right' : 'middle',
-        type: 'click',
-      });
-    }
-  }, [captureData.interactive, cropArea, screenBounds]);
-
-  const handleInteractiveMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!captureData.interactive || !containerRef.current || !screenBounds || !cropArea) return;
-    
-    const rect = containerRef.current.getBoundingClientRect();
-    const relativeX = e.clientX - rect.left;
-    const relativeY = e.clientY - rect.top;
-    
-    const scaleX = cropArea.width / rect.width;
-    const scaleY = cropArea.height / rect.height;
-    
-    const screenX = cropArea.x + (relativeX * scaleX);
-    const screenY = cropArea.y + (relativeY * scaleY);
-    
-    if (typeof window !== 'undefined' && (window as any).electronAPI?.sendMouseEvent) {
-      (window as any).electronAPI.sendMouseEvent({
-        x: screenX,
-        y: screenY,
-        type: 'move',
-      });
-    }
-  }, [captureData.interactive, cropArea, screenBounds]);
-
-  // Find and setup live stream
+  // Find live stream from global registry
   useEffect(() => {
     if (!captureData.isLiveStream) return;
     
-    // Check global stream registry
     const streamRegistry = (window as any).liveCaptureStreams;
     if (streamRegistry && streamRegistry instanceof Map) {
       const streamData = streamRegistry.get(node.id);
@@ -164,7 +88,7 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
     
     window.addEventListener('live-capture-stream-ready', handleStreamReady as EventListener);
     
-    // Poll for stream availability (fallback)
+    // Poll for stream
     const pollInterval = setInterval(() => {
       const streamData = streamRegistry?.get(node.id);
       if (streamData?.stream) {
@@ -179,7 +103,7 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
     };
   }, [node.id, captureData.isLiveStream]);
 
-  // Setup video element and canvas for cropping
+  // Setup video and canvas for cropping
   useEffect(() => {
     if (!liveStream || !videoRef.current || !canvasRef.current) return;
     
@@ -188,7 +112,7 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Setup video element
+    // Setup video
     video.srcObject = liveStream;
     video.autoplay = true;
     video.playsInline = true;
@@ -225,7 +149,7 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
           videoCropHeight = cropArea.height * scaleY;
         }
         
-        // Ensure crop coordinates are within video bounds
+        // Clamp to video bounds
         videoCropX = Math.max(0, Math.min(videoCropX, videoWidth));
         videoCropY = Math.max(0, Math.min(videoCropY, videoHeight));
         videoCropWidth = Math.min(videoCropWidth, videoWidth - videoCropX);
@@ -277,7 +201,6 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
     }
   }, [isPaused]);
 
-  // Check if widget is configured (has stream or valid crop area)
   const isConfigured = liveStream || (cropArea && cropArea.width > 0 && cropArea.height > 0);
 
   return (
@@ -287,7 +210,6 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
       icon={<Camera className="w-4 h-4" />}
       className="live-capture-widget"
       onClose={handleClose}
-      onResize={handleResize}
       onTitleChange={handleTitleChange}
     >
       {!isConfigured ? (
@@ -302,7 +224,6 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              // Trigger area selection
               window.dispatchEvent(new CustomEvent('open-live-capture-modal', {
                 detail: { nodeId: node.id }
               }));
@@ -316,13 +237,8 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
         <div
           ref={containerRef}
           className="relative w-full h-full bg-black rounded-b-lg overflow-hidden"
-          style={{
-            pointerEvents: captureData.interactive ? 'auto' : 'none',
-          }}
-          onClick={handleInteractiveClick}
-          onMouseMove={handleInteractiveMouseMove}
         >
-          {/* Hidden video element for stream */}
+          {/* Hidden video element */}
           <video
             ref={videoRef}
             className="hidden"
@@ -336,7 +252,7 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
             className="w-full h-full object-contain"
           />
           
-          {/* Loading indicator if stream is not ready */}
+          {/* Loading indicator */}
           {!liveStream && captureData.isLiveStream && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50">
               <div className="flex flex-col items-center gap-2">
@@ -346,7 +262,7 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
             </div>
           )}
           
-          {/* Controls overlay */}
+          {/* Controls */}
           <div className="absolute bottom-2 right-2 flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-lg p-1">
             <button
               onClick={(e) => {
@@ -391,4 +307,3 @@ function LiveCaptureWidget(props: LiveCaptureWidgetProps) {
 }
 
 export default memo(LiveCaptureWidget);
-

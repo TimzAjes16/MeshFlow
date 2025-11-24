@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Undo2, Redo2, Palette, Minus, Plus, Eraser, CircleDot, Trash2, Video, RefreshCw, Crop, MousePointerClick, MousePointer2, X, Globe, Globe2, Monitor, Save } from 'lucide-react';
+import { Undo2, Redo2, Palette, Minus, Plus, Eraser, CircleDot, Trash2, Video, RefreshCw, Crop, MousePointerClick, MousePointer2, X, Globe, Globe2, Monitor, Save, Square, Type, Bold, Italic, Copy, Workflow, GitBranch, ArrowRight, Layers, Layout, Users, Clock, Vote, Sparkles, Presentation, Eye } from 'lucide-react';
 import FloatingCropArea from './FloatingCropArea';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
@@ -18,6 +18,9 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   const [isBrushActive, setIsBrushActive] = useState(false);
   const [isEraserActive, setIsEraserActive] = useState(false);
   const [isLiveCaptureActive, setIsLiveCaptureActive] = useState(false);
+  const [isCreationToolsActive, setIsCreationToolsActive] = useState(false);
+  const [isDiagrammingToolsActive, setIsDiagrammingToolsActive] = useState(false);
+  const [isFacilitationToolsActive, setIsFacilitationToolsActive] = useState(false);
   const [brushColor, setBrushColor] = useState('#000000');
   const [brushSize, setBrushSize] = useState(2);
   const [eraserType, setEraserType] = useState<'partial' | 'full'>('partial');
@@ -25,6 +28,24 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showEraserTypeMenu, setShowEraserTypeMenu] = useState(false);
   const [showFloatingCropArea, setShowFloatingCropArea] = useState(false);
+  
+  // Creation tools state
+  const [fillColor, setFillColor] = useState('#FFFFFF');
+  const [strokeColor, setStrokeColor] = useState('#000000');
+  const [showFillColorPicker, setShowFillColorPicker] = useState(false);
+  const [showStrokeColorPicker, setShowStrokeColorPicker] = useState(false);
+  const [isBold, setIsBold] = useState(false);
+  const [isItalic, setIsItalic] = useState(false);
+  
+  // Diagramming tools state
+  const [smartSnap, setSmartSnap] = useState(true);
+  const [arrowheadStyle, setArrowheadStyle] = useState<'arrow' | 'diamond' | 'circle'>('arrow');
+  const [showArrowheadMenu, setShowArrowheadMenu] = useState(false);
+  
+  // Facilitation tools state
+  const [timerActive, setTimerActive] = useState(false);
+  const [timerSeconds, setTimerSeconds] = useState(300); // 5 minutes default
+  const [presentationMode, setPresentationMode] = useState(false);
   
   // Widget configuration state
   const [widgetUrl, setWidgetUrl] = useState('');
@@ -41,6 +62,27 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   const isLiveCaptureNode = selectedNode && (
     (typeof selectedNode.content === 'object' && selectedNode.content?.type === 'live-capture') ||
     selectedNode.tags?.includes('live-capture')
+  );
+  
+  // Check if selected node is a shape node
+  const isShapeNode = selectedNode && (
+    (typeof selectedNode.content === 'object' && selectedNode.content?.type === 'shape') ||
+    selectedNode.tags?.includes('shape') ||
+    selectedNode.type === 'shape'
+  );
+  
+  // Check if selected node is a connection line
+  const isConnectionNode = selectedNode && (
+    (typeof selectedNode.content === 'object' && selectedNode.content?.type === 'connection') ||
+    selectedNode.tags?.includes('connection') ||
+    selectedNode.type === 'connection'
+  );
+  
+  // Check if selected node is a sticky note cluster
+  const isStickyNoteCluster = selectedNode && (
+    (typeof selectedNode.content === 'object' && selectedNode.content?.type === 'sticky-note-cluster') ||
+    selectedNode.tags?.includes('sticky-note-cluster') ||
+    selectedNode.type === 'sticky-note-cluster'
   );
   
   // Check widget types
@@ -97,14 +139,14 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     if (selectedNodeId) {
       const original = getOriginalPosition();
       setPosition((currentPosition) => {
-        const threshold = 50;
+      const threshold = 50;
         // Only reset if close to original position
-        if (
+      if (
           Math.abs(currentPosition.x - original.x) < threshold &&
           Math.abs(currentPosition.y - original.y) < threshold
-        ) {
+      ) {
           return original;
-        }
+      }
         return currentPosition;
       });
     }
@@ -164,14 +206,14 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     const handleResize = () => {
       const original = getOriginalPosition();
       setPosition((currentPosition) => {
-        const threshold = 50;
+      const threshold = 50;
         // Only reset if close to original position
-        if (
+      if (
           Math.abs(currentPosition.x - original.x) < threshold &&
           Math.abs(currentPosition.y - original.y) < threshold
-        ) {
+      ) {
           return original;
-        }
+      }
         return currentPosition;
       });
     };
@@ -212,6 +254,42 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     window.addEventListener('toggle-live-capture-mode', handleToggleLiveCapture as EventListener);
     return () => {
       window.removeEventListener('toggle-live-capture-mode', handleToggleLiveCapture as EventListener);
+    };
+  }, []);
+
+  // Listen for creation tools activation
+  useEffect(() => {
+    const handleToggleCreationTools = (event: CustomEvent) => {
+      setIsCreationToolsActive(event.detail.enabled);
+    };
+
+    window.addEventListener('toggle-creation-tools', handleToggleCreationTools as EventListener);
+    return () => {
+      window.removeEventListener('toggle-creation-tools', handleToggleCreationTools as EventListener);
+    };
+  }, []);
+
+  // Listen for diagramming tools activation
+  useEffect(() => {
+    const handleToggleDiagrammingTools = (event: CustomEvent) => {
+      setIsDiagrammingToolsActive(event.detail.enabled);
+    };
+
+    window.addEventListener('toggle-diagramming-tools', handleToggleDiagrammingTools as EventListener);
+    return () => {
+      window.removeEventListener('toggle-diagramming-tools', handleToggleDiagrammingTools as EventListener);
+    };
+  }, []);
+
+  // Listen for facilitation tools activation
+  useEffect(() => {
+    const handleToggleFacilitationTools = (event: CustomEvent) => {
+      setIsFacilitationToolsActive(event.detail.enabled);
+    };
+
+    window.addEventListener('toggle-facilitation-tools', handleToggleFacilitationTools as EventListener);
+    return () => {
+      window.removeEventListener('toggle-facilitation-tools', handleToggleFacilitationTools as EventListener);
     };
   }, []);
 
@@ -631,9 +709,9 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     }
   }, [selectedNodeId, isNativeWindowWidget, widgetProcessName, widgetWindowTitle, selectedNode, updateWorkspaceNode]);
 
-  // Show widget when any tool is active (brush, eraser, or live capture)
+  // Show widget when any tool is active (brush, eraser, live capture, creation, diagramming, facilitation)
   // Also show when a node is selected (for node editing options)
-  const shouldShow = isBrushActive || isEraserActive || isLiveCaptureActive || selectedNodeId;
+  const shouldShow = isBrushActive || isEraserActive || isLiveCaptureActive || isCreationToolsActive || isDiagrammingToolsActive || isFacilitationToolsActive || selectedNodeId;
   
   if (!shouldShow) {
     return null;
@@ -1014,7 +1092,7 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
           )}
 
           {/* Capture Button - Show when no tools active and no live capture node selected */}
-          {(!isBrushActive && !isEraserActive && !isLiveCaptureActive && !isLiveCaptureNode && !isIframeWidget && !isWebViewWidget && !isNativeWindowWidget) && (
+          {(!isBrushActive && !isEraserActive && !isLiveCaptureActive && !isLiveCaptureNode && !isIframeWidget && !isWebViewWidget && !isNativeWindowWidget && !isCreationToolsActive && !isDiagrammingToolsActive && !isFacilitationToolsActive) && (
             <>
               {selectedNodeId && (
                 <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
@@ -1170,8 +1248,368 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
             </>
           )}
 
+          {/* Essential Creation Tools Controls - Show when creation tools are active or shape node is selected */}
+          {(isCreationToolsActive || isShapeNode) && (
+            <>
+              {/* Divider if there are other controls before */}
+              {(isBrushActive || isEraserActive || isLiveCaptureNode) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+
+              {/* Undo/Redo */}
+              <button
+                onClick={handleUndo}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/undo"
+                title="Undo"
+              >
+                <Undo2 className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/undo:text-gray-800 dark:group-hover/undo:text-gray-200 transition-colors" />
+              </button>
+              <button
+                onClick={handleRedo}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/redo"
+                title="Redo"
+              >
+                <Redo2 className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/redo:text-gray-800 dark:group-hover/redo:text-gray-200 transition-colors" />
+              </button>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+
+              {/* Fill Color Picker */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowFillColorPicker(!showFillColorPicker);
+                    setShowStrokeColorPicker(false);
+                  }}
+                  className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/fill flex items-center gap-1.5"
+                  title="Fill Color"
+                >
+                  <Square className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/fill:text-green-600 dark:group-hover/fill:text-green-400 transition-colors" />
+                  <div
+                    className="w-4 h-4 rounded border border-gray-300/50 dark:border-gray-600/50"
+                    style={{ backgroundColor: fillColor }}
+                  />
+                </button>
+                
+                {/* Fill Color Picker Popup */}
+                {showFillColorPicker && (
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 p-3 backdrop-blur-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200/50 dark:border-gray-700/50 rounded-xl shadow-xl z-50">
+                    <div className="grid grid-cols-5 gap-2 w-[200px]">
+                      {colors.map((color) => (
+                        <button
+                          key={color}
+                          onClick={() => {
+                            setFillColor(color);
+                            setShowFillColorPicker(false);
+                          }}
+                          className={`w-8 h-8 rounded-lg border-2 transition-all ${
+                            fillColor === color
+                              ? 'border-gray-800 dark:border-gray-200 ring-2 ring-green-500/50'
+                              : 'border-gray-300 dark:border-gray-600 hover:border-gray-500 dark:hover:border-gray-400'
+                          }`}
+                          style={{ backgroundColor: color }}
+                          title={color}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-gray-200/50 dark:border-gray-700/50">
+                      <input
+                        type="color"
+                        value={fillColor}
+                        onChange={(e) => setFillColor(e.target.value)}
+                        className="w-full h-8 rounded cursor-pointer"
+                        title="Custom fill color"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Stroke Color Picker */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowStrokeColorPicker(!showStrokeColorPicker);
+                    setShowFillColorPicker(false);
+                  }}
+                  className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/stroke flex items-center gap-1.5"
+                  title="Stroke Color"
+                >
+                  <div className="w-4 h-4 rounded border-2" style={{ borderColor: strokeColor, backgroundColor: 'transparent' }} />
+                </button>
+                
+                {/* Stroke Color Picker Popup */}
+                {showStrokeColorPicker && (
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 p-3 backdrop-blur-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200/50 dark:border-gray-700/50 rounded-xl shadow-xl z-50">
+                    <div className="grid grid-cols-5 gap-2 w-[200px]">
+                      {colors.map((color) => (
+                        <button
+                          key={color}
+                          onClick={() => {
+                            setStrokeColor(color);
+                            setShowStrokeColorPicker(false);
+                          }}
+                          className={`w-8 h-8 rounded-lg border-2 transition-all ${
+                            strokeColor === color
+                              ? 'border-gray-800 dark:border-gray-200 ring-2 ring-green-500/50'
+                              : 'border-gray-300 dark:border-gray-600 hover:border-gray-500 dark:hover:border-gray-400'
+                          }`}
+                          style={{ backgroundColor: color }}
+                          title={color}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-gray-200/50 dark:border-gray-700/50">
+                      <input
+                        type="color"
+                        value={strokeColor}
+                        onChange={(e) => setStrokeColor(e.target.value)}
+                        className="w-full h-8 rounded cursor-pointer"
+                        title="Custom stroke color"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+
+              {/* Text Formatting - Bold */}
+              <button
+                onClick={() => setIsBold(!isBold)}
+                className={`p-1.5 rounded-lg transition-all duration-150 ${
+                  isBold
+                    ? 'bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30'
+                    : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60 text-gray-600 dark:text-gray-400'
+                }`}
+                title="Bold"
+              >
+                <Bold className="w-4 h-4" />
+              </button>
+
+              {/* Text Formatting - Italic */}
+              <button
+                onClick={() => setIsItalic(!isItalic)}
+                className={`p-1.5 rounded-lg transition-all duration-150 ${
+                  isItalic
+                    ? 'bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30'
+                    : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60 text-gray-600 dark:text-gray-400'
+                }`}
+                title="Italic"
+              >
+                <Italic className="w-4 h-4" />
+              </button>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+
+              {/* Quick Duplicate */}
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('duplicate-selected-node'));
+                }}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/duplicate"
+                title="Quick Duplicate"
+              >
+                <Copy className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/duplicate:text-green-600 dark:group-hover/duplicate:text-green-400 transition-colors" />
+              </button>
+            </>
+          )}
+
+          {/* Diagramming Tools Controls - Show when diagramming tools are active or connection node is selected */}
+          {(isDiagrammingToolsActive || isConnectionNode) && (
+            <>
+              {/* Divider if there are other controls before */}
+              {(isBrushActive || isEraserActive || isLiveCaptureNode || isCreationToolsActive || isShapeNode) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+
+              {/* Smart Connection Snap Toggle */}
+              <button
+                onClick={() => setSmartSnap(!smartSnap)}
+                className={`p-1.5 rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
+                  smartSnap
+                    ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30'
+                    : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60 text-gray-600 dark:text-gray-400'
+                }`}
+                title={smartSnap ? 'Disable Smart Snap' : 'Enable Smart Snap'}
+              >
+                <GitBranch className="w-4 h-4" />
+                <span className="text-xs">Smart Snap</span>
+              </button>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+
+              {/* Arrowhead Style Selector */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowArrowheadMenu(!showArrowheadMenu)}
+                  className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/arrowhead flex items-center gap-1.5"
+                  title="Arrowhead Style"
+                >
+                  <ArrowRight className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/arrowhead:text-indigo-600 dark:group-hover/arrowhead:text-indigo-400 transition-colors" />
+                  <span className="text-xs text-gray-600 dark:text-gray-400 capitalize">{arrowheadStyle}</span>
+                </button>
+                
+                {/* Arrowhead Style Menu */}
+                {showArrowheadMenu && (
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 p-2 backdrop-blur-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200/50 dark:border-gray-700/50 rounded-xl shadow-xl z-50 min-w-[140px]">
+                    {(['arrow', 'diamond', 'circle'] as const).map((style) => (
+                      <button
+                        key={style}
+                        onClick={() => {
+                          setArrowheadStyle(style);
+                          setShowArrowheadMenu(false);
+                        }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
+                          arrowheadStyle === style
+                            ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
+                            : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60 text-gray-700 dark:text-gray-300'
+                        }`}
+                      >
+                        <ArrowRight className="w-4 h-4" />
+                        <span className="text-sm capitalize">{style}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+
+              {/* Layering Controls */}
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('bring-to-front'));
+                }}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/layer"
+                title="Bring to Front"
+              >
+                <Layers className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/layer:text-indigo-600 dark:group-hover/layer:text-indigo-400 transition-colors" />
+              </button>
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('send-to-back'));
+                }}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/layer"
+                title="Send to Back"
+              >
+                <Layers className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/layer:text-indigo-600 dark:group-hover/layer:text-indigo-400 transition-colors rotate-180" />
+              </button>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+
+              {/* Layout Optimization */}
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('optimize-layout'));
+                }}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/optimize flex items-center gap-1.5"
+                title="Optimize Layout"
+              >
+                <Layout className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/optimize:text-indigo-600 dark:group-hover/optimize:text-indigo-400 transition-colors" />
+                <span className="text-xs">Optimize</span>
+              </button>
+            </>
+          )}
+
+          {/* Facilitation & AI Tools Controls - Show when facilitation tools are active or sticky note cluster is selected */}
+          {(isFacilitationToolsActive || isStickyNoteCluster) && (
+            <>
+              {/* Divider if there are other controls before */}
+              {(isBrushActive || isEraserActive || isLiveCaptureNode || isCreationToolsActive || isShapeNode || isDiagrammingToolsActive || isConnectionNode) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+
+              {/* Timer Controls */}
+              <div className="relative">
+                <button
+                  onClick={() => setTimerActive(!timerActive)}
+                  className={`p-1.5 rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
+                    timerActive
+                      ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                      : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title={timerActive ? 'Stop Timer' : 'Start Timer'}
+                >
+                  <Clock className="w-4 h-4" />
+                  <span className="text-xs">
+                    {Math.floor(timerSeconds / 60)}:{(timerSeconds % 60).toString().padStart(2, '0')}
+                  </span>
+                </button>
+              </div>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+
+              {/* Voting Controls */}
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('start-voting'));
+                }}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/vote flex items-center gap-1.5"
+                title="Start Voting"
+              >
+                <Vote className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/vote:text-amber-600 dark:group-hover/vote:text-amber-400 transition-colors" />
+                <span className="text-xs">Vote</span>
+              </button>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+
+              {/* AI Clustering/Summarization */}
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('ai-cluster-notes'));
+                }}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/ai flex items-center gap-1.5"
+                title="AI Clustering & Summarization"
+              >
+                <Sparkles className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/ai:text-amber-600 dark:group-hover/ai:text-amber-400 transition-colors" />
+                <span className="text-xs">AI Cluster</span>
+              </button>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+
+              {/* Presentation Mode Toggle */}
+              <button
+                onClick={() => setPresentationMode(!presentationMode)}
+                className={`p-1.5 rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
+                  presentationMode
+                    ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                    : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60 text-gray-600 dark:text-gray-400'
+                }`}
+                title={presentationMode ? 'Exit Presentation Mode' : 'Enter Presentation Mode'}
+              >
+                <Presentation className="w-4 h-4" />
+                <span className="text-xs">Present</span>
+              </button>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+
+              {/* Participant Attention Management */}
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('manage-attention'));
+                }}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/attention flex items-center gap-1.5"
+                title="Participant Attention Management"
+              >
+                <Eye className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/attention:text-amber-600 dark:group-hover/attention:text-amber-400 transition-colors" />
+                <span className="text-xs">Attention</span>
+              </button>
+            </>
+          )}
+
           {/* Node Editing Options - Only show when node is selected and no other tools/controls are active */}
-          {selectedNodeId && !isBrushActive && !isEraserActive && !isLiveCaptureNode && !isIframeWidget && !isWebViewWidget && !isNativeWindowWidget && (
+          {selectedNodeId && !isBrushActive && !isEraserActive && !isLiveCaptureNode && !isIframeWidget && !isWebViewWidget && !isNativeWindowWidget && !isCreationToolsActive && !isShapeNode && !isDiagrammingToolsActive && !isConnectionNode && !isFacilitationToolsActive && !isStickyNoteCluster && (
             <div className="w-2 h-2 rounded-full bg-gray-300/50 dark:bg-gray-600/50" />
           )}
         </div>

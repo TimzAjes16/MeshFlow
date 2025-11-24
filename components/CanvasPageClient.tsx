@@ -46,6 +46,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
   const handleRecropLiveCaptureRef = useRef<((event: CustomEvent) => void) | null>(null);
   const handleCreateLiveCaptureFromAreaRef = useRef<((event: CustomEvent) => Promise<void>) | null>(null);
   const handleCreateWidgetRef = useRef<((event: CustomEvent) => Promise<void>) | null>(null);
+  const handleCreateToolElementRef = useRef<((event: CustomEvent) => Promise<void>) | null>(null);
 
   // Clear selectedNodeType when node is deselected
   useEffect(() => {
@@ -610,6 +611,69 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
     setActiveCaptureNodes(new Set(liveCaptureNodes.map((n) => n.id)));
   }, [nodes]);
 
+  // Get default dimensions based on node type (moved outside callback to avoid bundler issues)
+  const getDefaultDimensions = useCallback((nodeType: string, actualType?: string) => {
+    if (nodeType === 'iframe-widget' || nodeType === 'webview-widget') {
+      return { width: 800, height: 600 };
+    }
+    if (nodeType === 'native-window-widget') {
+      return { width: 800, height: 600 };
+    }
+    if (nodeType === 'live-capture-widget') {
+      return { width: 779, height: 513 };
+    }
+    if (nodeType === 'text') {
+      return { width: 200, height: 60 };
+    }
+    if (nodeType === 'note' || actualType === 'note') {
+      return { width: 250, height: 200 };
+    }
+    if (nodeType === 'box' || nodeType === 'circle') {
+      return { width: 200, height: nodeType === 'circle' ? 200 : 150 };
+    }
+    if (nodeType === 'image') {
+      return { width: 400, height: 300 };
+    }
+    if (nodeType === 'arrow') {
+      return { width: 200, height: 50 };
+    }
+    // Tool types
+    if (nodeType === 'timer') {
+      return { width: 200, height: 180 };
+    }
+    if (nodeType === 'voting') {
+      return { width: 300, height: 300 };
+    }
+    if (nodeType === 'frame') {
+      return { width: 800, height: 600 };
+    }
+    if (nodeType === 'card') {
+      return { width: 250, height: 150 };
+    }
+    if (nodeType === 'code-block') {
+      return { width: 400, height: 300 };
+    }
+    if (nodeType === 'sticker') {
+      return { width: 100, height: 100 };
+    }
+    if (nodeType === 'visual-note') {
+      return { width: 300, height: 200 };
+    }
+    if (nodeType === 'mind-map') {
+      return { width: 400, height: 300 };
+    }
+    if (nodeType === 'org-chart') {
+      return { width: 400, height: 300 };
+    }
+    if (nodeType === 'timeline') {
+      return { width: 500, height: 300 };
+    }
+    if (nodeType === 'wireframe') {
+      return { width: 600, height: 400 };
+    }
+    return { width: 400, height: 300 };
+  }, []);
+
   const handleCreateNode = useCallback(
     async (type: string = 'note', screenPosition: { x: number; y: number }, extraConfig?: Record<string, any>) => {
       console.log('handleCreateNode called with type:', type, 'position:', screenPosition);
@@ -618,6 +682,42 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       if (type === 'live-capture') {
         setCaptureNodeId(null); // New capture
         setCaptureModalOpen(true);
+        return;
+      }
+      
+      // Handle image type - open file picker
+      if (type === 'image' && !extraConfig?.imageUrl) {
+        if (isCreating) {
+          console.log('Already creating node, skipping');
+          return;
+        }
+        
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = async (e) => {
+          const file = (e.target as HTMLInputElement).files?.[0];
+          if (!file) {
+            return;
+          }
+          
+          // Convert to data URL
+          const reader = new FileReader();
+          reader.onload = async (event) => {
+            const imageUrl = event.target?.result as string;
+            // Create image node with the uploaded image (pass imageUrl to skip file picker)
+            await handleCreateNode('image', screenPosition, { imageUrl });
+          };
+          reader.onerror = () => {
+            console.error('Error reading file');
+            setIsCreating(false);
+          };
+          reader.readAsDataURL(file);
+        };
+        input.oncancel = () => {
+          // User cancelled, do nothing
+        };
+        input.click();
         return;
       }
       
@@ -632,15 +732,32 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       // This prevents the settings panel from showing if the API call fails
 
       try {
+        // Map tool types to actual node types
+        let actualType = type;
+        if (type === 'shape') {
+          // Map shape to box or circle based on shapeType
+          actualType = extraConfig?.shapeType === 'circle' ? 'circle' : 'box';
+        } else if (type === 'sticky-note') {
+          actualType = 'note'; // Use note renderer for sticky notes
+        } else if (type === 'connection-line') {
+          actualType = 'arrow'; // Use arrow renderer for connection lines
+        } else if (type === 'chart') {
+          actualType = 'bar-chart'; // Default to bar chart
+        } else if (type === 'pen') {
+          // Pen tool activates brush mode, don't create a node
+          setIsCreating(false);
+          return;
+        }
+        
         const titles: Record<string, string> = {
           text: 'Text Block',
-          note: 'New Note',
+          note: 'Sticky Note',
           link: 'New Link',
-          image: 'New Image',
+          image: 'Image',
           emoji: '😀',
-          box: 'New Box',
-          circle: 'New Circle',
-          arrow: 'Arrow',
+          box: 'Rectangle',
+          circle: 'Circle',
+          arrow: 'Connection Line',
           'bar-chart': 'Bar Chart',
           'line-chart': 'Line Chart',
           'pie-chart': 'Pie Chart',
@@ -649,6 +766,26 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           'webview-widget': 'Web App',
           'live-capture-widget': 'Live Capture',
           'native-window-widget': extraConfig?.windowTitle || extraConfig?.processName || 'Native App',
+          'sticky-note': 'Sticky Note',
+          'connection-line': 'Connection Line',
+          'frame': 'Frame',
+          'card': 'Card',
+          'chart': 'Chart',
+          'code-block': 'Code Block',
+          'sticker': 'Sticker',
+          'visual-note': 'Visual Note',
+          'mind-map': 'Mind Map',
+          'org-chart': 'Org Chart',
+          'timeline': 'Timeline',
+          'user-story-map': 'User Story Map',
+          'grid': 'Grid',
+          'kanban': 'Kanban',
+          'wireframe': 'Wireframe',
+          'timer': 'Timer',
+          'voting': 'Voting',
+          'ai-cluster': 'AI Cluster',
+          'presentation-mode': 'Presentation Mode',
+          'attention-management': 'Attention Management',
         };
 
         // Get default content based on node type
@@ -697,6 +834,175 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
             return defaultContent;
           }
           
+          // Essential Tools - Map to actual node types
+          if (type === 'shape') {
+            // Map shape to box or circle based on shapeType
+            const shapeType = extraConfig?.shapeType || 'rectangle';
+            const nodeType = shapeType === 'circle' ? 'circle' : 'box';
+            return {
+              type: nodeType,
+              fill: true,
+              fillColor: '#FFFFFF',
+              borderColor: '#000000',
+              borderWidth: 1,
+            };
+          }
+          if (type === 'sticky-note') {
+            return {
+              type: 'note',
+              title: '',
+              body: { type: 'doc', content: [{ type: 'paragraph' }] },
+              color: '#FFEB3B', // Sticky note color
+            };
+          }
+          if (type === 'connection-line') {
+            return {
+              type: 'arrow',
+              direction: 'right',
+              color: '#000000',
+            };
+          }
+          if (type === 'text') {
+            return {
+              type: 'text',
+            };
+          }
+          if (type === 'image') {
+            return {
+              type: 'image',
+              url: extraConfig?.imageUrl || '',
+              size: 'medium',
+              alignment: 'center',
+            };
+          }
+          if (type === 'frame') {
+            return {
+              type: 'frame',
+              title: 'Frame',
+              width: 800,
+              height: 600,
+            };
+          }
+          if (type === 'card') {
+            return {
+              type: 'card',
+              title: 'Card',
+              description: '',
+            };
+          }
+          if (type === 'chart') {
+            return {
+              type: 'chart',
+              chartType: 'bar',
+              data: [],
+            };
+          }
+          if (type === 'code-block') {
+            return {
+              type: 'code-block',
+              language: 'javascript',
+              code: '',
+            };
+          }
+          if (type === 'sticker') {
+            return {
+              type: 'sticker',
+              emoji: '😀',
+            };
+          }
+          if (type === 'visual-note') {
+            return {
+              type: 'visual-note',
+              content: '',
+            };
+          }
+          
+          // Diagramming Tools
+          if (type === 'mind-map') {
+            return {
+              type: 'mind-map',
+              rootNode: { id: 'root', text: 'Central Idea' },
+              nodes: [],
+            };
+          }
+          if (type === 'org-chart') {
+            return {
+              type: 'org-chart',
+              rootNode: { id: 'root', name: 'CEO', role: '' },
+              nodes: [],
+            };
+          }
+          if (type === 'timeline') {
+            return {
+              type: 'timeline',
+              events: [],
+            };
+          }
+          if (type === 'user-story-map') {
+            return {
+              type: 'user-story-map',
+              activities: [],
+            };
+          }
+          if (type === 'grid') {
+            return {
+              type: 'grid',
+              columns: 3,
+              rows: 3,
+            };
+          }
+          if (type === 'kanban') {
+            return {
+              type: 'kanban',
+              columns: ['To Do', 'In Progress', 'Done'],
+              cards: [],
+            };
+          }
+          if (type === 'wireframe') {
+            return {
+              type: 'wireframe',
+              elements: [],
+            };
+          }
+          
+          // Facilitation Tools
+          if (type === 'timer') {
+            return {
+              type: 'timer',
+              duration: 300, // 5 minutes in seconds
+              isRunning: false,
+              timeRemaining: 300,
+            };
+          }
+          if (type === 'voting') {
+            return {
+              type: 'voting',
+              question: '',
+              options: [],
+              votes: {},
+            };
+          }
+          if (type === 'ai-cluster') {
+            return {
+              type: 'ai-cluster',
+              nodeIds: [],
+              clusters: [],
+            };
+          }
+          if (type === 'presentation-mode') {
+            return {
+              type: 'presentation-mode',
+              isActive: false,
+              slides: [],
+            };
+          }
+          if (type === 'attention-management') {
+            return {
+              type: 'attention-management',
+              participants: [],
+            };
+          }
+          
           // Chart types
           if (type === 'bar-chart' || type === 'line-chart' || type === 'area-chart') {
             return {
@@ -734,6 +1040,9 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         // Get flow position from CanvasContainer (stored globally)
         const storedFlowPos = (window as any).lastFlowPosition || { x: 500, y: 400 };
 
+        // Get default dimensions (function is now defined outside callback)
+        const defaultDimensions = getDefaultDimensions(actualType, actualType);
+
         // Create node in database
         const response = await fetch('/api/nodes/create', {
           method: 'POST',
@@ -742,12 +1051,14 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           },
           body: JSON.stringify({
             workspaceId,
-            title: titles[type] || 'New Widget',
-            type: type, // Explicit type (following Miro/Notion pattern)
+            title: titles[type] || titles[actualType] || 'New Element',
+            type: actualType, // Use mapped type
             content: getDefaultContent(type, extraConfig),
-            tags: [type], // Keep for backwards compatibility
+            tags: [actualType], // Use mapped type for tags
             x: storedFlowPos.x,
             y: storedFlowPos.y,
+            width: defaultDimensions.width,
+            height: defaultDimensions.height,
           }),
         });
 
@@ -811,16 +1122,16 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
             
             // Keep settings panel visible - it will switch to NodeEditorPanel automatically
             // when selectedNodeId is set (see the conditional rendering in the return statement)
-          
-          
+            
+            
             // Focus title field after a brief delay to ensure editor is rendered
-          setTimeout(() => {
-            const titleInput = document.querySelector('input[placeholder="Node title..."]') as HTMLInputElement;
-            if (titleInput) {
-              titleInput.focus();
-              titleInput.select();
-            }
-          }, 100);
+            setTimeout(() => {
+              const titleInput = document.querySelector('input[placeholder="Node title..."]') as HTMLInputElement;
+              if (titleInput) {
+                titleInput.focus();
+                titleInput.select();
+              }
+            }, 100);
           }, 150); // Small delay to ensure node is in React Flow state
         }
       } catch (error: any) {
@@ -840,7 +1151,7 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         setIsCreating(false);
       }
     },
-    [workspaceId, isCreating, addNode, selectNode]
+    [workspaceId, isCreating, addNode, selectNode, getDefaultDimensions]
   );
 
   const handleDuplicateNode = useCallback(async (nodeId: string) => {
@@ -921,6 +1232,32 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
       window.removeEventListener('create-widget', handleCreateWidgetWrapper);
     };
   }, [handleCreateNode, setPendingNativeWindowType, setNativeWindowConfigOpen]);
+
+  // Handle create-tool-element event
+  useEffect(() => {
+    handleCreateToolElementRef.current = async (event: CustomEvent) => {
+      const { type, shapeType } = event.detail;
+      const position = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      
+      // Try to get reactFlowInstance from window or use position directly
+      const reactFlowInstance = (window as any).reactFlowInstance;
+      const flowPosition = reactFlowInstance?.screenToFlowPosition?.(position) || position;
+      
+      await handleCreateNode(type, flowPosition, { shapeType });
+    };
+
+    const handleCreateToolElementWrapper = (event: Event) => {
+      if (handleCreateToolElementRef.current) {
+        handleCreateToolElementRef.current(event as CustomEvent);
+      }
+    };
+
+    window.addEventListener('create-tool-element', handleCreateToolElementWrapper);
+    
+    return () => {
+      window.removeEventListener('create-tool-element', handleCreateToolElementWrapper);
+    };
+  }, [handleCreateNode]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -1338,12 +1675,12 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
         
         {/* Right Panel - Toolbar Settings - Only show when creating a new node */}
         {selectedNodeType && !selectedNodeId ? (
-        <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
+          <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
             <ToolbarSettingsPanel 
               selectedNodeType={selectedNodeType}
               onClose={() => setSelectedNodeType(null)}
             />
-        </aside>
+          </aside>
         ) : null}
       </div>
       

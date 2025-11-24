@@ -146,9 +146,27 @@ namespace WindowEmbedding {
     void* window = FindWindowNative(processName.c_str(), windowTitle.c_str());
     
     if (window) {
+      // Get window list and find the matching window to get its bounds
+      std::vector<WindowInfo> windows = GetWindowListNative();
+      WindowInfo* foundWindow = nullptr;
+      for (auto& win : windows) {
+        if (win.handle == window) {
+          foundWindow = &win;
+          break;
+        }
+      }
+      
       Napi::Object result = Napi::Object::New(env);
       result.Set("found", Napi::Boolean::New(env, true));
       result.Set("handle", Napi::Number::New(env, reinterpret_cast<uintptr_t>(window)));
+      
+      if (foundWindow) {
+        result.Set("x", Napi::Number::New(env, foundWindow->x));
+        result.Set("y", Napi::Number::New(env, foundWindow->y));
+        result.Set("width", Napi::Number::New(env, foundWindow->width));
+        result.Set("height", Napi::Number::New(env, foundWindow->height));
+      }
+      
       return result;
     } else {
       Napi::Object result = Napi::Object::New(env);
@@ -170,6 +188,11 @@ namespace WindowEmbedding {
         windowObj.Set("processName", Napi::String::New(env, windows[i].processName));
         windowObj.Set("windowTitle", Napi::String::New(env, windows[i].windowTitle));
         windowObj.Set("windowHandle", Napi::Number::New(env, reinterpret_cast<uintptr_t>(windows[i].handle)));
+        // Add window bounds
+        windowObj.Set("x", Napi::Number::New(env, windows[i].x));
+        windowObj.Set("y", Napi::Number::New(env, windows[i].y));
+        windowObj.Set("width", Napi::Number::New(env, windows[i].width));
+        windowObj.Set("height", Napi::Number::New(env, windows[i].height));
         result.Set(i, windowObj);
       }
       

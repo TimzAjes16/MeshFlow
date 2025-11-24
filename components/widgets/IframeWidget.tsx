@@ -1,7 +1,6 @@
 /**
- * Iframe Widget Component
- * Embeds web applications using HTML <iframe>
- * Supports: Discord, YouTube, Twitch, and other embeddable web services
+ * Iframe Widget Component - Rebuilt from scratch
+ * Simple, working iframe widget based on WebViewWidget pattern
  */
 
 'use client';
@@ -11,17 +10,10 @@ import BaseWidget, { WidgetProps } from './BaseWidget';
 import { Globe, AlertCircle } from 'lucide-react';
 import { useWidgetHandlers } from './useWidgetHandlers';
 
-interface IframeWidgetProps extends WidgetProps {
-  // Iframe-specific props
-  url?: string;
-  allowFullScreen?: boolean;
-  sandbox?: string;
-}
-
-function IframeWidget(props: IframeWidgetProps) {
+function IframeWidget(props: WidgetProps) {
   const { data } = props;
   const node = data.node;
-  const { handleClose, handleResize, handleTitleChange } = useWidgetHandlers(node.id);
+  const { handleClose, handleTitleChange } = useWidgetHandlers(node.id);
   
   // Extract iframe config from node content
   const iframeConfig = typeof node.content === 'object' && node.content?.type === 'iframe-widget'
@@ -41,41 +33,17 @@ function IframeWidget(props: IframeWidgetProps) {
   const [isLoading, setIsLoading] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const previousUrlRef = useRef<string>('');
-  const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Listen for immediate URL update events
+  // Listen for URL updates
   useEffect(() => {
     const handleUrlUpdate = (event: CustomEvent) => {
       if (event.detail?.nodeId === node.id && event.detail?.widgetType === 'iframe-widget') {
         const newUrl = event.detail.url;
         if (newUrl && iframeRef.current) {
-          // Force immediate reload
           previousUrlRef.current = newUrl;
           setIsLoading(true);
           setHasError(false);
-          setErrorMessage('');
-          
-          // Clear any existing timeout
-          if (loadTimeoutRef.current) {
-            clearTimeout(loadTimeoutRef.current);
-          }
-          
-          // Immediately set the src
           iframeRef.current.src = newUrl;
-          
-          // Set timeout for error detection
-          loadTimeoutRef.current = setTimeout(() => {
-            try {
-              const iframe = iframeRef.current;
-              if (iframe && iframe.contentWindow) {
-                iframe.contentWindow.location.href;
-              }
-            } catch (e: any) {
-              setIsLoading(false);
-              setHasError(true);
-              setErrorMessage('This website cannot be embedded in an iframe due to security restrictions (X-Frame-Options). Try using the WebView widget instead, which can bypass some restrictions.');
-            }
-          }, 3000);
         }
       }
     };
@@ -86,68 +54,24 @@ function IframeWidget(props: IframeWidgetProps) {
     };
   }, [node.id]);
 
-  // Reload iframe when URL changes - immediate loading
+  // Update iframe when URL changes
   useEffect(() => {
     const currentUrl = iframeConfig.url || '';
     if (currentUrl && currentUrl !== previousUrlRef.current && iframeRef.current) {
       previousUrlRef.current = currentUrl;
       setIsLoading(true);
       setHasError(false);
-      setErrorMessage('');
-      
-      // Clear any existing timeout
-      if (loadTimeoutRef.current) {
-        clearTimeout(loadTimeoutRef.current);
-      }
-      
-      // Immediately set the src - no artificial delay
-      if (iframeRef.current) {
-        iframeRef.current.src = currentUrl;
-      }
-      
-      // Set a timeout to detect if the iframe fails to load (e.g., X-Frame-Options)
-      loadTimeoutRef.current = setTimeout(() => {
-        // Use a ref to check current loading state
-        const checkLoading = () => {
-          try {
-            const iframe = iframeRef.current;
-            if (iframe && iframe.contentWindow) {
-              // Try to access iframe content - if blocked, this will throw
-              iframe.contentWindow.location.href;
-            }
-          } catch (e: any) {
-            // Iframe is blocked (X-Frame-Options or CSP)
-            setIsLoading(false);
-            setHasError(true);
-            setErrorMessage('This website cannot be embedded in an iframe due to security restrictions (X-Frame-Options). Try using the WebView widget instead, which can bypass some restrictions.');
-          }
-        };
-        checkLoading();
-      }, 3000); // 3 second timeout
+      iframeRef.current.src = currentUrl;
     }
-    
-    return () => {
-      if (loadTimeoutRef.current) {
-        clearTimeout(loadTimeoutRef.current);
-      }
-    };
   }, [iframeConfig.url]);
 
   const handleLoad = useCallback(() => {
-    if (loadTimeoutRef.current) {
-      clearTimeout(loadTimeoutRef.current);
-      loadTimeoutRef.current = null;
-    }
     setIsLoading(false);
     setHasError(false);
     setErrorMessage('');
   }, []);
 
   const handleError = useCallback(() => {
-    if (loadTimeoutRef.current) {
-      clearTimeout(loadTimeoutRef.current);
-      loadTimeoutRef.current = null;
-    }
     setIsLoading(false);
     setHasError(true);
     setErrorMessage('Failed to load the website. It may be blocked by security restrictions (X-Frame-Options). Try using the WebView widget instead.');
@@ -160,7 +84,6 @@ function IframeWidget(props: IframeWidgetProps) {
       icon={<Globe className="w-4 h-4" />}
       className="iframe-widget"
       onClose={handleClose}
-      onResize={handleResize}
       onTitleChange={handleTitleChange}
     >
       {hasError ? (
@@ -214,4 +137,3 @@ function IframeWidget(props: IframeWidgetProps) {
 }
 
 export default memo(IframeWidget);
-

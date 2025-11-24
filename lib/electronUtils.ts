@@ -190,38 +190,207 @@ export async function getWindowCaptureStream(options: {
     throw new Error('No window sources available');
   }
   
-  // Find the window that matches process name and window title
-  const matchingSource = sources.find(source => {
-    const name = source.name || '';
-    // Match by process name (usually appears in the source name)
-    const matchesProcess = name.toLowerCase().includes(processName.toLowerCase());
+  // Log all available sources for debugging
+  console.log('[electronUtils] Available windows:', sources.map(s => ({ id: s.id, name: s.name })));
+  console.log('[electronUtils] Searching for:', { processName, windowTitle });
+  
+  // IMPROVED MATCHING - Like OBS Studio with multiple fallback strategies
+  // DesktopCapturer window names are typically in format: "Window Title - Process Name" or "Process Name: Window Title"
+  // We need to handle various formats
+  
+  // Strategy 1: Exact match - process name and title both present (in any order)
+  let matchingSource = sources.find(source => {
+    const name = (source.name || '').toLowerCase();
+    const processLower = processName.toLowerCase().trim();
+    const titleLower = (windowTitle || '').toLowerCase().trim();
     
-    // If window title is provided, also match by title
-    if (windowTitle) {
-      const matchesTitle = name.toLowerCase().includes(windowTitle.toLowerCase());
-      return matchesProcess && matchesTitle;
+    if (windowTitle && titleLower.length > 0) {
+      // Check if both process and title appear in the window name
+      const hasProcess = name.includes(processLower);
+      const hasTitle = name.includes(titleLower);
+      if (hasProcess && hasTitle) {
+        console.log('[electronUtils] Strategy 1 match:', source.name);
+        return true;
+      }
     }
     
-    return matchesProcess;
+    return false;
   });
   
-  if (!matchingSource) {
-    console.warn('[electronUtils] Could not find exact match, available sources:', sources.map(s => s.name));
-    // Try to find a partial match
-    const partialMatch = sources.find(source => {
-      const name = source.name || '';
-      return name.toLowerCase().includes(processName.toLowerCase());
+  // Strategy 2: Process name + partial title match (flexible word matching)
+  if (!matchingSource && windowTitle && windowTitle.length > 3) {
+    matchingSource = sources.find(source => {
+      const name = (source.name || '').toLowerCase();
+      const processLower = processName.toLowerCase().trim();
+      const titleLower = windowTitle.toLowerCase().trim();
+      
+      // Check for process name (including common variations and partial matches)
+      const hasProcess = name.includes(processLower) || 
+                        processLower.includes('safari') && (name.includes('safari') || name.includes('webkit')) ||
+                        processLower.includes('chrome') && (name.includes('chrome') || name.includes('chromium')) ||
+                        processLower.includes('firefox') && name.includes('firefox') ||
+                        processLower.includes('notion') && name.includes('notion') ||
+                        // Also try reverse - check if process name contains parts of window name
+                        name.split(/[\s\-–—:]+/).some(part => part.length >= 3 && processLower.includes(part));
+      
+      if (!hasProcess) return false;
+      
+      // Extract meaningful words from title (minimum 3 chars)
+      const titleWords = titleLower.split(/[\s\-–—:]+/).filter(w => w.length >= 3);
+      
+      // Try full title match first
+      if (name.includes(titleLower)) {
+        console.log('[electronUtils] Strategy 2a match (full title):', source.name);
+        return true;
+      }
+      
+      // Try significant words (longer words are more reliable)
+      const significantWords = titleWords.filter(word => word.length >= 5);
+      if (significantWords.length > 0) {
+        const matchingSignificant = significantWords.filter(word => name.includes(word));
+        if (matchingSignificant.length > 0) {
+          console.log('[electronUtils] Strategy 2b match (significant words):', source.name);
+          return true;
+        }
+      }
+      
+      // Try any word match (more lenient)
+      const matchingWords = titleWords.filter(word => name.includes(word));
+      if (matchingWords.length >= Math.min(2, titleWords.length)) {
+        console.log('[electronUtils] Strategy 2c match (word match):', source.name);
+        return true;
+      }
+      
+      return false;
     });
-    
-    if (!partialMatch) {
-      throw new Error(`Window not found: ${processName}${windowTitle ? ` - ${windowTitle}` : ''}`);
-    }
-    
-    console.log('[electronUtils] Using partial match:', partialMatch.name);
-    return captureSource(partialMatch.id, includeAudio);
   }
   
-  console.log('[electronUtils] Found matching window:', matchingSource.name);
+  // Strategy 3: Process name only (fallback - no title matching)
+  if (!matchingSource) {
+    matchingSource = sources.find(source => {
+      const name = (source.name || '').toLowerCase();
+      const processLower = processName.toLowerCase().trim();
+      
+      // Direct process name match
+      if (name.includes(processLower)) {
+        console.log('[electronUtils] Strategy 3a match (direct process):', source.name);
+        return true;
+      }
+      
+      // Try matching process name parts (window names often have format "Title - Process" or "Process: Title")
+      const nameParts = name.split(/[\s\-–—:]+/);
+      const processParts = processLower.split(/[\s\-–—]+/);
+      
+      // Check if any significant part of process name appears in window name
+      const significantProcessParts = processParts.filter(p => p.length >= 3);
+      if (significantProcessParts.some(part => nameParts.some(np => np.includes(part) || part.includes(np)))) {
+        console.log('[electronUtils] Strategy 3b match (process parts):', source.name);
+        return true;
+      }
+      
+      // Handle common process name variations
+      if (processLower.includes('safari')) {
+        if (name.includes('safari') || name.includes('webkit')) {
+          console.log('[electronUtils] Strategy 3c match (Safari variation):', source.name);
+          return true;
+        }
+      }
+      if (processLower.includes('chrome')) {
+        if (name.includes('chrome') || name.includes('chromium')) {
+          console.log('[electronUtils] Strategy 3d match (Chrome variation):', source.name);
+          return true;
+        }
+      }
+      if (processLower.includes('firefox')) {
+        if (name.includes('firefox')) {
+          console.log('[electronUtils] Strategy 3e match (Firefox):', source.name);
+          return true;
+        }
+      }
+      if (processLower.includes('notion')) {
+        if (name.includes('notion')) {
+          console.log('[electronUtils] Strategy 3f match (Notion):', source.name);
+          return true;
+        }
+      }
+      
+      return false;
+    });
+  }
+  
+  // Strategy 4: Title-only matching (for apps with dynamic process names)
+  if (!matchingSource && windowTitle && windowTitle.length > 5) {
+    const titleLower = windowTitle.toLowerCase().trim();
+    matchingSource = sources.find(source => {
+      const name = (source.name || '').toLowerCase();
+      
+      // Try full title match first
+      if (name.includes(titleLower)) {
+        console.log('[electronUtils] Strategy 4a match (full title):', source.name);
+        return true;
+      }
+      
+      // Check if any significant words from title appear
+      const titleWords = titleLower.split(/[\s\-–—:]+/).filter(w => w.length >= 3);
+      const matchingWords = titleWords.filter(word => name.includes(word));
+      
+      if (matchingWords.length >= Math.min(2, titleWords.length)) {
+        console.log('[electronUtils] Strategy 4b match (title words):', source.name);
+        return true;
+      }
+      
+      return false;
+    });
+  }
+  
+  // Strategy 5: Fuzzy matching - try partial process name match
+  if (!matchingSource) {
+    const processLower = processName.toLowerCase().trim();
+    const processWords = processLower.split(/[\s\-–—]+/).filter(w => w.length >= 3);
+    
+    matchingSource = sources.find(source => {
+      const name = (source.name || '').toLowerCase();
+      // Check if any significant word from process name appears
+      const hasMatch = processWords.some(word => name.includes(word));
+      if (hasMatch) {
+        console.log('[electronUtils] Strategy 5 match (fuzzy process):', source.name);
+      }
+      return hasMatch;
+    });
+  }
+  
+  if (!matchingSource) {
+    const availableWindows = sources.slice(0, 20).map(s => s.name).join(', ');
+    console.error('[electronUtils] Window not found after all strategies');
+    console.error('[electronUtils] Searched for:', { 
+      processName, 
+      windowTitle,
+      processNameLower: processName.toLowerCase(),
+      windowTitleLower: windowTitle?.toLowerCase()
+    });
+    console.error('[electronUtils] Total available windows:', sources.length);
+    console.error('[electronUtils] First 20 available windows:', availableWindows);
+    
+    // Try to find the closest match for better error message
+    const processLower = processName.toLowerCase().trim();
+    const titleLower = (windowTitle || '').toLowerCase().trim();
+    const closeMatches = sources.filter(source => {
+      const name = (source.name || '').toLowerCase();
+      return name.includes(processLower.substring(0, Math.min(5, processLower.length))) ||
+             (titleLower && name.includes(titleLower.substring(0, Math.min(5, titleLower.length))));
+    }).slice(0, 5);
+    
+    if (closeMatches.length > 0) {
+      console.warn('[electronUtils] Close matches found:', closeMatches.map(s => s.name));
+    }
+    
+    throw new Error(
+      `Window not found: ${processName}${windowTitle ? ` - ${windowTitle}` : ''}\n` +
+      `Available windows (showing first 20): ${availableWindows}${closeMatches.length > 0 ? `\nClose matches: ${closeMatches.map(s => s.name).join(', ')}` : ''}`
+    );
+  }
+  
+  console.log('[electronUtils] ✅ Found matching window:', matchingSource.name);
   return captureSource(matchingSource.id, includeAudio);
 }
 
