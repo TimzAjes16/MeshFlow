@@ -120,9 +120,9 @@ function VotingNode({ data, selected, id }: VotingNodeProps) {
   };
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div
-        className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 w-full h-full flex flex-col gap-3"
+        className="bg-white border border-gray-200/50 rounded-md p-3 w-full h-full flex flex-col gap-3 transition-all duration-150 hover:border-gray-300/50"
         style={{
           minWidth: node.width || 300,
           minHeight: node.height || 200,

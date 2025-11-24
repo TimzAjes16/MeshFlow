@@ -84,7 +84,7 @@ function OrgChartNode({ data, selected, id }: OrgChartNodeProps) {
   }, []);
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div
         className="bg-indigo-50 border-2 border-indigo-200 rounded-lg p-4 w-full h-full flex flex-col gap-3"
         style={{

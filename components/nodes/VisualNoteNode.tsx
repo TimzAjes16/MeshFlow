@@ -64,7 +64,7 @@ function VisualNoteNode({ data, selected, id }: VisualNoteNodeProps) {
   }, [id, content, updateNode]);
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div
         className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4 w-full h-full flex flex-col"
         style={{

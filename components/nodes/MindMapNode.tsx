@@ -90,7 +90,7 @@ function MindMapNode({ data, selected, id }: MindMapNodeProps) {
   }, []);
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div
         className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4 w-full h-full flex flex-col gap-3"
         style={{

@@ -69,9 +69,9 @@ function CardNode({ data, selected, id }: CardNodeProps) {
   }, [id, title, description, updateNode]);
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div
-        className="bg-white border-2 border-gray-200 rounded-lg p-4 w-full h-full flex flex-col gap-2 shadow-sm"
+        className="bg-white border border-gray-200/50 rounded-md p-3 w-full h-full flex flex-col gap-2 transition-all duration-150 hover:border-gray-300/50"
         style={{
           minWidth: node.width || 250,
           minHeight: node.height || 150,

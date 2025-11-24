@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Undo2, Redo2, Palette, Minus, Plus, Eraser, CircleDot, Trash2, Video, RefreshCw, Crop, MousePointerClick, MousePointer2, X, Globe, Globe2, Monitor, Save, Square, Type, Bold, Italic, Copy, Workflow, GitBranch, ArrowRight, Layers, Layout, Users, Clock, Vote, Sparkles, Presentation, Eye } from 'lucide-react';
+import { Undo2, Redo2, Palette, Minus, Plus, Eraser, CircleDot, Trash2, Video, RefreshCw, Crop, MousePointerClick, MousePointer2, X, Globe, Globe2, Monitor, Save, Square, Type, Bold, Italic, Copy, Workflow, GitBranch, ArrowRight, Layers, Layout, Users, Clock, Vote, Sparkles, Presentation, Eye, AlignLeft, AlignCenter, AlignRight, Code, Image as ImageIcon, Underline, WrapText } from 'lucide-react';
 import FloatingCropArea from './FloatingCropArea';
 import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
 import type { Node } from '@/types/Node';
+import { getNodeType } from '@/lib/nodeTypes';
 
 interface HorizontalEditorBarProps {
   selectedNodeId?: string | null;
@@ -13,6 +14,44 @@ interface HorizontalEditorBarProps {
 }
 
 const MARGIN_BOTTOM = 48; // Margin from bottom edge
+
+const GOOGLE_FONTS = [
+  'Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'Source Sans Pro',
+  'Noto Sans', 'Raleway', 'Work Sans', 'Nunito', 'Mukta', 'Playfair Display', 'Merriweather',
+  'Fira Sans', 'PT Sans', 'PT Serif', 'Rubik', 'Karla', 'Quicksand', 'Manrope', 'Hind',
+  'Space Grotesk', 'IBM Plex Sans', 'Archivo', 'Cabin'
+];
+
+const DEFAULT_TEXT_CONTENT = {
+  type: 'text',
+  value: 'Tap to type',
+  fontFamily: 'Inter',
+  fontSize: 16,
+  fontWeight: 'normal' as 'normal' | 'bold',
+  color: '#111827',
+  textAlign: 'left' as 'left' | 'center' | 'right',
+  isItalic: false,
+  isUnderline: false,
+  textWrap: true,
+};
+
+type TextContentSettings = typeof DEFAULT_TEXT_CONTENT;
+
+const extractLegacyDocValue = (node: any): string => {
+  if (!node) return '';
+  if (Array.isArray(node)) {
+    return node.map(extractLegacyDocValue).join('');
+  }
+  if (typeof node === 'object') {
+    if (typeof node.text === 'string') {
+      return node.text;
+    }
+    if (Array.isArray(node.content)) {
+      return node.content.map(extractLegacyDocValue).join('');
+    }
+  }
+  return '';
+};
 
 const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   const [isBrushActive, setIsBrushActive] = useState(false);
@@ -34,8 +73,6 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   const [strokeColor, setStrokeColor] = useState('#000000');
   const [showFillColorPicker, setShowFillColorPicker] = useState(false);
   const [showStrokeColorPicker, setShowStrokeColorPicker] = useState(false);
-  const [isBold, setIsBold] = useState(false);
-  const [isItalic, setIsItalic] = useState(false);
   
   // Diagramming tools state
   const [smartSnap, setSmartSnap] = useState(true);
@@ -46,6 +83,28 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   const [timerActive, setTimerActive] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(300); // 5 minutes default
   const [presentationMode, setPresentationMode] = useState(false);
+  
+  // Text tool state
+  const [fontFamily, setFontFamily] = useState(DEFAULT_TEXT_CONTENT.fontFamily);
+  const [fontSize, setFontSize] = useState(DEFAULT_TEXT_CONTENT.fontSize);
+  const [fontWeight, setFontWeight] = useState<'normal' | 'bold'>(DEFAULT_TEXT_CONTENT.fontWeight);
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>(DEFAULT_TEXT_CONTENT.textAlign);
+  const [textColor, setTextColor] = useState(DEFAULT_TEXT_CONTENT.color);
+  const [isItalic, setIsItalic] = useState(false);
+  const [isUnderline, setIsUnderline] = useState(false);
+  const [textWrap, setTextWrap] = useState(true);
+  const [isTextToolActive, setIsTextToolActive] = useState(false);
+  const [showTextColorPicker, setShowTextColorPicker] = useState(false);
+  
+  // Code block tool state
+  const [codeLanguage, setCodeLanguage] = useState('javascript');
+  
+  // Image tool state
+  const [imageSize, setImageSize] = useState<'small' | 'medium' | 'large'>('medium');
+  const [imageAlign, setImageAlign] = useState<'left' | 'center' | 'right'>('center');
+  
+  // Note/Sticky Note tool state
+  const [noteColor, setNoteColor] = useState('#FFEB3B');
   
   // Widget configuration state
   const [widgetUrl, setWidgetUrl] = useState('');
@@ -58,37 +117,52 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   // Get selected node if available
   const selectedNode = selectedNodeId ? nodes.find(n => n.id === selectedNodeId) : null;
   
-  // Check if selected node is a live capture node
-  const isLiveCaptureNode = selectedNode && (
-    (typeof selectedNode.content === 'object' && selectedNode.content?.type === 'live-capture') ||
-    selectedNode.tags?.includes('live-capture')
-  );
+  // Get node type using the proper function
+  const nodeType = selectedNode ? getNodeType(selectedNode) : null;
   
-  // Check if selected node is a shape node
-  const isShapeNode = selectedNode && (
-    (typeof selectedNode.content === 'object' && selectedNode.content?.type === 'shape') ||
-    selectedNode.tags?.includes('shape') ||
-    selectedNode.type === 'shape'
-  );
-  
-  // Check if selected node is a connection line
-  const isConnectionNode = selectedNode && (
-    (typeof selectedNode.content === 'object' && selectedNode.content?.type === 'connection') ||
-    selectedNode.tags?.includes('connection') ||
-    selectedNode.type === 'connection'
-  );
-  
-  // Check if selected node is a sticky note cluster
-  const isStickyNoteCluster = selectedNode && (
-    (typeof selectedNode.content === 'object' && selectedNode.content?.type === 'sticky-note-cluster') ||
-    selectedNode.tags?.includes('sticky-note-cluster') ||
-    selectedNode.type === 'sticky-note-cluster'
-  );
+  // Check node types
+  const isLiveCaptureNode = nodeType === 'live-capture' || nodeType === 'live-capture-widget';
+  const isShapeNode = nodeType === 'box' || nodeType === 'circle';
+  const isConnectionNode = nodeType === 'arrow';
+  const isTextNode = nodeType === 'text';
+  const isTimerNode = nodeType === 'timer';
+  const isVotingNode = nodeType === 'voting';
+  const isCodeBlockNode = nodeType === 'code-block';
+  const isImageNode = nodeType === 'image';
+  const isNoteNode = nodeType === 'note';
+  const isStickyNoteNode = selectedNode && typeof selectedNode.content === 'object' && 
+    ('color' in selectedNode.content || selectedNode.content?.type === 'sticky-note');
   
   // Check widget types
-  const isIframeWidget = selectedNode && typeof selectedNode.content === 'object' && selectedNode.content?.type === 'iframe-widget';
-  const isWebViewWidget = selectedNode && typeof selectedNode.content === 'object' && selectedNode.content?.type === 'webview-widget';
-  const isNativeWindowWidget = selectedNode && typeof selectedNode.content === 'object' && selectedNode.content?.type === 'native-window-widget';
+  const isIframeWidget = nodeType === 'iframe-widget';
+  const isWebViewWidget = nodeType === 'webview-widget';
+  const isNativeWindowWidget = nodeType === 'native-window-widget';
+
+  const getCurrentTextContent = useCallback((): TextContentSettings => {
+    if (selectedNode && typeof selectedNode.content === 'object') {
+      if (selectedNode.content.type === 'text') {
+        return { ...DEFAULT_TEXT_CONTENT, ...(selectedNode.content as Partial<TextContentSettings>) };
+      }
+      if (selectedNode.content.type === 'doc') {
+        return {
+          ...DEFAULT_TEXT_CONTENT,
+          value: extractLegacyDocValue(selectedNode.content),
+        };
+      }
+    }
+    return { ...DEFAULT_TEXT_CONTENT };
+  }, [selectedNode]);
+
+  const updateTextNodeContent = useCallback((updates: Record<string, any>) => {
+    if (!selectedNodeId || !isTextNode) return;
+    const base = getCurrentTextContent();
+    updateWorkspaceNode(selectedNodeId, {
+      content: {
+        ...base,
+        ...updates,
+      },
+    });
+  }, [selectedNodeId, isTextNode, getCurrentTextContent, updateWorkspaceNode]);
 
   // Initialize widget URL from selected node content
   useEffect(() => {
@@ -102,6 +176,98 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
       setWidgetUrl('');
     }
   }, [selectedNodeId, isIframeWidget, isWebViewWidget, selectedNode]);
+
+  // Initialize text tool settings from selected node
+  useEffect(() => {
+    if (selectedNode && isTextNode) {
+      const content = getCurrentTextContent();
+      setFontFamily(content.fontFamily);
+      setFontSize(content.fontSize);
+      setFontWeight(content.fontWeight);
+      setIsItalic(content.isItalic);
+      setIsUnderline(content.isUnderline);
+      setTextWrap(content.textWrap);
+      setTextAlign(content.textAlign);
+      setTextColor(content.color);
+    } else if (!selectedNode || !isTextNode) {
+      setFontFamily(DEFAULT_TEXT_CONTENT.fontFamily);
+      setFontSize(DEFAULT_TEXT_CONTENT.fontSize);
+      setFontWeight(DEFAULT_TEXT_CONTENT.fontWeight);
+      setIsItalic(DEFAULT_TEXT_CONTENT.isItalic);
+      setIsUnderline(DEFAULT_TEXT_CONTENT.isUnderline);
+      setTextWrap(DEFAULT_TEXT_CONTENT.textWrap);
+      setTextAlign(DEFAULT_TEXT_CONTENT.textAlign);
+      setTextColor(DEFAULT_TEXT_CONTENT.color);
+    }
+  }, [selectedNodeId, isTextNode, selectedNode, getCurrentTextContent]);
+
+  // Initialize shape tool settings from selected node
+  useEffect(() => {
+    if (selectedNode && isShapeNode) {
+      const content = typeof selectedNode.content === 'object' && selectedNode.content
+        ? selectedNode.content as any
+        : {};
+      if (content.fillColor) setFillColor(content.fillColor);
+      else setFillColor('#FFFFFF');
+      if (content.borderColor) setStrokeColor(content.borderColor);
+      else setStrokeColor('#000000');
+    } else if (!selectedNode || !isShapeNode) {
+      setFillColor('#FFFFFF');
+      setStrokeColor('#000000');
+    }
+  }, [selectedNodeId, isShapeNode, selectedNode]);
+
+  // Initialize code block settings from selected node
+  useEffect(() => {
+    if (selectedNode && isCodeBlockNode) {
+      const content = typeof selectedNode.content === 'object' && selectedNode.content
+        ? selectedNode.content as any
+        : {};
+      if (content.language) setCodeLanguage(content.language);
+      else setCodeLanguage('javascript');
+    } else if (!selectedNode || !isCodeBlockNode) {
+      setCodeLanguage('javascript');
+    }
+  }, [selectedNodeId, isCodeBlockNode, selectedNode]);
+
+  // Initialize image settings from selected node
+  useEffect(() => {
+    if (selectedNode && isImageNode) {
+      const content = typeof selectedNode.content === 'object' && selectedNode.content
+        ? selectedNode.content as any
+        : {};
+      if (content.size) setImageSize(content.size);
+      else setImageSize('medium');
+      if (content.alignment) setImageAlign(content.alignment);
+      else setImageAlign('center');
+    } else if (!selectedNode || !isImageNode) {
+      setImageSize('medium');
+      setImageAlign('center');
+    }
+  }, [selectedNodeId, isImageNode, selectedNode]);
+
+  // Initialize note color from selected node
+  useEffect(() => {
+    if (selectedNode && (isNoteNode || isStickyNoteNode)) {
+      const content = typeof selectedNode.content === 'object' && selectedNode.content
+        ? selectedNode.content as any
+        : {};
+      if (content.color) setNoteColor(content.color);
+      else setNoteColor('#FFEB3B');
+    } else if (!selectedNode || (!isNoteNode && !isStickyNoteNode)) {
+      setNoteColor('#FFEB3B');
+    }
+  }, [selectedNodeId, isNoteNode, isStickyNoteNode, selectedNode]);
+
+  // Listen for text tool activation
+  useEffect(() => {
+    const handleToggleTextTool = (event: CustomEvent<{ enabled: boolean }>) => {
+      setIsTextToolActive(event.detail.enabled);
+    };
+
+    window.addEventListener('toggle-text-tool', handleToggleTextTool as EventListener);
+    return () => window.removeEventListener('toggle-text-tool', handleToggleTextTool as EventListener);
+  }, []);
   
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
     if (typeof window !== 'undefined') {
@@ -112,6 +278,19 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const barRef = useRef<HTMLDivElement>(null);
+
+  // Preload Google fonts used in the text tool
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const linkId = 'horizontal-text-tool-fonts';
+    if (document.getElementById(linkId)) return;
+    const link = document.createElement('link');
+    link.id = linkId;
+    link.rel = 'stylesheet';
+    const familyQuery = GOOGLE_FONTS.map((font) => `family=${font.replace(/\s+/g, '+')}:wght@400;500;600;700`).join('&');
+    link.href = `https://fonts.googleapis.com/css2?${familyQuery}&display=swap`;
+    document.head.appendChild(link);
+  }, []);
 
   // Calculate initial position - bottom center, with offset from edges
   const getOriginalPosition = useCallback((): { x: number; y: number } => {
@@ -154,7 +333,9 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
 
   // Drag handlers
   const handleDragStart = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
+    const target = e.target as HTMLElement;
+    const interactiveSelector = 'button,select,input,textarea,option,[role="menu"],[role="listbox"]';
+    if (target.closest(interactiveSelector)) return;
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(true);
@@ -709,9 +890,9 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
     }
   }, [selectedNodeId, isNativeWindowWidget, widgetProcessName, widgetWindowTitle, selectedNode, updateWorkspaceNode]);
 
-  // Show widget when any tool is active (brush, eraser, live capture, creation, diagramming, facilitation)
-  // Also show when a node is selected (for node editing options)
-  const shouldShow = isBrushActive || isEraserActive || isLiveCaptureActive || isCreationToolsActive || isDiagrammingToolsActive || isFacilitationToolsActive || selectedNodeId;
+  // Show widget when any tool is active (brush, eraser, live capture) or when a node with specific settings is selected
+  const shouldShow = isBrushActive || isEraserActive || isLiveCaptureActive || isTextToolActive ||
+    selectedNodeId && (isTextNode || isShapeNode || isTimerNode || isVotingNode || isCodeBlockNode || isImageNode || isNoteNode || isStickyNoteNode || isConnectionNode || isLiveCaptureNode || isIframeWidget || isWebViewWidget || isNativeWindowWidget);
   
   if (!shouldShow) {
     return null;
@@ -948,8 +1129,8 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
             </>
           )}
 
-          {/* Live Capture Controls - Show when live capture node is selected */}
-          {isLiveCaptureNode && (
+          {/* Live Capture Controls - Show ONLY when live capture tool is active, NOT when node is selected */}
+          {isLiveCaptureActive && !isLiveCaptureNode && (
             <>
               {/* Divider if there are other controls before */}
               {(isBrushActive || isEraserActive) && (
@@ -1006,8 +1187,8 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
             </>
           )}
 
-          {/* Live Capture Tool Controls - Show when live capture tool is active */}
-          {isLiveCaptureActive && !isLiveCaptureNode && (
+          {/* Live Capture Node Controls - Show when live capture node is selected (for editing existing capture) */}
+          {isLiveCaptureNode && !isLiveCaptureActive && (
             <>
               {/* Divider if there are other controls before */}
               {(isBrushActive || isEraserActive) && (
@@ -1091,31 +1272,6 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
             </>
           )}
 
-          {/* Capture Button - Show when no tools active and no live capture node selected */}
-          {(!isBrushActive && !isEraserActive && !isLiveCaptureActive && !isLiveCaptureNode && !isIframeWidget && !isWebViewWidget && !isNativeWindowWidget && !isCreationToolsActive && !isDiagrammingToolsActive && !isFacilitationToolsActive) && (
-            <>
-              {selectedNodeId && (
-                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
-              )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // Activate live capture tool to show area selection
-                  setIsLiveCaptureActive(true);
-                  window.dispatchEvent(new CustomEvent('toggle-live-capture-mode', { 
-                    detail: { enabled: true } 
-                  }));
-                }}
-                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-150 group/capture flex items-center gap-1.5"
-                title="Capture - Create a new live capture"
-              >
-                <Video className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover/capture:text-purple-600 dark:group-hover/capture:text-purple-400 transition-colors" />
-                <span className="text-xs text-gray-600 dark:text-gray-400 group-hover/capture:text-purple-600 dark:group-hover/capture:text-purple-400 transition-colors">
-                  Capture
-                </span>
-              </button>
-            </>
-          )}
 
           {/* Iframe Widget Configuration */}
           {isIframeWidget && (
@@ -1248,8 +1404,8 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
             </>
           )}
 
-          {/* Essential Creation Tools Controls - Show when creation tools are active or shape node is selected */}
-          {(isCreationToolsActive || isShapeNode) && (
+          {/* Shape Tool Settings - Show ONLY when shape node is selected, NOT when creation tools are active */}
+          {isShapeNode && !isCreationToolsActive && (
             <>
               {/* Divider if there are other controls before */}
               {(isBrushActive || isEraserActive || isLiveCaptureNode) && (
@@ -1302,6 +1458,14 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
                           onClick={() => {
                             setFillColor(color);
                             setShowFillColorPicker(false);
+                            if (selectedNode && selectedNodeId) {
+                              const content = typeof selectedNode.content === 'object' && selectedNode.content
+                                ? selectedNode.content as any
+                                : { type: nodeType, fillColor: '#FFFFFF', borderColor: '#000000', borderWidth: 1 };
+                              updateWorkspaceNode(selectedNodeId, {
+                                content: { ...content, fillColor: color },
+                              });
+                            }
                           }}
                           className={`w-8 h-8 rounded-lg border-2 transition-all ${
                             fillColor === color
@@ -1317,7 +1481,17 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
                       <input
                         type="color"
                         value={fillColor}
-                        onChange={(e) => setFillColor(e.target.value)}
+                        onChange={(e) => {
+                          setFillColor(e.target.value);
+                          if (selectedNode && selectedNodeId) {
+                            const content = typeof selectedNode.content === 'object' && selectedNode.content
+                              ? selectedNode.content as any
+                              : { type: nodeType, fillColor: '#FFFFFF', borderColor: '#000000', borderWidth: 1 };
+                            updateWorkspaceNode(selectedNodeId, {
+                              content: { ...content, fillColor: e.target.value },
+                            });
+                          }
+                        }}
                         className="w-full h-8 rounded cursor-pointer"
                         title="Custom fill color"
                       />
@@ -1349,6 +1523,14 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
                           onClick={() => {
                             setStrokeColor(color);
                             setShowStrokeColorPicker(false);
+                            if (selectedNode && selectedNodeId) {
+                              const content = typeof selectedNode.content === 'object' && selectedNode.content
+                                ? selectedNode.content as any
+                                : { type: nodeType, fillColor: '#FFFFFF', borderColor: '#000000', borderWidth: 1 };
+                              updateWorkspaceNode(selectedNodeId, {
+                                content: { ...content, borderColor: color },
+                              });
+                            }
                           }}
                           className={`w-8 h-8 rounded-lg border-2 transition-all ${
                             strokeColor === color
@@ -1364,7 +1546,17 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
                       <input
                         type="color"
                         value={strokeColor}
-                        onChange={(e) => setStrokeColor(e.target.value)}
+                        onChange={(e) => {
+                          setStrokeColor(e.target.value);
+                          if (selectedNode && selectedNodeId) {
+                            const content = typeof selectedNode.content === 'object' && selectedNode.content
+                              ? selectedNode.content as any
+                              : { type: nodeType, fillColor: '#FFFFFF', borderColor: '#000000', borderWidth: 1 };
+                            updateWorkspaceNode(selectedNodeId, {
+                              content: { ...content, borderColor: e.target.value },
+                            });
+                          }
+                        }}
                         className="w-full h-8 rounded cursor-pointer"
                         title="Custom stroke color"
                       />
@@ -1372,38 +1564,6 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
                   </div>
                 )}
               </div>
-
-              {/* Divider */}
-              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
-
-              {/* Text Formatting - Bold */}
-              <button
-                onClick={() => setIsBold(!isBold)}
-                className={`p-1.5 rounded-lg transition-all duration-150 ${
-                  isBold
-                    ? 'bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30'
-                    : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60 text-gray-600 dark:text-gray-400'
-                }`}
-                title="Bold"
-              >
-                <Bold className="w-4 h-4" />
-              </button>
-
-              {/* Text Formatting - Italic */}
-              <button
-                onClick={() => setIsItalic(!isItalic)}
-                className={`p-1.5 rounded-lg transition-all duration-150 ${
-                  isItalic
-                    ? 'bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30'
-                    : 'hover:bg-gray-100/60 dark:hover:bg-gray-700/60 text-gray-600 dark:text-gray-400'
-                }`}
-                title="Italic"
-              >
-                <Italic className="w-4 h-4" />
-              </button>
-
-              {/* Divider */}
-              <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
 
               {/* Quick Duplicate */}
               <button
@@ -1518,8 +1678,8 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
             </>
           )}
 
-          {/* Facilitation & AI Tools Controls - Show when facilitation tools are active or sticky note cluster is selected */}
-          {(isFacilitationToolsActive || isStickyNoteCluster) && (
+          {/* Facilitation & AI Tools Controls - Show when facilitation tools are active */}
+          {isFacilitationToolsActive && (
             <>
               {/* Divider if there are other controls before */}
               {(isBrushActive || isEraserActive || isLiveCaptureNode || isCreationToolsActive || isShapeNode || isDiagrammingToolsActive || isConnectionNode) && (
@@ -1608,8 +1768,568 @@ const HorizontalEditorBar = ({ selectedNodeId }: HorizontalEditorBarProps) => {
             </>
           )}
 
+          {/* Text Tool Settings */}
+          {(isTextNode || isTextToolActive) && (
+            <>
+              {(isBrushActive || isEraserActive || isLiveCaptureNode || isLiveCaptureActive) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+              
+              {/* Font Family */}
+              <select
+                value={fontFamily}
+                onChange={(e) => {
+                  setFontFamily(e.target.value);
+                  updateTextNodeContent({ fontFamily: e.target.value });
+                }}
+                className="px-2 py-1.5 bg-gray-100/50 dark:bg-gray-700/50 border border-gray-300/50 dark:border-gray-600/50 rounded-lg text-xs text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              >
+                {GOOGLE_FONTS.map((font) => (
+                  <option key={font} value={font}>
+                    {font}
+                  </option>
+                ))}
+              </select>
+              
+              {/* Font Size */}
+              <div className="flex items-center gap-1 px-2 py-1 bg-gray-100/50 dark:bg-gray-700/50 rounded-lg">
+                <button
+                  onClick={() => {
+                    const newSize = Math.max(8, fontSize - 2);
+                    setFontSize(newSize);
+                    updateTextNodeContent({ fontSize: newSize });
+                  }}
+                  className="p-0.5 hover:bg-gray-200/60 dark:hover:bg-gray-600/60 rounded"
+                >
+                  <Minus className="w-3 h-3 text-gray-600 dark:text-gray-400" />
+                </button>
+                <input
+                  type="number"
+                  min={8}
+                  max={120}
+                  value={fontSize}
+                  onChange={(e) => {
+                    const value = Number(e.target.value) || 8;
+                    const clamped = Math.max(8, Math.min(120, value));
+                    setFontSize(clamped);
+                    updateTextNodeContent({ fontSize: clamped });
+                  }}
+                  className="w-14 text-xs bg-transparent border-0 text-center text-gray-700 dark:text-gray-200 focus:outline-none"
+                />
+                <button
+                  onClick={() => {
+                    const newSize = Math.min(72, fontSize + 2);
+                    setFontSize(newSize);
+                    updateTextNodeContent({ fontSize: newSize });
+                  }}
+                  className="p-0.5 hover:bg-gray-200/60 dark:hover:bg-gray-600/60 rounded"
+                >
+                  <Plus className="w-3 h-3 text-gray-600 dark:text-gray-400" />
+                </button>
+              </div>
+              
+              {/* Font Styles */}
+              <div className="flex items-center gap-1 bg-gray-100/50 dark:bg-gray-700/50 rounded-lg p-0.5">
+                <button
+                  onClick={() => {
+                    const newWeight = fontWeight === 'bold' ? 'normal' : 'bold';
+                    setFontWeight(newWeight);
+                    updateTextNodeContent({ fontWeight: newWeight });
+                  }}
+                  className={`p-1.5 rounded-lg transition-all ${
+                    fontWeight === 'bold'
+                      ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30'
+                      : 'hover:bg-gray-200/60 dark:hover:bg-gray-600/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Bold"
+                >
+                  <Bold className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => {
+                    const nextItalic = !isItalic;
+                    setIsItalic(nextItalic);
+                    updateTextNodeContent({ isItalic: nextItalic });
+                  }}
+                  className={`p-1.5 rounded-lg transition-all ${
+                    isItalic
+                      ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30'
+                      : 'hover:bg-gray-200/60 dark:hover:bg-gray-600/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Italic"
+                >
+                  <Italic className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => {
+                    const nextUnderline = !isUnderline;
+                    setIsUnderline(nextUnderline);
+                    updateTextNodeContent({ isUnderline: nextUnderline });
+                  }}
+                  className={`p-1.5 rounded-lg transition-all ${
+                    isUnderline
+                      ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30'
+                      : 'hover:bg-gray-200/60 dark:hover:bg-gray-600/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Underline"
+                >
+                  <Underline className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => {
+                    const nextWrap = !textWrap;
+                    setTextWrap(nextWrap);
+                    updateTextNodeContent({ textWrap: nextWrap });
+                  }}
+                  className={`p-1.5 rounded-lg transition-all ${
+                    textWrap
+                      ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                      : 'hover:bg-gray-200/60 dark:hover:bg-gray-600/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title={textWrap ? 'Disable text wrap' : 'Enable text wrap'}
+                >
+                  <WrapText className="w-4 h-4" />
+                </button>
+              </div>
+              
+              {/* Text Align */}
+              <div className="flex items-center gap-0.5 bg-gray-100/50 dark:bg-gray-700/50 rounded-lg p-0.5">
+                <button
+                  onClick={() => {
+                    setTextAlign('left');
+                    updateTextNodeContent({ textAlign: 'left' });
+                  }}
+                  className={`p-1 rounded transition-all ${
+                    textAlign === 'left'
+                      ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                      : 'hover:bg-gray-200/60 dark:hover:bg-gray-600/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Align Left"
+                >
+                  <AlignLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => {
+                    setTextAlign('center');
+                    updateTextNodeContent({ textAlign: 'center' });
+                  }}
+                  className={`p-1 rounded transition-all ${
+                    textAlign === 'center'
+                      ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                      : 'hover:bg-gray-200/60 dark:hover:bg-gray-600/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Align Center"
+                >
+                  <AlignCenter className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => {
+                    setTextAlign('right');
+                    updateTextNodeContent({ textAlign: 'right' });
+                  }}
+                  className={`p-1 rounded transition-all ${
+                    textAlign === 'right'
+                      ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                      : 'hover:bg-gray-200/60 dark:hover:bg-gray-600/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Align Right"
+                >
+                  <AlignRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              
+              {/* Text Color */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowTextColorPicker(!showTextColorPicker)}
+                  className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all"
+                  title="Text Color"
+                >
+                  <Type className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                </button>
+                {showTextColorPicker && (
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 p-3 backdrop-blur-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200/50 dark:border-gray-700/50 rounded-xl shadow-xl z-50">
+                    <div className="grid grid-cols-5 gap-2 w-[200px]">
+                      {colors.map((color) => (
+                        <button
+                          key={color}
+                          onClick={() => {
+                            setTextColor(color);
+                            setShowTextColorPicker(false);
+                            updateTextNodeContent({ color });
+                          }}
+                          className={`w-8 h-8 rounded-lg border-2 transition-all ${
+                            textColor === color
+                              ? 'border-gray-800 dark:border-gray-200 ring-2 ring-blue-500/50'
+                              : 'border-gray-300 dark:border-gray-600 hover:border-gray-500 dark:hover:border-gray-400'
+                          }`}
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-gray-200/50 dark:border-gray-700/50">
+                      <input
+                        type="color"
+                        value={textColor}
+                        onChange={(e) => {
+                          setTextColor(e.target.value);
+                          updateTextNodeContent({ color: e.target.value });
+                        }}
+                        className="w-full h-8 rounded cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Timer Tool Settings - Show when timer node is selected */}
+          {isTimerNode && (
+            <>
+              {(isBrushActive || isEraserActive || isLiveCaptureNode || isLiveCaptureActive || isTextNode) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+              
+              <button
+                onClick={async () => {
+                  if (selectedNode && selectedNodeId) {
+                    const content = typeof selectedNode.content === 'object' && selectedNode.content?.type === 'timer'
+                      ? selectedNode.content
+                      : { type: 'timer', duration: 300, isRunning: false, timeRemaining: 300 };
+                    const newRunning = !content.isRunning;
+                    updateWorkspaceNode(selectedNodeId, {
+                      content: { ...content, isRunning: newRunning },
+                    });
+                    
+                    // Persist to API
+                    try {
+                      await fetch('/api/nodes/update', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          nodeId: selectedNodeId,
+                          content: { ...content, isRunning: newRunning },
+                        }),
+                      });
+                    } catch (error) {
+                      console.error('Error updating timer:', error);
+                    }
+                  }
+                }}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all flex items-center gap-1.5"
+                title="Start/Pause Timer"
+              >
+                <Clock className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                <span className="text-xs">Start/Pause</span>
+              </button>
+              
+              <button
+                onClick={async () => {
+                  if (selectedNode && selectedNodeId) {
+                    const content = typeof selectedNode.content === 'object' && selectedNode.content?.type === 'timer'
+                      ? selectedNode.content
+                      : { type: 'timer', duration: 300, isRunning: false, timeRemaining: 300 };
+                    updateWorkspaceNode(selectedNodeId, {
+                      content: { ...content, isRunning: false, timeRemaining: content.duration || 300 },
+                    });
+                    
+                    // Persist to API
+                    try {
+                      await fetch('/api/nodes/update', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          nodeId: selectedNodeId,
+                          content: { ...content, isRunning: false, timeRemaining: content.duration || 300 },
+                        }),
+                      });
+                    } catch (error) {
+                      console.error('Error resetting timer:', error);
+                    }
+                  }
+                }}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all flex items-center gap-1.5"
+                title="Reset Timer"
+              >
+                <Square className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                <span className="text-xs">Reset</span>
+              </button>
+            </>
+          )}
+
+          {/* Voting Tool Settings - Show when voting node is selected */}
+          {isVotingNode && (
+            <>
+              {(isBrushActive || isEraserActive || isLiveCaptureNode || isLiveCaptureActive || isTextNode || isTimerNode) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+              
+              <button
+                onClick={async () => {
+                  if (selectedNode && selectedNodeId) {
+                    const content = typeof selectedNode.content === 'object' && selectedNode.content?.type === 'voting'
+                      ? selectedNode.content
+                      : { type: 'voting', question: '', options: [], votes: {} };
+                    const newOptions = [...(content.options || []), `Option ${(content.options?.length || 0) + 1}`];
+                    updateWorkspaceNode(selectedNodeId, {
+                      content: { ...content, options: newOptions },
+                    });
+                    
+                    // Persist to API
+                    try {
+                      await fetch('/api/nodes/update', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          nodeId: selectedNodeId,
+                          content: { ...content, options: newOptions },
+                        }),
+                      });
+                    } catch (error) {
+                      console.error('Error adding voting option:', error);
+                    }
+                  }
+                }}
+                className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all flex items-center gap-1.5"
+                title="Add Option"
+              >
+                <Plus className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                <span className="text-xs">Add Option</span>
+              </button>
+            </>
+          )}
+
+          {/* Code Block Tool Settings - Show when code block node is selected */}
+          {isCodeBlockNode && (
+            <>
+              {(isBrushActive || isEraserActive || isLiveCaptureNode || isLiveCaptureActive || isTextNode || isTimerNode || isVotingNode) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+              
+              <select
+                value={codeLanguage}
+                onChange={(e) => {
+                  setCodeLanguage(e.target.value);
+                  if (selectedNode && selectedNodeId) {
+                    const content = typeof selectedNode.content === 'object' && selectedNode.content?.type === 'code-block'
+                      ? selectedNode.content
+                      : { type: 'code-block', language: 'javascript', code: '' };
+                    updateWorkspaceNode(selectedNodeId, {
+                      content: { ...content, language: e.target.value },
+                    });
+                  }
+                }}
+                className="px-2 py-1.5 bg-gray-100/50 dark:bg-gray-700/50 border border-gray-300/50 dark:border-gray-600/50 rounded-lg text-xs text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              >
+                <option value="javascript">JavaScript</option>
+                <option value="typescript">TypeScript</option>
+                <option value="python">Python</option>
+                <option value="java">Java</option>
+                <option value="html">HTML</option>
+                <option value="css">CSS</option>
+                <option value="json">JSON</option>
+                <option value="markdown">Markdown</option>
+                <option value="bash">Bash</option>
+                <option value="sql">SQL</option>
+              </select>
+            </>
+          )}
+
+          {/* Image Tool Settings - Show when image node is selected */}
+          {isImageNode && (
+            <>
+              {(isBrushActive || isEraserActive || isLiveCaptureNode || isLiveCaptureActive || isTextNode || isTimerNode || isVotingNode || isCodeBlockNode) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+              
+              {/* Image Size */}
+              <div className="flex items-center gap-0.5 bg-gray-100/50 dark:bg-gray-700/50 rounded-lg p-0.5">
+                <button
+                  onClick={() => {
+                    setImageSize('small');
+                    if (selectedNode && selectedNodeId) {
+                      const content = typeof selectedNode.content === 'object' && selectedNode.content
+                        ? selectedNode.content as any
+                        : { type: 'image', url: '' };
+                      updateWorkspaceNode(selectedNodeId, {
+                        content: { ...content, size: 'small' },
+                      });
+                    }
+                  }}
+                  className={`px-2 py-1 rounded text-xs transition-all ${
+                    imageSize === 'small'
+                      ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                      : 'hover:bg-gray-200/60 dark:hover:bg-gray-600/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Small"
+                >
+                  S
+                </button>
+                <button
+                  onClick={() => {
+                    setImageSize('medium');
+                    if (selectedNode && selectedNodeId) {
+                      const content = typeof selectedNode.content === 'object' && selectedNode.content
+                        ? selectedNode.content as any
+                        : { type: 'image', url: '' };
+                      updateWorkspaceNode(selectedNodeId, {
+                        content: { ...content, size: 'medium' },
+                      });
+                    }
+                  }}
+                  className={`px-2 py-1 rounded text-xs transition-all ${
+                    imageSize === 'medium'
+                      ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                      : 'hover:bg-gray-200/60 dark:hover:bg-gray-600/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Medium"
+                >
+                  M
+                </button>
+                <button
+                  onClick={() => {
+                    setImageSize('large');
+                    if (selectedNode && selectedNodeId) {
+                      const content = typeof selectedNode.content === 'object' && selectedNode.content
+                        ? selectedNode.content as any
+                        : { type: 'image', url: '' };
+                      updateWorkspaceNode(selectedNodeId, {
+                        content: { ...content, size: 'large' },
+                      });
+                    }
+                  }}
+                  className={`px-2 py-1 rounded text-xs transition-all ${
+                    imageSize === 'large'
+                      ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                      : 'hover:bg-gray-200/60 dark:hover:bg-gray-600/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Large"
+                >
+                  L
+                </button>
+              </div>
+              
+              {/* Image Alignment */}
+              <div className="flex items-center gap-0.5 bg-gray-100/50 dark:bg-gray-700/50 rounded-lg p-0.5">
+                <button
+                  onClick={() => {
+                    setImageAlign('left');
+                    if (selectedNode && selectedNodeId) {
+                      const content = typeof selectedNode.content === 'object' && selectedNode.content
+                        ? selectedNode.content as any
+                        : { type: 'image', url: '' };
+                      updateWorkspaceNode(selectedNodeId, {
+                        content: { ...content, alignment: 'left' },
+                      });
+                    }
+                  }}
+                  className={`p-1 rounded transition-all ${
+                    imageAlign === 'left'
+                      ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                      : 'hover:bg-gray-200/60 dark:hover:bg-gray-600/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Align Left"
+                >
+                  <AlignLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => {
+                    setImageAlign('center');
+                    if (selectedNode && selectedNodeId) {
+                      const content = typeof selectedNode.content === 'object' && selectedNode.content
+                        ? selectedNode.content as any
+                        : { type: 'image', url: '' };
+                      updateWorkspaceNode(selectedNodeId, {
+                        content: { ...content, alignment: 'center' },
+                      });
+                    }
+                  }}
+                  className={`p-1 rounded transition-all ${
+                    imageAlign === 'center'
+                      ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                      : 'hover:bg-gray-200/60 dark:hover:bg-gray-600/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Align Center"
+                >
+                  <AlignCenter className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => {
+                    setImageAlign('right');
+                    if (selectedNode && selectedNodeId) {
+                      const content = typeof selectedNode.content === 'object' && selectedNode.content
+                        ? selectedNode.content as any
+                        : { type: 'image', url: '' };
+                      updateWorkspaceNode(selectedNodeId, {
+                        content: { ...content, alignment: 'right' },
+                      });
+                    }
+                  }}
+                  className={`p-1 rounded transition-all ${
+                    imageAlign === 'right'
+                      ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                      : 'hover:bg-gray-200/60 dark:hover:bg-gray-600/60 text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Align Right"
+                >
+                  <AlignRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Note/Sticky Note Tool Settings - Show when note or sticky note node is selected */}
+          {(isNoteNode || isStickyNoteNode) && (
+            <>
+              {(isBrushActive || isEraserActive || isLiveCaptureNode || isLiveCaptureActive || isTextNode || isTimerNode || isVotingNode || isCodeBlockNode || isImageNode) && (
+                <div className="h-6 w-px bg-gradient-to-b from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent" />
+              )}
+              
+              {/* Note Color Picker */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowColorPicker(!showColorPicker)}
+                  className="p-1.5 hover:bg-gray-100/60 dark:hover:bg-gray-700/60 rounded-lg transition-all"
+                  title="Note Color"
+                >
+                  <Palette className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                </button>
+                {showColorPicker && (
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 p-3 backdrop-blur-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200/50 dark:border-gray-700/50 rounded-xl shadow-xl z-50">
+                    <div className="grid grid-cols-5 gap-2 w-[200px]">
+                      {['#FFEB3B', '#FFC107', '#FF9800', '#FF5722', '#F44336', '#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#00BCD4', '#4CAF50', '#8BC34A', '#CDDC39', '#FFFFFF'].map((color) => (
+                        <button
+                          key={color}
+                          onClick={() => {
+                            setNoteColor(color);
+                            setShowColorPicker(false);
+                            if (selectedNode && selectedNodeId) {
+                              const content = typeof selectedNode.content === 'object' && selectedNode.content
+                                ? selectedNode.content
+                                : { type: isStickyNoteNode ? 'note' : 'note' };
+                              updateWorkspaceNode(selectedNodeId, {
+                                content: { ...content, color },
+                              });
+                            }
+                          }}
+                          className={`w-8 h-8 rounded-lg border-2 transition-all ${
+                            noteColor === color
+                              ? 'border-gray-800 dark:border-gray-200 ring-2 ring-blue-500/50'
+                              : 'border-gray-300 dark:border-gray-600 hover:border-gray-500 dark:hover:border-gray-400'
+                          }`}
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
           {/* Node Editing Options - Only show when node is selected and no other tools/controls are active */}
-          {selectedNodeId && !isBrushActive && !isEraserActive && !isLiveCaptureNode && !isIframeWidget && !isWebViewWidget && !isNativeWindowWidget && !isCreationToolsActive && !isShapeNode && !isDiagrammingToolsActive && !isConnectionNode && !isFacilitationToolsActive && !isStickyNoteCluster && (
+          {selectedNodeId && !isBrushActive && !isEraserActive && !isLiveCaptureNode && !isLiveCaptureActive && !isIframeWidget && !isWebViewWidget && !isNativeWindowWidget && !isCreationToolsActive && !isShapeNode && !isDiagrammingToolsActive && !isConnectionNode && !isFacilitationToolsActive && !isTextNode && !isTimerNode && !isVotingNode && !isCodeBlockNode && !isImageNode && !isNoteNode && !isStickyNoteNode && (
             <div className="w-2 h-2 rounded-full bg-gray-300/50 dark:bg-gray-600/50" />
           )}
         </div>

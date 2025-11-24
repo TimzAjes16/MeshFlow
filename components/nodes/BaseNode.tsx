@@ -1,40 +1,31 @@
 /**
  * Base Node Component
- * Following Notion/Miro pattern: all nodes share common base functionality
- * but have type-specific rendering
+ * Minimalistic base wrapper for all node types
+ * Provides selection state, click handling, and drag-to-resize
  */
 
-import { memo, ReactNode, useCallback } from 'react';
-import { Handle, Position } from 'reactflow';
+import { memo, ReactNode, useCallback, useRef, useState, useEffect } from 'react';
 import type { Node as NodeType } from '@/types/Node';
-import { getNodeTypeDefinition } from '@/lib/nodeTypes';
-import ResizeHandle from '@/components/ResizeHandle';
-import RotateHandle from '@/components/RotateHandle';
-import { useWorkspaceStore } from '@/state/workspaceStore';
 import { useCanvasStore } from '@/state/canvasStore';
+import { useWorkspaceStore } from '@/state/workspaceStore';
 
 export interface BaseNodeProps {
   node: NodeType;
   selected?: boolean;
   children: ReactNode;
-  showHandles?: boolean;
-  nodeId: string; // Add nodeId prop for resize/rotate handlers
+  nodeId: string;
 }
 
 /**
- * Base wrapper for all node types
- * Provides common functionality like handles, selection states, resize, and rotation
+ * Minimalistic base wrapper for all node types
+ * Provides selection state and drag-to-resize on edges
  */
-function BaseNode({ node, selected = false, children, showHandles = true, nodeId }: BaseNodeProps) {
-  const updateNode = useWorkspaceStore((state) => state.updateNode);
+function BaseNode({ node, selected = false, children, nodeId }: BaseNodeProps) {
   const { selectNode } = useCanvasStore();
-  const nodeDefinition = getNodeTypeDefinition(node);
-  const isResizable = nodeDefinition.isResizable ?? true; // Default to true
-  const isRotatable = nodeDefinition.isRotatable ?? false; // Default to false
-  
-  const currentWidth = node.width || 200;
-  const currentHeight = node.height || 100;
-  const currentRotation = node.rotation || 0;
+  const updateNode = useWorkspaceStore((state) => state.updateNode);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartRef = useRef<{ x: number; y: number; width: number; height: number; edge: string } | null>(null);
 
   // Handle clicks on the node wrapper to ensure selection
   const handleNodeClick = useCallback((e: React.MouseEvent) => {
@@ -46,162 +37,138 @@ function BaseNode({ node, selected = false, children, showHandles = true, nodeId
     }
   }, [selected, nodeId, selectNode]);
 
-  const handleResize = useCallback(
-    (id: string, width: number, height: number) => {
-      updateNode(id, { width, height });
-      
-      // Also update via API
-      const workspaceId = useWorkspaceStore.getState().currentWorkspace?.id;
-      if (workspaceId) {
-        fetch('/api/nodes/update', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nodeId: id,
-            width,
-            height,
-          }),
-        }).catch(console.error);
-      }
-    },
-    [updateNode]
-  );
+  // Handle resize start
+  const handleResizeStart = useCallback((e: React.MouseEvent, edge: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!containerRef.current) return;
+    
+    const rect = containerRef.current.getBoundingClientRect();
+    const currentWidth = node.width || rect.width;
+    const currentHeight = node.height || rect.height;
+    
+    resizeStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      width: currentWidth,
+      height: currentHeight,
+      edge,
+    };
+    setIsResizing(true);
+  }, [node.width, node.height]);
 
-  const handleRotate = useCallback(
-    (id: string, rotation: number) => {
-      updateNode(id, { rotation });
-      
-      // Also update via API
-      const workspaceId = useWorkspaceStore.getState().currentWorkspace?.id;
-      if (workspaceId) {
-        fetch('/api/nodes/update', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nodeId: id,
-            rotation,
-          }),
-        }).catch(console.error);
+  // Handle resize move
+  useEffect(() => {
+    if (!isResizing || !resizeStartRef.current) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizeStartRef.current || !containerRef.current) return;
+
+      const { x: startX, y: startY, width: startWidth, height: startHeight, edge } = resizeStartRef.current;
+      const deltaX = e.clientX - startX;
+      const deltaY = e.clientY - startY;
+
+      let newWidth = startWidth;
+      let newHeight = startHeight;
+
+      // Calculate new dimensions based on which edge is being dragged
+      // For simplicity, only support right, bottom, and bottom-right resizing
+      // (left/top edges would require position updates which is more complex)
+      switch (edge) {
+        case 'right':
+          newWidth = Math.max(100, startWidth + deltaX);
+          break;
+        case 'bottom':
+          newHeight = Math.max(50, startHeight + deltaY);
+          break;
+        case 'bottom-right':
+          newWidth = Math.max(100, startWidth + deltaX);
+          newHeight = Math.max(50, startHeight + deltaY);
+          break;
+        default:
+          // For other edges, don't resize (would need position updates)
+          return;
       }
-    },
-    [updateNode]
-  );
+
+      // Update node dimensions in real-time
+      updateNode(nodeId, {
+        width: newWidth,
+        height: newHeight,
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      resizeStartRef.current = null;
+      
+      // Persist to API
+      if (containerRef.current) {
+        const workspaceId = useWorkspaceStore.getState().currentWorkspace?.id;
+        if (workspaceId) {
+          const width = node.width || containerRef.current.offsetWidth;
+          const height = node.height || containerRef.current.offsetHeight;
+          fetch('/api/nodes/update', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nodeId,
+              width,
+              height,
+            }),
+          }).catch(console.error);
+        }
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, nodeId, updateNode, node.width, node.height]);
+
+  const currentWidth = node.width || 'auto';
+  const currentHeight = node.height || 'auto';
 
   return (
     <div
+      ref={containerRef}
       className={`
         relative
-        ${selected ? 'ring-2 ring-blue-500' : ''}
+        ${selected ? 'ring-2 ring-blue-500/60 ring-offset-0' : ''}
+        transition-all duration-150
+        ${isResizing ? 'select-none' : ''}
       `}
       style={{
-        width: node.width || 'auto',
-        height: node.height || 'auto',
-        minWidth: node.width ? undefined : '200px',
-        minHeight: node.height ? undefined : '60px',
-        transform: currentRotation !== 0 ? `rotate(${currentRotation}deg)` : undefined,
-        transformOrigin: 'center center',
+        width: currentWidth,
+        height: currentHeight,
       }}
       onClick={handleNodeClick}
     >
-      {showHandles && (
-        <>
-          <Handle
-            type="target"
-            position={Position.Top}
-            className="w-3 h-3 bg-blue-500 border-2 border-white"
-          />
-          <Handle
-            type="target"
-            position={Position.Left}
-            className="w-3 h-3 bg-blue-500 border-2 border-white"
-          />
-          <Handle
-            type="source"
-            position={Position.Right}
-            className="w-3 h-3 bg-blue-500 border-2 border-white"
-          />
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            className="w-3 h-3 bg-blue-500 border-2 border-white"
-          />
-        </>
-      )}
-      
-      {/* Resize Handles - show when selected and resizable */}
-      {selected && isResizable && (
-        <>
-          {/* Corner handles */}
-          <ResizeHandle
-            nodeId={nodeId}
-            position="top-left"
-            currentWidth={currentWidth}
-            currentHeight={currentHeight}
-            onResize={handleResize}
-          />
-          <ResizeHandle
-            nodeId={nodeId}
-            position="top-right"
-            currentWidth={currentWidth}
-            currentHeight={currentHeight}
-            onResize={handleResize}
-          />
-          <ResizeHandle
-            nodeId={nodeId}
-            position="bottom-left"
-            currentWidth={currentWidth}
-            currentHeight={currentHeight}
-            onResize={handleResize}
-          />
-          <ResizeHandle
-            nodeId={nodeId}
-            position="bottom-right"
-            currentWidth={currentWidth}
-            currentHeight={currentHeight}
-            onResize={handleResize}
-          />
-          {/* Edge handles */}
-          <ResizeHandle
-            nodeId={nodeId}
-            position="top"
-            currentWidth={currentWidth}
-            currentHeight={currentHeight}
-            onResize={handleResize}
-          />
-          <ResizeHandle
-            nodeId={nodeId}
-            position="bottom"
-            currentWidth={currentWidth}
-            currentHeight={currentHeight}
-            onResize={handleResize}
-          />
-          <ResizeHandle
-            nodeId={nodeId}
-            position="left"
-            currentWidth={currentWidth}
-            currentHeight={currentHeight}
-            onResize={handleResize}
-          />
-          <ResizeHandle
-            nodeId={nodeId}
-            position="right"
-            currentWidth={currentWidth}
-            currentHeight={currentHeight}
-            onResize={handleResize}
-          />
-        </>
-      )}
-      
-      {/* Rotate Handle - show when selected and rotatable */}
-      {selected && isRotatable && (
-        <RotateHandle
-          nodeId={nodeId}
-          rotation={currentRotation}
-          onRotate={handleRotate}
-        />
-      )}
-      
       {children}
+      
+      {/* Minimal resize handles - only show on right and bottom edges when selected */}
+      {selected && (
+        <>
+          {/* Bottom edge handle */}
+          <div
+            className="absolute -bottom-1 left-2 right-2 h-2 cursor-ns-resize hover:bg-blue-400/40 z-10 transition-colors rounded-full"
+            onMouseDown={(e) => handleResizeStart(e, 'bottom')}
+          />
+          {/* Right edge handle */}
+          <div
+            className="absolute top-2 bottom-2 -right-1 w-2 cursor-ew-resize hover:bg-blue-400/40 z-10 transition-colors rounded-full"
+            onMouseDown={(e) => handleResizeStart(e, 'right')}
+          />
+          {/* Bottom-right corner handle */}
+          <div
+            className="absolute -bottom-1 -right-1 w-3 h-3 cursor-nwse-resize hover:bg-blue-400/60 z-10 transition-colors rounded-tl-sm"
+            onMouseDown={(e) => handleResizeStart(e, 'bottom-right')}
+          />
+        </>
+      )}
     </div>
   );
 }

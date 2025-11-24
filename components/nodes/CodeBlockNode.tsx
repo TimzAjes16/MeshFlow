@@ -71,15 +71,15 @@ function CodeBlockNode({ data, selected, id }: CodeBlockNodeProps) {
   }, [id, language, code, updateNode]);
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div
-        className="bg-gray-900 border-2 border-gray-700 rounded-lg w-full h-full flex flex-col"
+        className="bg-gray-900 border border-gray-700/50 rounded-md w-full h-full flex flex-col transition-all duration-150"
         style={{
           minWidth: node.width || 400,
           minHeight: node.height || 300,
         }}
       >
-        <div className="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700 rounded-t-lg">
+        <div className="flex items-center justify-between px-3 py-2 bg-gray-800/50 border-b border-gray-700/50 rounded-t-md">
           <div className="flex items-center gap-2">
             <Code className="w-4 h-4 text-gray-400" />
             {selected ? (

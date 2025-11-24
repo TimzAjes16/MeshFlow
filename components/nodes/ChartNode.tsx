@@ -76,7 +76,7 @@ function ChartNode({ data, selected }: ChartNodeProps) {
   };
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={data.node.id}>
+    <BaseNode node={node} selected={selected} nodeId={data.node.id} >
       <div 
         className="bg-white rounded-lg shadow-sm border border-gray-200 p-4"
         style={{ width: `${width}px`, height: `${height}px` }}

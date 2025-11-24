@@ -132,7 +132,7 @@ function StickyNoteNode({ data, selected, id }: StickyNoteNodeProps) {
   const height = node.height || 200;
 
   return (
-    <BaseNode node={node} selected={selected} showHandles={false} nodeId={id}>
+    <BaseNode node={node} selected={selected}  nodeId={id}>
       <div
         ref={containerRef}
         style={{
@@ -140,12 +140,10 @@ function StickyNoteNode({ data, selected, id }: StickyNoteNodeProps) {
           minHeight: `${height}px`,
           backgroundColor: stickyColor,
           padding: '12px',
-          borderRadius: '8px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-          transform: 'rotate(-1deg)',
-          transition: 'transform 0.1s ease',
+          borderRadius: '6px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         }}
-        className="hover:rotate-0"
+        className="transition-all duration-150"
       >
         <EditorContent 
           editor={editor}

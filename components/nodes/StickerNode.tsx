@@ -65,7 +65,7 @@ function StickerNode({ data, selected, id }: StickerNodeProps) {
   }, [id, emoji, updateNode]);
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div
         className="bg-white border-2 border-gray-200 rounded-lg w-full h-full flex items-center justify-center"
         style={{

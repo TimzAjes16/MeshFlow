@@ -58,7 +58,7 @@ function ArrowNode({ data, selected }: ArrowNodeProps) {
   };
 
   return (
-    <BaseNode node={node} selected={selected} showHandles={false} nodeId={node.id}>
+    <BaseNode node={node} selected={selected}  nodeId={node.id}>
       <div 
         style={{ 
           width: `${width}px`, 

@@ -73,7 +73,7 @@ function FrameNode({ data, selected, id }: FrameNodeProps) {
   }, [id, title, node.width, node.height, updateNode]);
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div
         className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-4 w-full h-full flex flex-col"
         style={{

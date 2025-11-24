@@ -60,14 +60,14 @@ function ShapeNode({ data, selected }: ShapeNodeProps) {
     borderColor,
     borderWidth: `${borderWidth}px`,
     borderStyle: 'solid',
-    borderRadius: isCircle ? '50%' : '4px',
+    borderRadius: isCircle ? '50%' : '6px',
   };
 
   return (
-    <BaseNode node={node} selected={selected} showHandles={false} nodeId={data.node.id}>
+    <BaseNode node={node} selected={selected} nodeId={data.node.id}>
       <div 
         style={shapeStyle}
-        className="shadow-sm"
+        className="transition-all duration-150 shadow-sm"
       />
     </BaseNode>
   );

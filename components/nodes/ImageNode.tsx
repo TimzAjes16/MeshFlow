@@ -120,7 +120,7 @@ function ImageNode({ data, selected, id }: ImageNodeProps) {
 
   if (!url) {
     return (
-      <BaseNode node={node} selected={selected} nodeId={id}>
+      <BaseNode node={node} selected={selected} nodeId={id} >
         <div 
           ref={containerRef}
           className="p-8 bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center"
@@ -140,7 +140,7 @@ function ImageNode({ data, selected, id }: ImageNodeProps) {
   }
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div 
         className="rounded-lg overflow-hidden shadow-sm border border-gray-200"
         style={{ 

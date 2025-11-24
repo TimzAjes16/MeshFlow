@@ -263,10 +263,10 @@ function NoteNode({ data, selected, id }: NoteNodeProps) {
   }, [selected, id, selectNode]);
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div 
         ref={containerRef}
-        className="p-4 min-w-[250px] max-w-[400px] bg-yellow-50 rounded-lg shadow-sm border border-yellow-200"
+        className="p-3 min-w-[250px] max-w-[400px] bg-yellow-50/50 rounded-md border border-yellow-200/50 transition-all duration-150 hover:border-yellow-300/50"
         style={{ 
           width: node.width ? `${node.width}px` : 'fit-content', 
           maxWidth: node.width ? `${node.width}px` : '400px',

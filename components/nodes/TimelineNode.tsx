@@ -82,7 +82,7 @@ function TimelineNode({ data, selected, id }: TimelineNodeProps) {
   }, []);
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div
         className="bg-teal-50 border-2 border-teal-200 rounded-lg p-4 w-full h-full flex flex-col gap-3"
         style={{

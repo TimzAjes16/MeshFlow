@@ -865,6 +865,15 @@ export default function CanvasPageClient({ workspaceId }: CanvasPageClientProps)
           if (type === 'text') {
             return {
               type: 'text',
+              value: 'Tap to type',
+              fontFamily: 'Inter',
+              fontSize: 16,
+              fontWeight: 'normal',
+              color: '#111827',
+              textAlign: 'left',
+              isItalic: false,
+              isUnderline: false,
+              textWrap: true,
             };
           }
           if (type === 'image') {

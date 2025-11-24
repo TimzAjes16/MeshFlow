@@ -142,9 +142,9 @@ function TimerNode({ data, selected, id }: TimerNodeProps) {
   const isExpired = timeRemaining === 0;
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div
-        className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4 w-full h-full flex flex-col items-center justify-center gap-3"
+        className="bg-white border border-gray-200/50 rounded-md p-3 w-full h-full flex flex-col items-center justify-center gap-3 transition-all duration-150 hover:border-gray-300/50"
         style={{
           minWidth: node.width || 200,
           minHeight: node.height || 150,

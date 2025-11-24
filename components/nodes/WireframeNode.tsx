@@ -64,7 +64,7 @@ function WireframeNode({ data, selected, id }: WireframeNodeProps) {
   }, [id, elements, updateNode]);
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div
         className="bg-gray-100 border-2 border-gray-300 rounded-lg p-4 w-full h-full flex flex-col"
         style={{

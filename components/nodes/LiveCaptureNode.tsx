@@ -969,7 +969,7 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
   // Empty state - no stream or crop area yet
   if (!liveStream && !captureData.cropArea) {
     return (
-      <BaseNode node={node} selected={selected} nodeId={id}>
+      <BaseNode node={node} selected={selected} nodeId={id} >
         <div 
           ref={containerRef}
           className="p-8 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg border-2 border-dashed border-blue-300 flex flex-col items-center justify-center min-w-[300px] min-h-[200px]"
@@ -1000,7 +1000,7 @@ function LiveCaptureNode({ data, selected, id }: LiveCaptureNodeProps) {
     : 200;
 
   return (
-    <BaseNode node={node} selected={selected} nodeId={id}>
+    <BaseNode node={node} selected={selected} nodeId={id} >
       <div 
         ref={containerRef}
         className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col"
